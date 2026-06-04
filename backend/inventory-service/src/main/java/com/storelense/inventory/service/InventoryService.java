@@ -2,6 +2,7 @@ package com.storelense.inventory.service;
 
 import com.storelense.common.event.SohUpdatedEvent;
 import com.storelense.common.exception.ResourceNotFoundException;
+import com.storelense.common.kafka.KafkaTopics;
 import com.storelense.inventory.domain.entity.EpcRegistry;
 import com.storelense.inventory.domain.entity.InventoryState;
 import com.storelense.inventory.domain.repository.EpcRegistryRepository;
@@ -25,7 +26,7 @@ public class InventoryService {
     private final InventoryStateRepository inventoryStateRepository;
     private final EpcRegistryRepository    epcRegistryRepository;
 
-    @KafkaListener(topics = "rfid.soh.updated", groupId = "inventory-service")
+    @KafkaListener(topics = KafkaTopics.RFID_SOH_UPDATED, groupId = "inventory-service")
     @Transactional
     public void onSohUpdated(SohUpdatedEvent event) {
         if (event.productId() == null) return;

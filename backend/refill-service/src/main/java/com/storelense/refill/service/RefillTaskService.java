@@ -3,6 +3,7 @@ package com.storelense.refill.service;
 import com.storelense.common.dto.PageResponse;
 import com.storelense.common.event.RefillTaskCreatedEvent;
 import com.storelense.common.exception.BusinessException;
+import com.storelense.common.kafka.KafkaTopics;
 import com.storelense.common.exception.ResourceNotFoundException;
 import com.storelense.refill.domain.entity.RefillAssignment;
 import com.storelense.refill.domain.entity.RefillTask;
@@ -70,7 +71,7 @@ public class RefillTaskService {
 
         RefillTask saved = taskRepository.save(task);
 
-        kafkaTemplate.send("refill.task.created", saved.getId().toString(),
+        kafkaTemplate.send(KafkaTopics.REFILL_TASK_CREATED, saved.getId().toString(),
                 new RefillTaskCreatedEvent(
                         UUID.randomUUID().toString(), saved.getId(), saved.getStoreId(),
                         saved.getSource(), saved.getSourceSessionId(), saved.getCreatedAt().toInstant()));

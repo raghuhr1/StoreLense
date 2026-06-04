@@ -1,8 +1,10 @@
 package com.storelense.soh.service;
 
 import com.storelense.common.dto.PageResponse;
+import com.storelense.common.event.SohSessionCompletedEvent;
 import com.storelense.common.exception.BusinessException;
 import com.storelense.common.exception.ResourceNotFoundException;
+import com.storelense.common.kafka.KafkaTopics;
 import com.storelense.soh.domain.entity.SohResult;
 import com.storelense.soh.domain.entity.SohSession;
 import com.storelense.soh.domain.entity.SohSessionItem;
@@ -104,7 +106,7 @@ public class SohSessionService {
         session.setCompletedAt(OffsetDateTime.now());
         sessionRepository.save(session);
 
-        kafkaTemplate.send("soh.session.completed", sessionId.toString(),
+        kafkaTemplate.send(KafkaTopics.SOH_SESSION_COMPLETED, sessionId.toString(),
                 new SohSessionCompletedEvent(sessionId, session.getStoreId(), result.getAccuracyPct()));
 
         return sohMapper.toResultResponse(result);

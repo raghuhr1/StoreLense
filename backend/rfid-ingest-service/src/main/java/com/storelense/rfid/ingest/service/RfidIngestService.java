@@ -1,6 +1,7 @@
 package com.storelense.rfid.ingest.service;
 
 import com.storelense.common.event.RfidReadEvent;
+import com.storelense.common.kafka.KafkaTopics;
 import com.storelense.rfid.ingest.dto.RfidReadBatchRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,8 +22,7 @@ public class RfidIngestService {
     private final KafkaTemplate<String, RfidReadEvent> kafkaTemplate;
     private final StringRedisTemplate                  redis;
 
-    private static final String TOPIC         = "rfid.reads.raw";
-    private static final Duration DEDUP_TTL   = Duration.ofHours(25);
+    private static final Duration DEDUP_TTL = Duration.ofHours(25);
 
     public int ingestBatch(RfidReadBatchRequest batch, String correlationId) {
         AtomicInteger published = new AtomicInteger(0);
@@ -49,7 +49,7 @@ public class RfidIngestService {
                     correlationId
             );
 
-            kafkaTemplate.send(TOPIC, batch.storeId().toString(), event)
+            kafkaTemplate.send(KafkaTopics.RFID_READS_RAW, batch.storeId().toString(), event)
                     .whenComplete((result, ex) -> {
                         if (ex != null) {
                             log.error("Failed to publish RFID read event for EPC {}: {}", upperEpc, ex.getMessage());

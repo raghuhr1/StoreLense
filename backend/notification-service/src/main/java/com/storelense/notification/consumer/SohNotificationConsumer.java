@@ -1,6 +1,7 @@
 package com.storelense.notification.consumer;
 
 import com.storelense.common.event.SohSessionCompletedEvent;
+import com.storelense.common.kafka.KafkaTopics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -16,7 +17,7 @@ public class SohNotificationConsumer {
 
     private final SimpMessagingTemplate messagingTemplate;
 
-    @KafkaListener(topics = "soh.session.completed", groupId = "notification-service")
+    @KafkaListener(topics = KafkaTopics.SOH_SESSION_COMPLETED, groupId = "notification-service")
     public void onSohSessionCompleted(SohSessionCompletedEvent event) {
         String dest = "/topic/stores/" + event.storeId() + "/soh";
         messagingTemplate.convertAndSend(dest, Map.of(
