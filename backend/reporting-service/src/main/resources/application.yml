@@ -1,0 +1,37 @@
+server:
+  port: 8089
+
+spring:
+  application:
+    name: reporting-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:storelense}
+    username: ${DB_USERNAME:storelense_app}
+    password: ${DB_PASSWORD:changeme}
+    hikari:
+      maximum-pool-size: 10
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: reporting
+    open-in-view: false
+  flyway:
+    schemas: reporting
+    locations: classpath:db/migration
+
+storelense:
+  jwt:
+    secret: ${JWT_SECRET:storelense-dev-secret-key-minimum-32-chars}
+    access-token-expiry-ms: 900000
+    refresh-token-expiry-ms: 604800000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  metrics:
+    tags:
+      service: reporting-service

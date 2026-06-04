@@ -1,0 +1,58 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: auth-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:storelense}
+    username: ${DB_USERNAME:storelense_app}
+    password: ${DB_PASSWORD:changeme}
+    hikari:
+      schema: auth
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 20000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: auth
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+    open-in-view: false
+  flyway:
+    schemas: auth
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+
+storelense:
+  jwt:
+    secret: ${JWT_SECRET:storelense-dev-secret-key-minimum-32-chars}
+    access-token-expiry-ms: 900000     # 15 minutes
+    refresh-token-expiry-ms: 604800000 # 7 days
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    tags:
+      service: auth-service
+
+logging:
+  pattern:
+    console: '{"timestamp":"%d{yyyy-MM-dd HH:mm:ss.SSS}","level":"%level","service":"auth-service","trace":"%X{traceId}","span":"%X{spanId}","msg":"%message"}%n'
+  level:
+    com.storelense: INFO
+    org.springframework.security: WARN

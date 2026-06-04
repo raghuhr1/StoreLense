@@ -1,0 +1,42 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: product-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:storelense}
+    username: ${DB_USERNAME:storelense_app}
+    password: ${DB_PASSWORD:changeme}
+    hikari:
+      schema: products
+      maximum-pool-size: 10
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: products
+    open-in-view: false
+  flyway:
+    schemas: products
+    locations: classpath:db/migration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+storelense:
+  jwt:
+    secret: ${JWT_SECRET:storelense-dev-secret-key-minimum-32-chars}
+    access-token-expiry-ms: 900000
+    refresh-token-expiry-ms: 604800000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  metrics:
+    tags:
+      service: product-service

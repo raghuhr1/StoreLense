@@ -1,0 +1,511 @@
+# All 11 Spring Boot microservice Deployments + ClusterIP Services
+# Image tags are updated by the CD pipeline to the SHA being deployed.
+
+# ─── Shared env helpers (referenced via envFrom) ─────────────────────────────
+# Each deployment loads storelense-config (ConfigMap) + storelense-secrets (Secret)
+
+# ════════════════════════════════════════════════════════════════════════════
+# AUTH SERVICE  (port 8081)
+# ════════════════════════════════════════════════════════════════════════════
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: storelense
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: auth-service }
+  template:
+    metadata:
+      labels: { app: auth-service }
+    spec:
+      containers:
+        - name: auth-service
+          image: ghcr.io/storelense/storelense-auth-service:latest
+          ports:
+            - containerPort: 8081
+          envFrom:
+            - configMapRef: { name: storelense-config }
+            - secretRef:    { name: storelense-secrets }
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8081 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8081 }
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          resources:
+            requests: { memory: 256Mi, cpu: 250m }
+            limits:   { memory: 512Mi, cpu: "1" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: storelense
+spec:
+  selector: { app: auth-service }
+  ports:
+    - port: 8081
+---
+# ════════════════════════════════════════════════════════════════════════════
+# STORE SERVICE  (port 8082)
+# ════════════════════════════════════════════════════════════════════════════
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: store-service
+  namespace: storelense
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: store-service }
+  template:
+    metadata:
+      labels: { app: store-service }
+    spec:
+      containers:
+        - name: store-service
+          image: ghcr.io/storelense/storelense-store-service:latest
+          ports:
+            - containerPort: 8082
+          envFrom:
+            - configMapRef: { name: storelense-config }
+            - secretRef:    { name: storelense-secrets }
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8082 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8082 }
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          resources:
+            requests: { memory: 256Mi, cpu: 200m }
+            limits:   { memory: 512Mi, cpu: "1" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: store-service
+  namespace: storelense
+spec:
+  selector: { app: store-service }
+  ports:
+    - port: 8082
+---
+# ════════════════════════════════════════════════════════════════════════════
+# PRODUCT SERVICE  (port 8083)
+# ════════════════════════════════════════════════════════════════════════════
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-service
+  namespace: storelense
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: product-service }
+  template:
+    metadata:
+      labels: { app: product-service }
+    spec:
+      containers:
+        - name: product-service
+          image: ghcr.io/storelense/storelense-product-service:latest
+          ports:
+            - containerPort: 8083
+          envFrom:
+            - configMapRef: { name: storelense-config }
+            - secretRef:    { name: storelense-secrets }
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8083 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8083 }
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          resources:
+            requests: { memory: 256Mi, cpu: 200m }
+            limits:   { memory: 512Mi, cpu: "1" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: product-service
+  namespace: storelense
+spec:
+  selector: { app: product-service }
+  ports:
+    - port: 8083
+---
+# ════════════════════════════════════════════════════════════════════════════
+# INVENTORY SERVICE  (port 8084)
+# ════════════════════════════════════════════════════════════════════════════
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-service
+  namespace: storelense
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: inventory-service }
+  template:
+    metadata:
+      labels: { app: inventory-service }
+    spec:
+      containers:
+        - name: inventory-service
+          image: ghcr.io/storelense/storelense-inventory-service:latest
+          ports:
+            - containerPort: 8084
+          envFrom:
+            - configMapRef: { name: storelense-config }
+            - secretRef:    { name: storelense-secrets }
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8084 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8084 }
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          resources:
+            requests: { memory: 256Mi, cpu: 200m }
+            limits:   { memory: 512Mi, cpu: "1" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-service
+  namespace: storelense
+spec:
+  selector: { app: inventory-service }
+  ports:
+    - port: 8084
+---
+# ════════════════════════════════════════════════════════════════════════════
+# SOH SERVICE  (port 8085)
+# ════════════════════════════════════════════════════════════════════════════
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soh-service
+  namespace: storelense
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: soh-service }
+  template:
+    metadata:
+      labels: { app: soh-service }
+    spec:
+      containers:
+        - name: soh-service
+          image: ghcr.io/storelense/storelense-soh-service:latest
+          ports:
+            - containerPort: 8085
+          envFrom:
+            - configMapRef: { name: storelense-config }
+            - secretRef:    { name: storelense-secrets }
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8085 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8085 }
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          resources:
+            requests: { memory: 256Mi, cpu: 250m }
+            limits:   { memory: 512Mi, cpu: "1" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: soh-service
+  namespace: storelense
+spec:
+  selector: { app: soh-service }
+  ports:
+    - port: 8085
+---
+# ════════════════════════════════════════════════════════════════════════════
+# REFILL SERVICE  (port 8086)
+# ════════════════════════════════════════════════════════════════════════════
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: refill-service
+  namespace: storelense
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: refill-service }
+  template:
+    metadata:
+      labels: { app: refill-service }
+    spec:
+      containers:
+        - name: refill-service
+          image: ghcr.io/storelense/storelense-refill-service:latest
+          ports:
+            - containerPort: 8086
+          envFrom:
+            - configMapRef: { name: storelense-config }
+            - secretRef:    { name: storelense-secrets }
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8086 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8086 }
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          resources:
+            requests: { memory: 256Mi, cpu: 200m }
+            limits:   { memory: 512Mi, cpu: "1" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: refill-service
+  namespace: storelense
+spec:
+  selector: { app: refill-service }
+  ports:
+    - port: 8086
+---
+# ════════════════════════════════════════════════════════════════════════════
+# RFID INGEST SERVICE  (port 8087)
+# ════════════════════════════════════════════════════════════════════════════
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rfid-ingest-service
+  namespace: storelense
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: rfid-ingest-service }
+  template:
+    metadata:
+      labels: { app: rfid-ingest-service }
+    spec:
+      containers:
+        - name: rfid-ingest-service
+          image: ghcr.io/storelense/storelense-rfid-ingest-service:latest
+          ports:
+            - containerPort: 8087
+          envFrom:
+            - configMapRef: { name: storelense-config }
+            - secretRef:    { name: storelense-secrets }
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8087 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8087 }
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          resources:
+            requests: { memory: 256Mi, cpu: 300m }
+            limits:   { memory: 512Mi, cpu: "1" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rfid-ingest-service
+  namespace: storelense
+spec:
+  selector: { app: rfid-ingest-service }
+  ports:
+    - port: 8087
+---
+# ════════════════════════════════════════════════════════════════════════════
+# RFID PROCESSING SERVICE  (port 8088) — scaled by Kafka lag via HPA
+# ════════════════════════════════════════════════════════════════════════════
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rfid-processing-service
+  namespace: storelense
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: rfid-processing-service }
+  template:
+    metadata:
+      labels: { app: rfid-processing-service }
+    spec:
+      containers:
+        - name: rfid-processing-service
+          image: ghcr.io/storelense/storelense-rfid-processing-service:latest
+          ports:
+            - containerPort: 8088
+          envFrom:
+            - configMapRef: { name: storelense-config }
+            - secretRef:    { name: storelense-secrets }
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8088 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8088 }
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          resources:
+            requests: { memory: 512Mi, cpu: 500m }
+            limits:   { memory: 1Gi,   cpu: "2" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rfid-processing-service
+  namespace: storelense
+spec:
+  selector: { app: rfid-processing-service }
+  ports:
+    - port: 8088
+---
+# ════════════════════════════════════════════════════════════════════════════
+# REPORTING SERVICE  (port 8089)
+# ════════════════════════════════════════════════════════════════════════════
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reporting-service
+  namespace: storelense
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: reporting-service }
+  template:
+    metadata:
+      labels: { app: reporting-service }
+    spec:
+      containers:
+        - name: reporting-service
+          image: ghcr.io/storelense/storelense-reporting-service:latest
+          ports:
+            - containerPort: 8089
+          envFrom:
+            - configMapRef: { name: storelense-config }
+            - secretRef:    { name: storelense-secrets }
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8089 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8089 }
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          resources:
+            requests: { memory: 256Mi, cpu: 200m }
+            limits:   { memory: 768Mi, cpu: "1" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reporting-service
+  namespace: storelense
+spec:
+  selector: { app: reporting-service }
+  ports:
+    - port: 8089
+---
+# ════════════════════════════════════════════════════════════════════════════
+# ERP INTEGRATION SERVICE  (port 8090)
+# ════════════════════════════════════════════════════════════════════════════
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: erp-integration-service
+  namespace: storelense
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: erp-integration-service }
+  template:
+    metadata:
+      labels: { app: erp-integration-service }
+    spec:
+      containers:
+        - name: erp-integration-service
+          image: ghcr.io/storelense/storelense-erp-integration-service:latest
+          ports:
+            - containerPort: 8090
+          envFrom:
+            - configMapRef: { name: storelense-config }
+            - secretRef:    { name: storelense-secrets }
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8090 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8090 }
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          resources:
+            requests: { memory: 256Mi, cpu: 200m }
+            limits:   { memory: 512Mi, cpu: "1" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: erp-integration-service
+  namespace: storelense
+spec:
+  selector: { app: erp-integration-service }
+  ports:
+    - port: 8090
+---
+# ════════════════════════════════════════════════════════════════════════════
+# NOTIFICATION SERVICE  (port 8091)
+# ════════════════════════════════════════════════════════════════════════════
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  namespace: storelense
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: notification-service }
+  template:
+    metadata:
+      labels: { app: notification-service }
+    spec:
+      containers:
+        - name: notification-service
+          image: ghcr.io/storelense/storelense-notification-service:latest
+          ports:
+            - containerPort: 8091
+          envFrom:
+            - configMapRef: { name: storelense-config }
+            - secretRef:    { name: storelense-secrets }
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8091 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8091 }
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          resources:
+            requests: { memory: 256Mi, cpu: 200m }
+            limits:   { memory: 512Mi, cpu: "1" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: storelense
+spec:
+  selector: { app: notification-service }
+  ports:
+    - port: 8091

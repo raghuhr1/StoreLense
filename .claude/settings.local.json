@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(New-Item -ItemType Directory -Force -Path \"D:\\\\StoreLense\\\\StoreSense\\\\sql\")",
+      "PowerShell(Get-ChildItem \"D:\\\\StoreLense\\\\StoreSense\\\\sql\" | Select-Object Name, @{N='KB';E={[math]::Round\\($_.Length/1KB,1\\)}})",
+      "PowerShell(Start-Process -FilePath \"cmd.exe\" -ArgumentList \"/c cd /d d:\\\\StoreLense\\\\frontend && npm run dev > C:\\\\Users\\\\Admin\\\\AppData\\\\Local\\\\Temp\\\\nextjs_dev.log 2>&1\" -WindowStyle Hidden)",
+      "Bash(chromium-cli screenshot *)",
+      "PowerShell(Start-Process \"msedge\" -ArgumentList \"http://localhost:3000/login\" -ErrorAction SilentlyContinue)",
+      "PowerShell(\"Browser opened\")",
+      "PowerShell(Get-ChildItem -Path \"d:\\\\StoreLense\\\\backend\" -Recurse -Directory | Select-Object -First 20 | ForEach-Object { $_.FullName })",
+      "PowerShell(netstat -ano)",
+      "PowerShell(java -version 2>&1)",
+      "PowerShell(winget install Redis.Redis --accept-package-agreements --accept-source-agreements 2>&1)",
+      "PowerShell(Get-ChildItem \"d:\\\\StoreLense\\\\android\" -Recurse -File | Where-Object { $_.Extension -in \".kt\",\".kts\",\".xml\",\".toml\",\".pro\",\".md\" } | Select-Object @{N=\"Path\";E={$_.FullName.Replace\\(\"d:\\\\StoreLense\\\\android\\\\\",\"\"\\)}} | Format-Table -AutoSize)",
+      "Bash(Get-ChildItem -Path \"d:\\\\StoreLense\" -Force -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object Name, PSIsContainer)",
+      "PowerShell(Test-Path \"d:\\\\StoreLense\\\\deploy\"; if \\(\\(Test-Path \"d:\\\\StoreLense\\\\deploy\"\\) -eq $true\\) { Get-ChildItem -Path \"d:\\\\StoreLense\\\\deploy\" -Recurse -Force 2>$null | Select-Object FullName } else { \"Deploy directory exists but is empty or not accessible\" })",
+      "Bash(docker compose *)",
+      "Bash(echo \"exit: $?\")"
+    ]
+  }
+}

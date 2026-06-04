@@ -1,0 +1,313 @@
+name: storelense
+
+# ─── Common build context for all backend services ───────────────────────────
+x-backend-build: &backend-build
+  context: ../backend
+  dockerfile: Dockerfile
+
+# ─── Common Spring Boot environment ──────────────────────────────────────────
+x-spring-env: &spring-env
+  DB_HOST:     postgres
+  DB_PORT:     "5432"
+  DB_NAME:     ${DB_NAME:-storelense}
+  DB_USERNAME: ${DB_USERNAME:-storelense_app}
+  DB_PASSWORD: ${DB_PASSWORD:-changeme}
+  REDIS_HOST:  redis
+  REDIS_PORT:  "6379"
+  REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+  KAFKA_BOOTSTRAP: kafka:9092
+  JWT_SECRET:  ${JWT_SECRET:-storelense-dev-secret-key-minimum-32-chars}
+  PRODUCT_SERVICE_URL: http://product-service:8083
+  STORE_SERVICE_URL:   http://store-service:8082
+
+# ─── Healthcheck defaults ────────────────────────────────────────────────────
+x-spring-healthcheck: &spring-healthcheck
+  interval: 20s
+  timeout:  10s
+  retries:  5
+  start_period: 60s
+
+services:
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # INFRASTRUCTURE
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB:       ${DB_NAME:-storelense}
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test:         ["CMD", "pg_isready", "-U", "postgres", "-d", "storelense"]
+      interval:     10s
+      timeout:      5s
+      retries:      10
+      start_period: 15s
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --save 20 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test:    ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout:  5s
+      retries:  10
+
+  kafka:
+    image: bitnami/kafka:latest
+    environment:
+      KAFKA_CFG_NODE_ID: "0"
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_CFG_NUM_PARTITIONS: "3"
+      KAFKA_CFG_LOG_RETENTION_HOURS: "24"
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    volumes:
+      - kafka_data:/bitnami/kafka
+    ports:
+      - "29092:29092"
+    healthcheck:
+      test:         ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval:     15s
+      timeout:      10s
+      retries:      10
+      start_period: 30s
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # MICROSERVICES
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  auth-service:
+    build:
+      <<: *backend-build
+      args: { SERVICE_NAME: auth-service, SERVICE_PORT: 8081 }
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+    environment:
+      <<: *spring-env
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/actuator/health"]
+      <<: *spring-healthcheck
+
+  store-service:
+    build:
+      <<: *backend-build
+      args: { SERVICE_NAME: store-service, SERVICE_PORT: 8082 }
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      <<: *spring-env
+    ports:
+      - "8082:8082"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/actuator/health"]
+      <<: *spring-healthcheck
+
+  product-service:
+    build:
+      <<: *backend-build
+      args: { SERVICE_NAME: product-service, SERVICE_PORT: 8083 }
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+    environment:
+      <<: *spring-env
+    ports:
+      - "8083:8083"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8083/actuator/health"]
+      <<: *spring-healthcheck
+
+  inventory-service:
+    build:
+      <<: *backend-build
+      args: { SERVICE_NAME: inventory-service, SERVICE_PORT: 8084 }
+    depends_on:
+      postgres: { condition: service_healthy }
+      kafka:    { condition: service_healthy }
+    environment:
+      <<: *spring-env
+    ports:
+      - "8084:8084"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8084/actuator/health"]
+      <<: *spring-healthcheck
+
+  soh-service:
+    build:
+      <<: *backend-build
+      args: { SERVICE_NAME: soh-service, SERVICE_PORT: 8085 }
+    depends_on:
+      postgres: { condition: service_healthy }
+      kafka:    { condition: service_healthy }
+    environment:
+      <<: *spring-env
+    ports:
+      - "8085:8085"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8085/actuator/health"]
+      <<: *spring-healthcheck
+
+  refill-service:
+    build:
+      <<: *backend-build
+      args: { SERVICE_NAME: refill-service, SERVICE_PORT: 8086 }
+    depends_on:
+      postgres: { condition: service_healthy }
+      kafka:    { condition: service_healthy }
+    environment:
+      <<: *spring-env
+    ports:
+      - "8086:8086"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8086/actuator/health"]
+      <<: *spring-healthcheck
+
+  rfid-ingest-service:
+    build:
+      <<: *backend-build
+      args: { SERVICE_NAME: rfid-ingest-service, SERVICE_PORT: 8087 }
+    depends_on:
+      kafka: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      <<: *spring-env
+    ports:
+      - "8087:8087"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8087/actuator/health"]
+      <<: *spring-healthcheck
+
+  rfid-processing-service:
+    build:
+      <<: *backend-build
+      args: { SERVICE_NAME: rfid-processing-service, SERVICE_PORT: 8088 }
+    depends_on:
+      postgres: { condition: service_healthy }
+      kafka:    { condition: service_healthy }
+      redis:    { condition: service_healthy }
+    environment:
+      <<: *spring-env
+    ports:
+      - "8088:8088"
+    deploy:
+      replicas: 1   # Scale up for load: docker compose up --scale rfid-processing-service=3
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8088/actuator/health"]
+      <<: *spring-healthcheck
+
+  reporting-service:
+    build:
+      <<: *backend-build
+      args: { SERVICE_NAME: reporting-service, SERVICE_PORT: 8089 }
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      <<: *spring-env
+    ports:
+      - "8089:8089"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8089/actuator/health"]
+      <<: *spring-healthcheck
+
+  erp-integration-service:
+    build:
+      <<: *backend-build
+      args: { SERVICE_NAME: erp-integration-service, SERVICE_PORT: 8090 }
+    depends_on:
+      postgres: { condition: service_healthy }
+      kafka:    { condition: service_healthy }
+    environment:
+      <<: *spring-env
+      ERP_BASE_URL:           ${ERP_BASE_URL:-http://localhost:9000}
+      ERP_API_KEY:            ${ERP_API_KEY:-dev-key}
+      ERP_API_VERSION:        ${ERP_API_VERSION:-v1}
+      ERP_PUSH_SOH_ENABLED:   ${ERP_PUSH_SOH_ENABLED:-false}
+    ports:
+      - "8090:8090"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8090/actuator/health"]
+      <<: *spring-healthcheck
+
+  notification-service:
+    build:
+      <<: *backend-build
+      args: { SERVICE_NAME: notification-service, SERVICE_PORT: 8091 }
+    depends_on:
+      kafka: { condition: service_healthy }
+    environment:
+      <<: *spring-env
+    ports:
+      - "8091:8091"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8091/actuator/health"]
+      <<: *spring-healthcheck
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # API GATEWAY  (nginx — routes all /api/* to correct microservice)
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  nginx-gateway:
+    image: nginx:1.27-alpine
+    depends_on:
+      auth-service:    { condition: service_healthy }
+      store-service:   { condition: service_healthy }
+      product-service: { condition: service_healthy }
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test:    ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout:  5s
+      retries:  5
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # FRONTEND  (Next.js)
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    depends_on:
+      nginx-gateway: { condition: service_healthy }
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
+      NEXT_PUBLIC_WS_URL:       ws://localhost:8091/ws
+      INTERNAL_API_URL:         http://nginx-gateway:8080
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test:    ["CMD", "wget", "-qO-", "http://localhost:3000"]
+      interval: 20s
+      timeout:  10s
+      retries:  5
+      start_period: 30s
+
+volumes:
+  postgres_data:
+  redis_data:
+  kafka_data:

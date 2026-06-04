@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: storelense
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres }
+  template:
+    metadata:
+      labels: { app: postgres }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - { name: POSTGRES_DB,       value: storelense }
+            - { name: POSTGRES_USER,     value: postgres }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: storelense-secrets, key: DB_PASSWORD }
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "storelense"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests: { memory: 256Mi, cpu: 250m }
+            limits:   { memory: 1Gi,   cpu: "1" }
+      volumes:
+        - name: init
+          configMap: { name: postgres-init }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: { storage: 10Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: storelense
+spec:
+  clusterIP: None   # Headless for StatefulSet
+  selector: { app: postgres }
+  ports:
+    - port: 5432

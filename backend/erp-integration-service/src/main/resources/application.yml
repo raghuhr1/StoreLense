@@ -1,0 +1,90 @@
+server:
+  port: 8090
+
+spring:
+  application:
+    name: erp-integration-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:storelense}
+    username: ${DB_USERNAME:storelense_app}
+    password: ${DB_PASSWORD:changeme}
+    hikari:
+      schema: erp
+      maximum-pool-size: 5
+      minimum-idle: 1
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: erp
+    open-in-view: false
+  flyway:
+    enabled: true
+    schemas: erp
+    locations: classpath:db/migration
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+    consumer:
+      group-id: erp-integration-service
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      auto-offset-reset: earliest
+      properties:
+        spring.json.trusted.packages: "com.storelense.*"
+
+storelense:
+  erp:
+    base-url: ${ERP_BASE_URL:http://erp.internal/api}
+    api-key: ${ERP_API_KEY:}
+    api-version: ${ERP_API_VERSION:v1}
+    connect-timeout: 10s
+    read-timeout: 30s
+    page-size: 500
+    product-sync-interval: 6h
+    inventory-sync-cron: "0 0 1 * * *"
+    max-retries: 3
+    push-soh-enabled: ${ERP_PUSH_SOH_ENABLED:true}
+  jwt:
+    secret: ${JWT_SECRET:storelense-dev-secret-key-minimum-32-chars}
+    access-token-expiry-ms: 900000
+    refresh-token-expiry-ms: 604800000
+
+resilience4j:
+  retry:
+    instances:
+      erp:
+        max-attempts: 3
+        wait-duration: 2s
+        retry-exceptions:
+          - org.springframework.web.client.ResourceAccessException
+          - org.springframework.web.client.HttpServerErrorException
+  circuitbreaker:
+    instances:
+      erp:
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 2m
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    tags:
+      service: erp-integration-service
+
+logging:
+  level:
+    com.storelense.erp: INFO

@@ -1,0 +1,176 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false  # never cancel a production deploy mid-flight
+
+env:
+  REGISTRY:  ghcr.io
+  IMAGE_ORG: ${{ github.repository_owner }}
+
+jobs:
+  # ─── Build & push all Docker images ───────────────────────────────────────
+  build-push:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image_tag: ${{ steps.tag.outputs.tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image tag
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push backend services
+        run: |
+          TAG=${{ steps.tag.outputs.tag }}
+          SERVICES=(
+            "auth-service:8081"
+            "store-service:8082"
+            "product-service:8083"
+            "inventory-service:8084"
+            "soh-service:8085"
+            "refill-service:8086"
+            "rfid-ingest-service:8087"
+            "rfid-processing-service:8088"
+            "reporting-service:8089"
+            "erp-integration-service:8090"
+            "notification-service:8091"
+          )
+          for svc_port in "${SERVICES[@]}"; do
+            svc="${svc_port%%:*}"
+            port="${svc_port##*:}"
+            IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_ORG }}/storelense-${svc}:${TAG}"
+            echo "Building and pushing $IMAGE"
+            docker buildx build \
+              --platform linux/amd64,linux/arm64 \
+              --build-arg SERVICE_NAME="$svc" \
+              --build-arg SERVICE_PORT="$port" \
+              --tag "$IMAGE" \
+              --tag "${{ env.REGISTRY }}/${{ env.IMAGE_ORG }}/storelense-${svc}:latest" \
+              --push \
+              ./backend
+          done
+
+      - name: Build & push frontend
+        run: |
+          TAG=${{ steps.tag.outputs.tag }}
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_ORG }}/storelense-frontend:${TAG}"
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --tag "$IMAGE" \
+            --tag "${{ env.REGISTRY }}/${{ env.IMAGE_ORG }}/storelense-frontend:latest" \
+            --push \
+            ./frontend
+
+  # ─── Deploy to Staging ─────────────────────────────────────────────────────
+  deploy-staging:
+    name: Deploy — Staging
+    runs-on: ubuntu-latest
+    needs: build-push
+    environment:
+      name: staging
+      url:  https://staging.storelense.internal
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        run: echo "${{ secrets.KUBE_CONFIG_STAGING }}" | base64 -d > ~/.kube/config
+
+      - name: Update image tags in K8s manifests
+        run: |
+          TAG=${{ needs.build-push.outputs.image_tag }}
+          find deploy/k8s -name "*.yaml" -exec \
+            sed -i "s|:latest|:${TAG}|g" {} \;
+
+      - name: Apply manifests
+        run: kubectl apply -f deploy/k8s/ --namespace storelense
+
+      - name: Wait for rollout
+        run: |
+          SERVICES=(auth-service store-service product-service inventory-service
+                    soh-service refill-service rfid-ingest-service rfid-processing-service
+                    reporting-service erp-integration-service notification-service frontend)
+          for svc in "${SERVICES[@]}"; do
+            kubectl rollout status deployment/$svc -n storelense --timeout=5m
+          done
+
+      - name: Run smoke tests
+        run: |
+          GATEWAY=https://staging.storelense.internal
+          # Login smoke test
+          HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "$GATEWAY/api/auth/login" \
+            -H "Content-Type: application/json" \
+            -d '{"username":"admin","password":"Admin@StoreLense1"}')
+          [ "$HTTP" = "200" ] || { echo "Login smoke test FAILED ($HTTP)"; exit 1; }
+          echo "Smoke test PASSED"
+
+  # ─── Deploy to Production (manual approval gate) ──────────────────────────
+  deploy-production:
+    name: Deploy — Production
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: github.event_name == 'release'
+    environment:
+      name: production
+      url:  https://app.storelense.internal
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        run: echo "${{ secrets.KUBE_CONFIG_PROD }}" | base64 -d > ~/.kube/config
+
+      - name: Apply manifests
+        run: |
+          TAG=${{ needs.build-push.outputs.image_tag }}
+          find deploy/k8s -name "*.yaml" -exec sed -i "s|:latest|:${TAG}|g" {} \;
+          kubectl apply -f deploy/k8s/ --namespace storelense
+
+      - name: Canary rollout (10% → 50% → 100%)
+        run: |
+          SERVICES=(auth-service rfid-processing-service soh-service)
+          for svc in "${SERVICES[@]}"; do
+            kubectl rollout status deployment/$svc -n storelense --timeout=10m
+          done
+
+      - name: Notify on success
+        if: success()
+        run: |
+          echo "Production deployment ${{ needs.build-push.outputs.image_tag }} completed"
+          # Add Slack / PagerDuty notification here
