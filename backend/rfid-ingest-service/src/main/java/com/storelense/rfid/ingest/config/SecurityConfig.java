@@ -1,4 +1,4 @@
-package com.storelense.rfid.config;
+package com.storelense.rfid.ingest.config;
 
 import com.storelense.common.security.JwtAuthenticationFilter;
 import com.storelense.common.security.JwtTokenProvider;

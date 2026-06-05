@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 @Service
@@ -24,17 +23,18 @@ public class RfidIngestService {
 
     private static final Duration DEDUP_TTL = Duration.ofHours(25);
 
+    @SuppressWarnings("null") // Duration.ofHours() and UUID.toString() are non-null; Eclipse can't verify through generic type params
     public int ingestBatch(RfidReadBatchRequest batch, String correlationId) {
-        AtomicInteger published = new AtomicInteger(0);
+        int published = 0;
 
-        batch.reads().forEach(entry -> {
+        for (var entry : batch.reads()) {
             String upperEpc = entry.epc().toUpperCase();
             String dedupKey = "rfid:dedup:" + batch.rfidSessionId() + ":" + upperEpc;
 
             // Deduplicate within session using Redis SET
             Boolean isNew = redis.opsForValue().setIfAbsent(dedupKey, "1", DEDUP_TTL);
             if (Boolean.FALSE.equals(isNew)) {
-                return; // already seen this EPC in this session
+                continue; // already seen this EPC in this session
             }
 
             RfidReadEvent event = new RfidReadEvent(
@@ -49,16 +49,17 @@ public class RfidIngestService {
                     correlationId
             );
 
+            // Fire-and-forget: log failures asynchronously but don't block the response
             kafkaTemplate.send(KafkaTopics.RFID_READS_RAW, batch.storeId().toString(), event)
                     .whenComplete((result, ex) -> {
                         if (ex != null) {
                             log.error("Failed to publish RFID read event for EPC {}: {}", upperEpc, ex.getMessage());
-                        } else {
-                            published.incrementAndGet();
                         }
                     });
-        });
 
-        return published.get();
+            published++; // count reads accepted and submitted (before async Kafka ack)
+        }
+
+        return published;
     }
 }

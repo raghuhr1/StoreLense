@@ -109,8 +109,11 @@ public class RefillTaskService {
         item.setFulfilledQuantity(fulfilledQty);
         item.setStatus(fulfilledQty >= item.getRequestedQuantity() ? "fulfilled" : "partial");
 
+        // "partial" is a terminal state — task completes when all items are addressed
         boolean allDone = task.getItems().stream()
-                .allMatch(i -> "fulfilled".equals(i.getStatus()) || "skipped".equals(i.getStatus()));
+                .allMatch(i -> "fulfilled".equals(i.getStatus())
+                            || "partial".equals(i.getStatus())
+                            || "skipped".equals(i.getStatus()));
 
         if (allDone) {
             task.setStatus("completed");
