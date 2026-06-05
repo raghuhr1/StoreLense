@@ -3,10 +3,13 @@ package com.storelense.inventory.controller;
 import com.storelense.common.dto.ApiResponse;
 import com.storelense.common.security.StoreLensePrincipal;
 import com.storelense.inventory.domain.entity.InventoryState;
+import com.storelense.inventory.dto.UpsertExpectedQtyRequest;
 import com.storelense.inventory.service.InventoryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -61,5 +64,21 @@ public class InventoryController {
                 "sold",        inventoryService.countByStatus(effective, "sold"),
                 "damaged",     inventoryService.countByStatus(effective, "damaged")
         )));
+    }
+
+    @PostMapping("/expected")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER')")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(summary = "Upsert ERP expected quantity for a store/product/zone",
+               description = "Sets quantity_expected used to calculate inventory accuracy vs RFID scan data. " +
+                             "Called by the XLS upload tool. Preserves existing quantity_on_hand from RFID scans.")
+    public ResponseEntity<ApiResponse<InventoryState>> upsertExpected(
+            @Valid @RequestBody UpsertExpectedQtyRequest req,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+
+        UUID storeId = principal.isAdmin() ? req.storeId() : principal.storeId();
+        InventoryState result = inventoryService.upsertExpectedQty(
+                storeId, req.productId(), req.zoneId(), req.quantityExpected());
+        return ResponseEntity.ok(ApiResponse.ok(result));
     }
 }

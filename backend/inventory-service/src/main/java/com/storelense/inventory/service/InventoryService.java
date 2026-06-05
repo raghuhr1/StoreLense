@@ -73,4 +73,39 @@ public class InventoryService {
     public long countByStatus(UUID storeId, String status) {
         return epcRegistryRepository.countByStoreIdAndStatus(storeId, status);
     }
+
+    /**
+     * Upsert the ERP expected quantity for a store × product × zone.
+     * Called by the XLS upload tool (POST /api/inventory/expected).
+     * Preserves quantity_on_hand from previous RFID scans.
+     *
+     * @SuppressWarnings: JpaRepository.save() is contractually @NonNull;
+     * Eclipse null analysis cannot verify this through generic type parameters.
+     */
+    @SuppressWarnings("null")
+    @Transactional
+    public InventoryState upsertExpectedQty(UUID storeId, UUID productId,
+                                            UUID zoneId, int quantityExpected) {
+        return inventoryStateRepository
+                .findByStoreIdAndProductIdAndZoneId(storeId, productId, zoneId)
+                .map(existing -> {
+                    existing.setQuantityExpected(quantityExpected);
+                    existing.setAccuracyPct(calcAccuracy(existing.getQuantityOnHand(), quantityExpected));
+                    return inventoryStateRepository.save(existing);
+                })
+                .orElseGet(() -> inventoryStateRepository.save(
+                        InventoryState.builder()
+                                .storeId(storeId)
+                                .productId(productId)
+                                .zoneId(zoneId)
+                                .quantityExpected(quantityExpected)
+                                .quantityOnHand(0)
+                                .build()));
+    }
+
+    private java.math.BigDecimal calcAccuracy(int onHand, int expected) {
+        if (expected == 0) return java.math.BigDecimal.valueOf(100);
+        return java.math.BigDecimal.valueOf(100.0 * onHand / expected)
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+    }
 }
