@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,20 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
 }
+
+// Read local.properties for developer-specific overrides (not committed to git)
+val localProps = Properties().also { props ->
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { props.load(it) }
+}
+
+// BASE_URL resolution:
+//   1. local.properties:  storelense.debug.url=http://192.168.1.X:8080/   ← physical Zebra device
+//   2. fallback:          http://10.0.2.2:8080/                            ← Android emulator only
+// Always uses port 8080 (Nginx gateway). Port 8081 is auth-service only and
+// bypasses routing for all other services.
+val debugBaseUrl: String = localProps.getProperty("storelense.debug.url", "http://10.0.2.2:8080/")
+    .trimEnd('/') + "/"
 
 android {
     namespace   = "com.storelense.zebra"
@@ -17,19 +33,23 @@ android {
         versionCode     = 1
         versionName     = "1.0.0"
 
-        buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8081/\"") // Emulator → localhost
+        buildConfigField("String",  "BASE_URL",      "\"$debugBaseUrl\"")
+        buildConfigField("Boolean", "USE_MOCK_RFID", "true")
     }
 
     buildTypes {
         debug {
             buildConfigField("Boolean", "USE_MOCK_RFID", "true")
-            buildConfigField("String",  "BASE_URL",      "\"http://10.0.2.2:8081/\"")
+            buildConfigField("String",  "BASE_URL",      "\"$debugBaseUrl\"")
         }
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             buildConfigField("Boolean", "USE_MOCK_RFID", "false")
-            buildConfigField("String",  "BASE_URL",      "\"https://api.storelense.internal/\"")
+            // For production, set storelense.release.url in local.properties or CI env
+            val releaseUrl = localProps.getProperty("storelense.release.url", "https://api.storelense.internal/")
+                .trimEnd('/') + "/"
+            buildConfigField("String",  "BASE_URL",      "\"$releaseUrl\"")
         }
     }
 
