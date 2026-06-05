@@ -96,13 +96,33 @@ CONFIRM="${CONFIRM:-y}"
 # =============================================================================
 step "Installing system dependencies"
 
+export DEBIAN_FRONTEND=noninteractive
+
+# ── Repair apt before doing anything else ────────────────────────────────────
+# Fixes: "E: Method https has died unexpectedly! Sub-process https received signal 4"
+# Cause: corrupted apt cache, broken apt-transport-https, or stale package lists.
+info "Repairing apt cache..."
+sudo apt-get clean -qq
+sudo rm -rf /var/lib/apt/lists/*
+sudo dpkg --configure -a 2>/dev/null || true
+sudo apt-get install --fix-broken -y -qq 2>/dev/null || true
+
+# Bootstrap with plain HTTP to get ca-certificates and https transport working
+sudo apt-get update -o Acquire::https::Verify-Peer=false -qq 2>/dev/null || \
+  sudo apt-get update -qq || true
+
+sudo apt-get install -y -qq --no-install-recommends \
+  ca-certificates apt-transport-https 2>/dev/null || true
+
+# Now do the full update with HTTPS working
 sudo apt-get update -qq
+success "apt repaired and updated"
 
 # Core tools
-sudo apt-get install -y -qq \
-  curl wget git ca-certificates gnupg lsb-release \
-  software-properties-common apt-transport-https \
-  openssl jq
+sudo apt-get install -y -qq --no-install-recommends \
+  curl wget git gnupg lsb-release \
+  software-properties-common \
+  openssl jq python3
 
 success "Core tools installed"
 
@@ -123,7 +143,7 @@ else
     sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
   sudo apt-get update -qq
-  sudo apt-get install -y -qq \
+  sudo apt-get install -y -qq --no-install-recommends \
     docker-ce docker-ce-cli containerd.io \
     docker-buildx-plugin docker-compose-plugin
 
@@ -159,7 +179,7 @@ else
     sudo tee /etc/apt/sources.list.d/microsoft-prod.list > /dev/null
 
   sudo apt-get update -qq
-  sudo apt-get install -y -qq powershell
+  sudo apt-get install -y -qq --no-install-recommends powershell
   success "PowerShell installed: $(pwsh --version)"
 fi
 
