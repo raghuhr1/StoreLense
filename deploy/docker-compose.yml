@@ -271,9 +271,9 @@ services:
   nginx-gateway:
     image: nginx:1.27-alpine
     depends_on:
-      auth-service:            { condition: service_healthy }
-      store-service:           { condition: service_healthy }
-      product-service:         { condition: service_healthy }
+      auth-service:            { condition: service_started }
+      store-service:           { condition: service_started }
+      product-service:         { condition: service_started }
       inventory-service:       { condition: service_started }
       soh-service:             { condition: service_started }
       refill-service:          { condition: service_started }
@@ -287,10 +287,11 @@ services:
     ports:
       - "8080:8080"
     healthcheck:
-      test:    ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
-      interval: 10s
-      timeout:  5s
-      retries:  5
+      test:         ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval:     10s
+      timeout:      5s
+      retries:      10
+      start_period: 15s
 
   # ═══════════════════════════════════════════════════════════════════════════
   # FRONTEND  (Next.js)
@@ -301,7 +302,7 @@ services:
       context: ../frontend
       dockerfile: Dockerfile
     depends_on:
-      nginx-gateway: { condition: service_healthy }
+      nginx-gateway: { condition: service_started }
     environment:
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
       NEXT_PUBLIC_WS_URL:       ws://localhost:8091/ws
