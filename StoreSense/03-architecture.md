@@ -35,7 +35,7 @@ StoreLense is a cloud-hosted, microservices-based RFID platform that replaces th
 └──────────────┬───────────────────────────────────┬──────────────────┘
                │                                   │
    ┌───────────▼──────────┐           ┌────────────▼──────────┐
-   │   React Web Portal   │           │  Zebra Android App    │
+   │  Next.js Web Portal  │           │  Zebra Android App    │
    │   (Web Browser)      │           │  (Handheld Scanner)   │
    └───────────┬──────────┘           └────────────┬──────────┘
                │  HTTPS                             │  HTTPS / WebSocket
@@ -43,9 +43,9 @@ StoreLense is a cloud-hosted, microservices-based RFID platform that replaces th
                               │
                    ┌──────────▼──────────┐
                    │    API Gateway       │
-                   │  (Spring Cloud GW)   │
-                   │  Auth · Rate Limit   │
-                   │  Routing · CORS      │
+                   │  (nginx 1.27)        │
+                   │  Rate Limit · CORS   │
+                   │  Routing · /health   │
                    └──────────┬──────────┘
                               │
         ┌─────────────────────┼──────────────────────┐
@@ -89,30 +89,35 @@ StoreLense is a cloud-hosted, microservices-based RFID platform that replaces th
 
 | Layer | Technology |
 |---|---|
-| Framework | React 18 + TypeScript |
-| State Management | Redux Toolkit + RTK Query |
-| UI Component Library | Ant Design or MUI (to be confirmed) |
-| Charts / Reports | Recharts or Apache ECharts |
-| Routing | React Router v6 |
-| Build | Vite |
-| Auth | OAuth2 PKCE flow → JWT stored in memory (not localStorage) |
+| Framework | Next.js 15 (App Router) + TypeScript |
+| State Management | React Query (TanStack Query v5) |
+| UI | Tailwind CSS + custom design system |
+| Charts / Reports | Recharts |
+| Routing | Next.js App Router (file-system based) |
+| Build | Next.js built-in (SWC compiler) |
+| Auth | JWT stored in memory; refresh token in httpOnly cookie |
 
 ### 4.2 Modules
 
 ```
 src/
-├── modules/
-│   ├── auth/           # Login, logout, role-based route guards
-│   ├── admin/          # User management, store config, system settings
-│   ├── inventory/      # Product master, EPC tag registry
-│   ├── soh/            # SOH dashboard, count sessions, variance reports
-│   ├── refill/         # Task board, assignment, completion tracking
-│   └── reporting/      # KPI dashboards, export, compliance views
-├── shared/
-│   ├── api/            # RTK Query API slices
-│   ├── components/     # Reusable UI primitives
-│   └── hooks/          # Auth, permissions, websocket
-└── app/                # Root layout, router, store
+├── app/
+│   ├── (auth)/         # Login page (public)
+│   └── (protected)/    # Role-guarded pages
+│       ├── dashboard/
+│       ├── stores/     # Store list + detail with zones/readers
+│       ├── products/   # Product master + EPC registration (ADMIN)
+│       ├── users/      # User management (ADMIN)
+│       ├── soh/        # SOH sessions and variance reports
+│       ├── refill/     # Refill task board
+│       └── reporting/  # KPI dashboard
+├── components/
+│   ├── layout/         # Sidebar, Header, AuthGuard
+│   └── ui/             # DataTable, Badge, shared primitives
+├── lib/
+│   ├── api/            # Axios API clients per service
+│   └── auth/           # AuthContext, JWT helpers
+└── types/              # Shared TypeScript types
 ```
 
 ### 4.3 Role-Based Access
@@ -211,10 +216,14 @@ Real-time    → WebSocket via notification-service for browser/mobile push
 
 ### 6.3 API Gateway Detail
 
-- **Auth Filter** — validates JWT on every request; extracts `storeId`, `role`, injects as headers downstream.
-- **Routing** — path-prefix routing to services; `/api/auth/**` → auth-service, `/api/soh/**` → soh-service, etc.
-- **Rate Limiting** — per-user token bucket (Redis-backed) to protect RFID ingest under bulk scan events.
-- **Circuit Breaker** — Resilience4j wrapping each downstream route.
+The API gateway is **nginx 1.27 (alpine)** — not Spring Cloud Gateway.
+
+- **Routing** — path-prefix routing to services; `/api/(auth|users)` → auth-service:8081, `/api/stores` → store-service:8082, etc.
+- **Lazy DNS Resolution** — `resolver 127.0.0.11 valid=10s; set $upstream http://service:port; proxy_pass $upstream;` pattern prevents startup failure when a backend service hasn't started yet.
+- **CORS** — `Access-Control-Allow-*` headers added on all responses; OPTIONS preflight returns 204.
+- **Rate Limiting** — `limit_req_zone` per IP: 60 req/min on API routes (burst 20), 200/min burst on RFID ingest.
+- **Health Endpoint** — `GET /health` returns `{"status":"UP"}` directly from nginx (no backend dependency).
+- **WebSocket Proxy** — `/ws` proxied to notification-service:8091 with Upgrade header support.
 
 ---
 
@@ -501,14 +510,15 @@ GitHub (source) → GitHub Actions
 
 ---
 
-## 16. Open Decisions
+## 16. Decided Items (updated 2026-06-06)
 
-| # | Decision | Options | Owner |
+| # | Decision | Choice | Notes |
 |---|---|---|---|
-| 1 | Cloud provider | AWS vs Azure | Engineering Lead |
-| 2 | Message broker | Kafka (MSK) vs RabbitMQ | Engineering Lead |
-| 3 | Service mesh | Linkerd vs Istio vs none (MVP) | DevOps |
-| 4 | ERP system type | SAP / Oracle / custom | Business |
-| 5 | UI component library | Ant Design vs MUI | Frontend Lead |
-| 6 | DB per service vs shared cluster | Shared cluster (MVP) → per-service later | Engineering Lead |
-| 7 | Report engine | JasperReports vs Apache POI vs cloud | Backend Lead |
+| 1 | Cloud provider | On-premise Docker Compose (Phase 1); Kubernetes migration later | VM deployment validated |
+| 2 | Message broker | Apache Kafka 3.9.0 (KRaft mode, no ZooKeeper) | `apache/kafka:3.9.0` |
+| 3 | Service mesh | None for MVP | Lazy nginx DNS resolution handles startup ordering |
+| 4 | ERP system type | Configurable via `ERP_BASE_URL` env variable | REST adapter; EDI variant supported |
+| 5 | API Gateway | nginx 1.27-alpine | Spring Cloud Gateway not used |
+| 6 | Frontend framework | Next.js 15 App Router | Not React+Vite; Redux not used |
+| 7 | DB per service | Shared PostgreSQL cluster, schema-per-service (MVP) | Flyway per service |
+| 8 | Report engine | reporting-service Spring Boot + KPI daily aggregation | No JasperReports |
