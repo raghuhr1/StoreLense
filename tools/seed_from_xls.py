@@ -70,22 +70,32 @@ def progress(done, total, label=""):
     print(f"\r  [{bar}] {done:,}/{total:,} {label}   ", end='', flush=True)
 
 # ── HTTP helpers ──────────────────────────────────────────────────────────────
-def _call(method, url, body=None, token=None, timeout=25):
+def _call(method, url, body=None, token=None, timeout=30,
+          retries=4, retry_delay=2.0):
+    """HTTP call with exponential-backoff retry on 5xx / connection errors."""
     data = json.dumps(body).encode() if body is not None else None
     headers = {'Content-Type': 'application/json'}
     if token:
         headers['Authorization'] = f'Bearer {token}'
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return json.loads(r.read().decode())
-    except urllib.error.HTTPError as e:
+    last_err = None
+    for attempt in range(retries + 1):
         try:
-            return json.loads(e.read().decode())
-        except Exception:
-            return {'success': False, 'message': str(e)}
-    except Exception as e:
-        return {'success': False, 'message': str(e)}
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            if e.code < 500:          # 4xx — don't retry
+                try:
+                    return json.loads(e.read().decode())
+                except Exception:
+                    return {'success': False, 'message': str(e)}
+            last_err = f'HTTP {e.code}'
+        except Exception as e:
+            last_err = str(e)
+        if attempt < retries:
+            wait = retry_delay * (2 ** attempt)   # 2s, 4s, 8s, 16s
+            time.sleep(wait)
+    return {'success': False, 'message': f'Failed after {retries+1} attempts: {last_err}'}
 
 
 class Api:
@@ -97,13 +107,20 @@ class Api:
         self._refresh()
 
     def _refresh(self):
-        resp = _call('POST', f'{self.base}/api/auth/login',
-                     {'username': self._user, 'password': self._pass})
-        tok = (resp.get('data') or {}).get('accessToken')
-        if not tok:
-            fail(f"Login failed: {resp.get('message')}")
-            sys.exit(1)
-        self.token = tok
+        # Retry login up to 6 times (service may be warming up)
+        for attempt in range(6):
+            resp = _call('POST', f'{self.base}/api/auth/login',
+                         {'username': self._user, 'password': self._pass},
+                         retries=0, timeout=20)
+            tok = (resp.get('data') or {}).get('accessToken')
+            if tok:
+                self.token = tok
+                return
+            wait = 5 * (attempt + 1)
+            warn(f"Login attempt {attempt+1} failed ({resp.get('message')}), retrying in {wait}s …")
+            time.sleep(wait)
+        fail(f"Login failed after 6 attempts")
+        sys.exit(1)
 
     def get(self, path, **kw):
         return _call('GET', f'{self.base}{path}', token=self.token, **kw)
@@ -340,8 +357,8 @@ def main():
     ap.add_argument('--dir',           help='Directory of XLS files (all .xlsx, sorted)')
     ap.add_argument('--store-code',    default='P036')
     ap.add_argument('--store-name',    default=None)
-    ap.add_argument('--workers',       type=int, default=10,
-                    help='Parallel API worker threads (default 10)')
+    ap.add_argument('--workers',       type=int, default=3,
+                    help='Parallel API worker threads (default 3; increase with --workers 5 on fast servers)')
     ap.add_argument('--skip-products', action='store_true',
                     help='Skip product + EPC creation')
     ap.add_argument('--skip-expected', action='store_true',
@@ -438,6 +455,7 @@ def main():
 
         done_count = 0
         errors = 0
+        first_errors = []   # capture first 5 failure messages for diagnosis
 
         def _make_product(item):
             style, p = item
@@ -445,20 +463,44 @@ def main():
                                   style, p['name'], p['dept'])
             return style, pid
 
-        with ThreadPoolExecutor(max_workers=args.workers) as ex:
-            futures = {ex.submit(_make_product, (s, p)): s
-                       for s, p in union_products.items()}
-            for fut in as_completed(futures):
-                style, pid = fut.result()
-                if pid:
-                    style_to_id[style] = pid
-                else:
-                    errors += 1
-                done_count += 1
-                if done_count % 500 == 0 or done_count == total_styles:
-                    progress(done_count, total_styles, "products")
+        # Process in chunks of 500 so we can refresh the token periodically
+        items = list(union_products.items())
+        chunk_size = 500
+        for chunk_start in range(0, len(items), chunk_size):
+            chunk = items[chunk_start:chunk_start + chunk_size]
+            if chunk_start > 0:          # refresh token every 500 products
+                api._refresh()
+                token_snap = api.tok
+
+            with ThreadPoolExecutor(max_workers=args.workers) as ex:
+                futures = {ex.submit(_make_product, item): item[0]
+                           for item in chunk}
+                for fut in as_completed(futures):
+                    style, pid = fut.result()
+                    if pid:
+                        style_to_id[style] = pid
+                    else:
+                        errors += 1
+                        if len(first_errors) < 5:
+                            first_errors.append(style)
+                    done_count += 1
+                    if done_count % 200 == 0 or done_count == total_styles:
+                        progress(done_count, total_styles, "products")
+
         print()
         ok(f"  {len(style_to_id):,} products ready  ({errors} errors)")
+        if first_errors:
+            warn(f"  First failed styles: {first_errors}")
+            # Try to find failed products by SKU (they may have been partially created)
+            info("  Re-fetching any missed products by SKU …")
+            for style in list(union_products.keys()):
+                if style not in style_to_id:
+                    resp = _call('GET', f'{base_url}/api/products/by-sku/{style}',
+                                 token=token_snap)
+                    pid = (resp.get('data') or {}).get('id')
+                    if pid:
+                        style_to_id[style] = pid
+            ok(f"  After recovery: {len(style_to_id):,} products")
 
         # ── Register EPCs
         step(f"Registering {total_epcs:,} EPC barcodes ({args.workers} workers)")
@@ -471,21 +513,29 @@ def main():
                      for epc in p['epcs']]
 
         epc_done = epc_errors = 0
+        epc_chunk = 2000   # refresh token every 2000 EPCs
 
-        def _reg_epc(t):
-            pid, epc = t
-            _register_epc(base_url, token_snap, pid, epc)
+        for epc_start in range(0, len(epc_tasks), epc_chunk):
+            if epc_start > 0:
+                api._refresh()
+                token_snap = api.tok
 
-        with ThreadPoolExecutor(max_workers=args.workers) as ex:
-            futures = [ex.submit(_reg_epc, t) for t in epc_tasks]
-            for fut in as_completed(futures):
-                try:
-                    fut.result()
-                except Exception:
-                    epc_errors += 1
-                epc_done += 1
-                if epc_done % 2000 == 0 or epc_done == len(epc_tasks):
-                    progress(epc_done, len(epc_tasks), "EPCs registered")
+            chunk = epc_tasks[epc_start:epc_start + epc_chunk]
+
+            def _reg_epc(t, _tok=token_snap):
+                pid, epc = t
+                _register_epc(base_url, _tok, pid, epc)
+
+            with ThreadPoolExecutor(max_workers=args.workers) as ex:
+                futures = [ex.submit(_reg_epc, t) for t in chunk]
+                for fut in as_completed(futures):
+                    try:
+                        fut.result()
+                    except Exception:
+                        epc_errors += 1
+                    epc_done += 1
+                    if epc_done % 1000 == 0 or epc_done == len(epc_tasks):
+                        progress(epc_done, len(epc_tasks), "EPCs registered")
         print()
         ok(f"  EPC registration done  ({epc_errors} errors)")
 
