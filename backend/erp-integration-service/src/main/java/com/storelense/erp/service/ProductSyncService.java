@@ -37,7 +37,7 @@ public class ProductSyncService {
 
     private static final String SYNC_TYPE = "PRODUCT_INBOUND";
 
-    @Scheduled(fixedDelayString = "#{@erpProperties.productSyncInterval().toMillis()}")
+    @Scheduled(fixedDelayString = "${storelense.erp.product-sync-interval:PT6H}")
     public void scheduledSync() {
         runSync("scheduler");
     }
