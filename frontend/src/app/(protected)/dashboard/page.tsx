@@ -1,42 +1,58 @@
 'use client'
 
 import { useQuery }     from '@tanstack/react-query'
-import { BarChart3, ScanLine, Package, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { useState }     from 'react'
+import { BarChart3, ScanLine, CheckCircle2, AlertTriangle }  from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid } from 'recharts'
 import Header           from '@/components/layout/Header'
 import StatCard         from '@/components/ui/StatCard'
 import { reportingApi } from '@/lib/api/reporting'
+import { storesApi }    from '@/lib/api/stores'
 import { sohApi }       from '@/lib/api/soh'
 import { refillApi }    from '@/lib/api/refill'
 import { useAuth }      from '@/lib/auth/AuthContext'
 import { fmtPct }       from '@/lib/utils'
 
+function iso(d: Date) { return d.toISOString().slice(0, 10) }
+
 export default function DashboardPage() {
-  const { user } = useAuth()
-  const storeId  = user?.storeId ?? ''
+  const { user, isAdmin } = useAuth()
+  const [selectedStoreId, setSelectedStoreId] = useState<string>('')
+
+  const { data: allStores } = useQuery({
+    queryKey: ['stores-all'],
+    queryFn:  () => storesApi.list({ size: 100 }),
+    enabled:  isAdmin,
+  })
+
+  // Admin: use selected store (falling back to first store); manager: own store
+  const storeId = isAdmin
+    ? (selectedStoreId || allStores?.content[0]?.id || '')
+    : (user?.storeId ?? '')
 
   const { data: kpi } = useQuery({
     queryKey: ['kpi-daily', storeId],
-    queryFn:  () => reportingApi.kpiRange(storeId,
-      new Date(Date.now() - 7 * 864e5).toISOString().slice(0,10),
-      new Date().toISOString().slice(0,10)),
+    queryFn:  () => reportingApi.kpiRange(
+      storeId,
+      iso(new Date(Date.now() - 7 * 864e5)),
+      iso(new Date()),
+    ),
     enabled: !!storeId,
   })
 
   const { data: sessions } = useQuery({
     queryKey: ['soh-sessions-recent', storeId],
     queryFn:  () => sohApi.listSessions(storeId, { size: 5 }),
-    enabled: !!storeId,
+    enabled:  !!storeId,
   })
 
   const { data: tasks } = useQuery({
     queryKey: ['refill-tasks-pending', storeId],
     queryFn:  () => refillApi.listTasks(storeId, { status: 'pending', size: 5 }),
-    enabled: !!storeId,
+    enabled:  !!storeId,
   })
 
-  const latest = kpi?.[kpi.length - 1]
-
+  const latest    = kpi?.[kpi.length - 1]
   const chartData = (kpi ?? []).map(k => ({
     date:     k.kpiDate.slice(5),
     accuracy: k.inventoryAccuracyPct ?? 0,
@@ -44,10 +60,33 @@ export default function DashboardPage() {
     refill:   k.refillCompletionRatePct ?? 0,
   }))
 
+  const selectedStore = allStores?.content.find(s => s.id === storeId)
+
   return (
     <>
       <Header title="Dashboard" />
       <div className="p-6 space-y-6">
+
+        {/* Admin store selector */}
+        {isAdmin && allStores && allStores.content.length > 0 && (
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-gray-600 shrink-0">Store</label>
+            <select
+              value={storeId}
+              onChange={e => setSelectedStoreId(e.target.value)}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              {allStores.content.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.storeCode})
+                </option>
+              ))}
+            </select>
+            {selectedStore && (
+              <span className="text-xs text-gray-400">{selectedStore.city ?? ''}</span>
+            )}
+          </div>
+        )}
 
         {/* KPI cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -111,11 +150,11 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="card">
             <h3 className="text-sm font-semibold text-gray-700 mb-4">Recent SOH Sessions</h3>
-            {sessions?.content.length === 0 ? (
+            {!sessions || sessions.content.length === 0 ? (
               <p className="text-sm text-gray-400">No sessions yet.</p>
             ) : (
               <ul className="divide-y divide-gray-50">
-                {sessions?.content.map(s => (
+                {sessions.content.map(s => (
                   <li key={s.id} className="py-2.5 flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-gray-900">{s.sessionType}</p>
@@ -133,11 +172,11 @@ export default function DashboardPage() {
 
           <div className="card">
             <h3 className="text-sm font-semibold text-gray-700 mb-4">Pending Refill Tasks</h3>
-            {tasks?.content.length === 0 ? (
+            {!tasks || tasks.content.length === 0 ? (
               <p className="text-sm text-gray-400">No pending tasks.</p>
             ) : (
               <ul className="divide-y divide-gray-50">
-                {tasks?.content.map(t => (
+                {tasks.content.map(t => (
                   <li key={t.id} className="py-2.5 flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-gray-900">{t.taskType}</p>

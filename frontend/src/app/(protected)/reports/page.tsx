@@ -7,6 +7,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, L
 import Header          from '@/components/layout/Header'
 import DataTable       from '@/components/ui/DataTable'
 import { reportingApi } from '@/lib/api/reporting'
+import { storesApi }   from '@/lib/api/stores'
 import { useAuth }     from '@/lib/auth/AuthContext'
 import { fmtPct }      from '@/lib/utils'
 import type { KpiDaily } from '@/types'
@@ -14,10 +15,21 @@ import type { KpiDaily } from '@/types'
 function iso(d: Date) { return d.toISOString().slice(0,10) }
 
 export default function ReportsPage() {
-  const { user }  = useAuth()
-  const storeId   = user?.storeId ?? ''
+  const { user, isAdmin }  = useAuth()
+  const [range, setRange]  = useState<'7d' | '30d' | '90d'>('30d')
+  const [selectedStoreId, setSelectedStoreId] = useState<string>('')
 
-  const [range, setRange] = useState<'7d' | '30d' | '90d'>('30d')
+  const { data: allStores } = useQuery({
+    queryKey: ['stores-all'],
+    queryFn:  () => storesApi.list({ size: 100 }),
+    enabled:  isAdmin,
+  })
+
+  // Admin: use selected store (falling back to first store); manager: own store
+  const storeId = isAdmin
+    ? (selectedStoreId || allStores?.content[0]?.id || '')
+    : (user?.storeId ?? '')
+
   const days = range === '7d' ? 7 : range === '30d' ? 30 : 90
 
   const { data, isLoading } = useQuery({
@@ -25,7 +37,7 @@ export default function ReportsPage() {
     queryFn:  () => reportingApi.kpiRange(
       storeId,
       iso(new Date(Date.now() - days * 864e5)),
-      iso(new Date())
+      iso(new Date()),
     ),
     enabled: !!storeId,
   })
@@ -40,28 +52,55 @@ export default function ReportsPage() {
 
   const columns = useMemo<ColumnDef<KpiDaily, unknown>[]>(() => [
     { accessorKey: 'kpiDate',               header: 'Date' },
-    { accessorKey: 'inventoryAccuracyPct',  header: 'Accuracy', cell: i => fmtPct(i.getValue<number|null>()) },
+    { accessorKey: 'inventoryAccuracyPct',  header: 'Accuracy',      cell: i => fmtPct(i.getValue<number|null>()) },
     { accessorKey: 'sohSessionsCount',      header: 'SOH Sessions' },
     { accessorKey: 'refillTasksCreated',    header: 'Refill Created' },
     { accessorKey: 'refillTasksCompleted',  header: 'Refill Done' },
-    { accessorKey: 'refillCompletionRatePct', header: 'Completion', cell: i => fmtPct(i.getValue<number|null>()) },
-    { accessorKey: 'totalEpcReads',         header: 'EPC Reads', cell: i => i.getValue<number>().toLocaleString() },
+    { accessorKey: 'refillCompletionRatePct', header: 'Completion',  cell: i => fmtPct(i.getValue<number|null>()) },
+    { accessorKey: 'totalEpcReads',         header: 'EPC Reads',     cell: i => i.getValue<number>().toLocaleString() },
     { accessorKey: 'varianceItemsCount',    header: 'Variances' },
   ], [])
+
+  const selectedStore = allStores?.content.find(s => s.id === storeId)
 
   return (
     <>
       <Header title="Reports" />
       <div className="p-6 space-y-6">
 
-        {/* Range selector */}
-        <div className="flex gap-2">
+        {/* Filters row */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Admin store selector */}
+          {isAdmin && allStores && allStores.content.length > 0 && (
+            <>
+              <label className="text-sm font-medium text-gray-600 shrink-0">Store</label>
+              <select
+                value={storeId}
+                onChange={e => setSelectedStoreId(e.target.value)}
+                className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                {allStores.content.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.storeCode})
+                  </option>
+                ))}
+              </select>
+              {selectedStore && (
+                <span className="text-xs text-gray-400">{selectedStore.city ?? ''}</span>
+              )}
+              <div className="h-5 w-px bg-gray-200" />
+            </>
+          )}
+
+          {/* Range selector */}
           {(['7d', '30d', '90d'] as const).map(r => (
             <button
               key={r}
               onClick={() => setRange(r)}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                range === r ? 'bg-brand-600 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+                range === r
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
               }`}
             >
               {r}

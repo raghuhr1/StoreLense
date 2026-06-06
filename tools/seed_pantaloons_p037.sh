@@ -705,6 +705,25 @@ create_refill() {
 [[ -n "$P081" ]] && create_refill "$P081" 5 3 "Restock from backroom - PANTALOONS JUNIOR" "SS26KD1JSHT00046 (PANTALOONS JUNIOR)"
 
 # =============================================================================
+# STEP 9 — KPI Aggregation (trigger today's KPI so dashboards show data)
+# =============================================================================
+step "Triggering KPI Aggregation for P037"
+
+TODAY=$(date +%Y-%m-%d 2>/dev/null || python3 -c "import datetime; print(datetime.date.today())")
+
+if [[ -n "$STORE_ID" ]]; then
+  relogin   # ensure token is fresh before this final step
+  resp=$(curl -s -X POST "$GATEWAY/api/reporting/kpi/aggregate?storeId=$STORE_ID&date=$TODAY" \
+    -H "Authorization: Bearer $TOKEN" --max-time 30)
+  kpi_ok=$(echo "$resp" | jq -r '.success' 2>/dev/null)
+  if [[ "$kpi_ok" == "true" ]]; then
+    ok "KPI aggregated for P037 ($TODAY)"
+  else
+    info "KPI aggregation: $(echo "$resp" | jq -r '.message' 2>/dev/null)"
+  fi
+fi
+
+# =============================================================================
 echo ""
 echo -e "${BOLD}${GREEN}══════════════════════════════════════════════════${RESET}"
 echo -e "${BOLD}${GREEN}  Pantaloons P037 demo data seeded!${RESET}"

@@ -400,6 +400,32 @@ create_refill() {
 [[ -n "$P15" && -n "$BNE_ID" ]] && create_refill "$BNE_ID" "replenishment" 3 "Linen shirts — new season stock"           "$P15" 20 "BNE / Linen Shirt Restock"
 
 # =============================================================================
+# STEP 8 — KPI Aggregation (trigger today's KPI so dashboards show data)
+# =============================================================================
+step "Triggering KPI Aggregation"
+
+TODAY=$(date +%Y-%m-%d 2>/dev/null || python3 -c "import datetime; print(datetime.date.today())")
+
+trigger_kpi() {
+  local store_id="$1" label="$2"
+  if [[ -z "$store_id" ]]; then return; fi
+  local resp
+  resp=$(curl -s -X POST "$GATEWAY/api/reporting/kpi/aggregate?storeId=$store_id&date=$TODAY" \
+    -H "Authorization: Bearer $TOKEN" --max-time 30)
+  local ok_flag
+  ok_flag=$(echo "$resp" | jq -r '.success' 2>/dev/null)
+  if [[ "$ok_flag" == "true" ]]; then
+    ok "KPI aggregated for $label ($TODAY)"
+  else
+    info "KPI aggregation for $label: $(echo "$resp" | jq -r '.message' 2>/dev/null)"
+  fi
+}
+
+[[ -n "$SYD_ID" ]] && trigger_kpi "$SYD_ID" "Sydney CBD"
+[[ -n "$MEL_ID" ]] && trigger_kpi "$MEL_ID" "Melbourne Central"
+[[ -n "$BNE_ID" ]] && trigger_kpi "$BNE_ID" "Brisbane Queen Street"
+
+# =============================================================================
 # DONE
 # =============================================================================
 echo ""
