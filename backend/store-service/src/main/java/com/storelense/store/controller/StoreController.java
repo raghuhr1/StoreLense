@@ -3,6 +3,7 @@ package com.storelense.store.controller;
 import com.storelense.common.dto.ApiResponse;
 import com.storelense.common.dto.PageResponse;
 import com.storelense.store.dto.*;
+import com.storelense.store.service.RfidReaderService;
 import com.storelense.store.service.StoreService;
 import com.storelense.store.service.ZoneService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -25,8 +26,9 @@ import java.util.UUID;
 @Tag(name = "Stores", description = "Store and zone management")
 public class StoreController {
 
-    private final StoreService storeService;
-    private final ZoneService  zoneService;
+    private final StoreService       storeService;
+    private final ZoneService        zoneService;
+    private final RfidReaderService  readerService;
 
     @GetMapping
     @Operation(summary = "List all active stores")
@@ -89,5 +91,23 @@ public class StoreController {
             @PathVariable UUID storeId, @PathVariable UUID zoneId,
             @Valid @RequestBody UpdateZoneRequest req) {
         return ResponseEntity.ok(ApiResponse.ok(zoneService.updateZone(storeId, zoneId, req)));
+    }
+
+    // --- RFID Readers ---
+
+    @GetMapping("/{storeId}/readers")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER')")
+    @Operation(summary = "List RFID readers for a store")
+    public ResponseEntity<ApiResponse<List<RfidReaderResponse>>> listReaders(@PathVariable UUID storeId) {
+        return ResponseEntity.ok(ApiResponse.ok(readerService.listReaders(storeId)));
+    }
+
+    @PostMapping("/{storeId}/readers")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER')")
+    @Operation(summary = "Register a new RFID reader for a store")
+    public ResponseEntity<ApiResponse<RfidReaderResponse>> createReader(
+            @PathVariable UUID storeId, @Valid @RequestBody CreateReaderRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok("Reader registered", readerService.createReader(storeId, req)));
     }
 }

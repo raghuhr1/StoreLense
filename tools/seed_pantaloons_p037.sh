@@ -58,6 +58,9 @@ created_id() {
   fi
 }
 
+# Accumulates ALL registered EPC values so we can submit them all in the SOH batch
+ALL_EPCS=()
+
 echo ""
 echo -e "${BOLD}${CYAN}  StoreLense — Pantaloons P037 Seeder${RESET}"
 echo -e "  Gateway: ${GATEWAY}"
@@ -150,6 +153,38 @@ create_zone "FF-ETHNIC"      '{"zoneCode":"FF-ETHNIC","name":"First Floor Ethnic
 create_zone "TRIAL"          '{"zoneCode":"TRIAL","name":"Trial Rooms","zoneType":"fitting_room","displayOrder":5}'
 create_zone "BACKROOM"       '{"zoneCode":"BACKROOM","name":"Backroom","zoneType":"backroom","displayOrder":6}'
 create_zone "STOCKROOM"      '{"zoneCode":"STOCKROOM","name":"Stockroom","zoneType":"stockroom","displayOrder":7}'
+
+
+# =============================================================================
+# STEP 2b — RFID Readers
+# =============================================================================
+step "Creating RFID Readers for P037"
+
+if [[ -n "$STORE_ID" ]]; then
+  # Fetch zones so we can assign readers to floor/backroom zones
+  ZONES_RESP=$(get "/api/stores/$STORE_ID/zones")
+  FLOOR_ZONE_ID=$(echo "$ZONES_RESP" | jq -r '.data.content[]? | select(.zoneType=="floor") | .id' 2>/dev/null | head -1)
+  BACK_ZONE_ID=$(echo  "$ZONES_RESP" | jq -r '.data.content[]? | select(.zoneType=="backroom") | .id' 2>/dev/null | head -1)
+
+  create_reader() {
+    local code="$1" type="$2" zone_id="$3" ip="$4" fw="$5" antennas="$6" label="$7"
+    local zone_json="null"
+    [[ -n "$zone_id" ]] && zone_json="\"$zone_id\""
+    local resp
+    resp=$(post "/api/stores/$STORE_ID/readers" \
+      "{\"readerCode\":\"$code\",\"readerType\":\"$type\",\"zoneId\":$zone_json,\"ipAddress\":\"$ip\",\"firmwareVersion\":\"$fw\",\"antennaCount\":$antennas,\"txPowerDbm\":30.0}")
+    local id; id=$(extract "$resp" '.data.id // .id // empty')
+    if [[ -n "$id" && "$id" != "null" ]]; then
+      ok "Reader: $label → $id"
+    else
+      info "Reader $label: $(extract "$resp" '.message // .error // .')"
+    fi
+  }
+
+  create_reader "P037-FIXED-01"  "fixed"    "$FLOOR_ZONE_ID" "192.168.10.10" "R700-3.4.1"     4 "Fixed-01 (Floor)"
+  create_reader "P037-FIXED-02"  "fixed"    "$BACK_ZONE_ID"  "192.168.10.11" "R700-3.4.1"     4 "Fixed-02 (Backroom)"
+  create_reader "P037-HANDHELD-01" "handheld" ""             "192.168.10.30" "RFD8500-2.1.0"  1 "Handheld-01"
+fi
 
 
 # =============================================================================
@@ -307,9 +342,35 @@ register_epcs() {
   for epc in "$@"; do
     curl -s -X POST "$GATEWAY/api/products/$pid/epc?epc=$epc" \
       -H "Authorization: Bearer $TOKEN" --max-time 10 > /dev/null
+    ALL_EPCS+=("$epc")
     (( count++ )) || true
   done
   ok "  $sku — $count EPC tags registered"
+}
+
+# Submit all accumulated EPCs as RFID reads in batches of 100
+submit_all_epcs() {
+  local store_id="$1" session_id="$2"
+  local total=${#ALL_EPCS[@]}
+  local batch_size=100 i=0 batch_num=1
+  info "  Submitting $total EPCs in batches of $batch_size …"
+  while [[ $i -lt $total ]]; do
+    local reads_json="" j=0
+    while [[ $j -lt $batch_size && $((i + j)) -lt $total ]]; do
+      local epc="${ALL_EPCS[$((i+j))]}"
+      reads_json+="{\"epc\":\"$epc\",\"rssi\":-65.0,\"antennaPort\":$((j % 4))},"
+      (( j++ )) || true
+    done
+    reads_json="${reads_json%,}"
+    curl -s -X POST "$GATEWAY/api/rfid/ingest/batch" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $TOKEN" \
+      -d "{\"rfidSessionId\":\"$session_id\",\"storeId\":\"$store_id\",\"deviceId\":\"demo-seed-scanner\",\"reads\":[$reads_json]}" \
+      --max-time 30 > /dev/null
+    info "  Batch $batch_num: EPCs $((i+1))–$((i+j)) of $total submitted"
+    (( i += batch_size )) || true
+    (( batch_num++ )) || true
+  done
 }
 
 [[ -n "$P001" ]] && register_epcs "$P001" "AW25MA7ASHR00029" "08909230628881" "08909230628874" "08909230628850" "08909230628867"
@@ -636,26 +697,7 @@ if [[ -n "$STORE_ID" ]]; then
   if [[ -n "$SID" && "$SID" != "null" ]]; then
     ok "SOH session created → $SID"
 
-    BATCH=$(post /api/rfid/ingest/batch '{
-      "rfidSessionId":"'"$SID"'",
-      "storeId":"'"$STORE_ID"'",
-      "deviceId":"demo-seed-scanner",
-      "reads":[
-      {"epc":"08909230628881","rssi":-60.0,"antennaPort":0},
-      {"epc":"08909429156362","rssi":-61.0,"antennaPort":1},
-      {"epc":"08909429079791","rssi":-62.0,"antennaPort":2},
-      {"epc":"08909429146844","rssi":-63.0,"antennaPort":3},
-      {"epc":"08909429146974","rssi":-64.0,"antennaPort":0},
-      {"epc":"08909429156249","rssi":-65.0,"antennaPort":1},
-      {"epc":"08909429274981","rssi":-66.0,"antennaPort":2},
-      {"epc":"08909230699843","rssi":-67.0,"antennaPort":3},
-      {"epc":"08909230595060","rssi":-68.0,"antennaPort":0},
-      {"epc":"08909230916834","rssi":-69.0,"antennaPort":1},
-      {"epc":"08909429039740","rssi":-70.0,"antennaPort":2},
-      {"epc":"08909230710357","rssi":-71.0,"antennaPort":3}
-      ]
-    }')
-    info "  RFID batch published: $(extract "$BATCH" '.data.published') reads"
+    submit_all_epcs "$STORE_ID" "$SID"
     sleep 3
 
     DONE=$(post "/api/soh/sessions/$SID/complete" '{}')

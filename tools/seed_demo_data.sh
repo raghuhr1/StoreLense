@@ -155,6 +155,35 @@ create_zones() {
 [[ -n "$BNE_ID" ]] && create_zones "$BNE_ID" "Brisbane Queen Street"
 
 # =============================================================================
+# STEP 2b — RFID Readers (per store)
+# =============================================================================
+step "Creating RFID Readers"
+
+create_readers() {
+  local store_id="$1" store_name="$2" ip_base="$3"
+  local zones_resp floor_id back_id
+  zones_resp=$(get "/api/stores/$store_id/zones")
+  floor_id=$(echo "$zones_resp" | jq -r '.data.content[]? | select(.zoneType=="floor") | .id' 2>/dev/null | head -1)
+  back_id=$(echo  "$zones_resp" | jq -r '.data.content[]? | select(.zoneType=="backroom") | .id' 2>/dev/null | head -1)
+
+  local fz_json="null" bz_json="null"
+  [[ -n "$floor_id" ]] && fz_json="\"$floor_id\""
+  [[ -n "$back_id"  ]] && bz_json="\"$back_id\""
+
+  post "/api/stores/$store_id/readers" \
+    "{\"readerCode\":\"${store_name}-FIXED-01\",\"readerType\":\"fixed\",\"zoneId\":$fz_json,\"ipAddress\":\"${ip_base}.10\",\"firmwareVersion\":\"R700-3.4.1\",\"antennaCount\":4,\"txPowerDbm\":30.0}" > /dev/null
+  post "/api/stores/$store_id/readers" \
+    "{\"readerCode\":\"${store_name}-FIXED-02\",\"readerType\":\"fixed\",\"zoneId\":$bz_json,\"ipAddress\":\"${ip_base}.11\",\"firmwareVersion\":\"R700-3.4.1\",\"antennaCount\":4,\"txPowerDbm\":30.0}" > /dev/null
+  post "/api/stores/$store_id/readers" \
+    "{\"readerCode\":\"${store_name}-HH-01\",\"readerType\":\"handheld\",\"zoneId\":null,\"ipAddress\":\"${ip_base}.30\",\"firmwareVersion\":\"RFD8500-2.1.0\",\"antennaCount\":1,\"txPowerDbm\":27.0}" > /dev/null
+  ok "RFID readers created for $store_name"
+}
+
+[[ -n "$SYD_ID" ]] && create_readers "$SYD_ID" "PT001"  "192.168.10"
+[[ -n "$MEL_ID" ]] && create_readers "$MEL_ID" "MEL001" "192.168.20"
+[[ -n "$BNE_ID" ]] && create_readers "$BNE_ID" "BNE001" "192.168.30"
+
+# =============================================================================
 # STEP 3 — Products
 # =============================================================================
 step "Creating Products"
