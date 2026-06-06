@@ -20,6 +20,9 @@ ENV NODE_OPTIONS="--max-old-space-size=1536"
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Ensure public/ exists — Next.js requires it and COPY in runtime stage will fail without it
+RUN mkdir -p /app/public
+
 RUN npm run build
 
 # ── Stage 3: production runner (standalone — no node_modules needed) ──────────
