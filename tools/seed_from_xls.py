@@ -334,7 +334,7 @@ def _sq(v):
 def _generate_sql(store_id, union_products, all_files):
     """Build and return the complete seed SQL as a string."""
     out   = []
-    w     = out.append
+    w     = lambda *a: out.append(a[0] if a else '')
     BATCH = 500
 
     w(f"-- StoreLense bulk seed — store {store_id}")
