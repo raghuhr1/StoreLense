@@ -1,10 +1,12 @@
 # ─── StoreLense Web Portal — Next.js 15 Dockerfile ───────────────────────────
 
-# ── Stage 1: dependency install ───────────────────────────────────────────────
+# ── Stage 1: install ALL dependencies (including devDeps for build) ───────────
+# next build needs typescript, tailwindcss, postcss, eslint-config-next, etc.
+# These are devDependencies so --omit=dev would cause "npm run build" to fail.
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev
+RUN npm ci
 
 # ── Stage 2: build ────────────────────────────────────────────────────────────
 FROM node:20-alpine AS build
@@ -13,12 +15,12 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# In Docker, each API path is routed to its service directly via env var.
-# next.config.ts reads NEXT_PUBLIC_API_BASE_URL — set at runtime via env.
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
-# ── Stage 3: production runner ────────────────────────────────────────────────
+# ── Stage 3: production runner (standalone — no node_modules needed) ──────────
+# next build with output:'standalone' bundles everything the server needs.
+# The runtime image only needs the standalone output + static assets.
 FROM node:20-alpine AS runtime
 WORKDIR /app
 
@@ -27,7 +29,6 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN addgroup -S nextjs && adduser -S nextjs -G nextjs
 
-# Copy standalone output (requires `output: 'standalone'` in next.config.ts)
 COPY --from=build --chown=nextjs:nextjs /app/.next/standalone ./
 COPY --from=build --chown=nextjs:nextjs /app/.next/static    ./.next/static
 COPY --from=build --chown=nextjs:nextjs /app/public          ./public
