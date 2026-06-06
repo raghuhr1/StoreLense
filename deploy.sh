@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 # =============================================================================
 #  StoreLense — One-shot Ubuntu deployment script
-#  Usage: bash deploy.sh
+#  Usage: bash deploy.sh          ← must be bash, NOT sh
 #  Run from the repo root after: git clone https://github.com/raghuhr1/StoreLense
 # =============================================================================
+
+# Guard: must run with bash, not sh/dash (pipefail and other options are bash-only)
+if [ -z "${BASH_VERSION:-}" ]; then
+  echo "ERROR: This script requires bash. Run:  bash deploy.sh" >&2
+  exit 1
+fi
+
 set -euo pipefail
 
 # ── Colours ──────────────────────────────────────────────────────────────────
@@ -225,13 +232,13 @@ EOF
 success ".env written to $ENV_FILE"
 
 # Patch server IP in docker-compose.yml
+# Replace only the URL value so the pattern is idempotent across re-runs
 COMPOSE_FILE="$REPO_ROOT/deploy/docker-compose.yml"
-# Replace localhost placeholders in the frontend environment block
 sed -i \
-  "s|NEXT_PUBLIC_API_BASE_URL: http://localhost:8080|NEXT_PUBLIC_API_BASE_URL: http://${SERVER_IP}:8080|g" \
+  "s|http://localhost:8080|http://${SERVER_IP}:8080|g" \
   "$COMPOSE_FILE"
 sed -i \
-  "s|NEXT_PUBLIC_WS_URL:.*ws://localhost:8091/ws|NEXT_PUBLIC_WS_URL:       ws://${SERVER_IP}:8091/ws|g" \
+  "s|ws://localhost:8091/ws|ws://${SERVER_IP}:8091/ws|g" \
   "$COMPOSE_FILE"
 
 success "docker-compose.yml patched with IP: ${SERVER_IP}"
@@ -287,21 +294,24 @@ while true; do
   NOT_READY=()
 
   for svc in "${SERVICES[@]}"; do
-    STATUS=$($DOCKER compose ps --format json 2>/dev/null | \
+    # --format '{{json .}}' emits one JSON object per line (stable across Docker versions)
+    STATUS=$($DOCKER compose ps --format '{{json .}}' 2>/dev/null | \
       python3 -c "
 import sys, json
-lines = sys.stdin.read().strip()
-# handle both JSON array and newline-delimited JSON
-try:
-    items = json.loads(lines)
-    if isinstance(items, dict): items = [items]
-except:
-    items = [json.loads(l) for l in lines.splitlines() if l.strip()]
 target = '${svc}'
-for c in items:
-    name = c.get('Name','') or c.get('Service','')
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        c = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    name = c.get('Name') or c.get('Service') or ''
     if target in name:
-        print(c.get('Health', c.get('Status','')))
+        # Docker Compose v2 uses 'Health'; older 'State'
+        health = c.get('Health') or c.get('State') or ''
+        print(health)
         break
 " 2>/dev/null || echo "unknown")
 
@@ -404,6 +414,7 @@ ExecStart=${COMPOSE_BIN} compose up -d --remove-orphans
 ExecStop=${COMPOSE_BIN} compose down
 TimeoutStartSec=300
 User=${USER}
+SupplementaryGroups=docker
 
 [Install]
 WantedBy=multi-user.target
