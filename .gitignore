@@ -46,3 +46,9 @@ logs/
 
 # ── Docker volumes / temp ─────────────────────────────────────────────────────
 deploy/BOOT-INF/
+
+# ── Raw vendor data / generated seed artifacts ────────────────────────────────
+P036/
+P036.zip
+tools/p036_data.json
+frontend/tsconfig.tsbuildinfo

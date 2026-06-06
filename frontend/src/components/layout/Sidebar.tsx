@@ -4,7 +4,7 @@ import Link              from 'next/link'
 import { usePathname }   from 'next/navigation'
 import {
   LayoutDashboard, Package, PackageCheck, RotateCw,
-  ArrowLeftRight, BarChart3, Users, Store, Cpu, ScanLine,
+  ArrowLeftRight, BarChart3, Users, Store, Cpu, ScanLine, Tag,
 } from 'lucide-react'
 import { useAuth }       from '@/lib/auth/AuthContext'
 import { cn }            from '@/lib/utils'
@@ -16,6 +16,7 @@ const allNavItems = [
   { href: '/cycle-count', label: 'Cycle Count',  icon: RotateCw,        roles: ['ADMIN','STORE_MANAGER','STORE_ASSOCIATE'] },
   { href: '/transfers',   label: 'Transfers',    icon: ArrowLeftRight,  roles: ['ADMIN','STORE_MANAGER'] },
   { href: '/reports',     label: 'Reports',      icon: BarChart3,       roles: ['ADMIN','STORE_MANAGER'] },
+  { href: '/products',    label: 'Products',     icon: Tag,             roles: ['ADMIN'] },
   { href: '/users',       label: 'Users',        icon: Users,           roles: ['ADMIN'] },
   { href: '/stores',      label: 'Stores',       icon: Store,           roles: ['ADMIN'] },
   { href: '/devices',     label: 'Devices',      icon: Cpu,             roles: ['ADMIN','STORE_MANAGER'] },

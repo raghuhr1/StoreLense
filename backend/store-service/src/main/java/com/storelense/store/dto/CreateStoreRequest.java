@@ -12,7 +12,10 @@ public record CreateStoreRequest(
         String city,
         String stateProvince,
         String postalCode,
-        @Pattern(regexp = "[A-Z]{2}") String countryCode,
+        @Pattern(regexp = "[A-Z]{2}", message = "Must be a 2-letter uppercase ISO country code") String countryCode,
+        @NotBlank(message = "Timezone is required")
+        @Pattern(regexp = "^[A-Za-z][A-Za-z0-9_+\\-/]{1,49}$",
+                 message = "Must be a valid IANA timezone identifier (e.g. UTC, Australia/Sydney)")
         String timezone,
         String erpStoreCode
 ) {}

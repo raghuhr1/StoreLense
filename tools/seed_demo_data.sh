@@ -100,13 +100,13 @@ ok "Logged in — token received"
 step "Creating Stores"
 
 SYD_ID=$(created_id "$(post /api/stores '{
-  "storeCode":   "SYD001",
-  "name":        "Sydney CBD",
-  "addressLine1":"100 George Street",
-  "city":        "Sydney",
+  "storeCode":   "PT001",
+  "name":        "BNG ORION ",
+  "addressLine1":"100 COMERCIAL Street",
+  "city":        "BANGALORE",
   "stateProvince":"NSW",
   "postalCode":  "2000",
-  "countryCode": "AU",
+  "countryCode": "IN",
   "timezone":    "Australia/Sydney",
   "erpStoreCode":"ERP-SYD-001"
 }')" "Store: Sydney CBD")

@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
+import axios from 'axios'
 import { login as apiLogin, logout as apiLogout } from '@/lib/api/auth'
 import { tokenStore } from '@/lib/api/client'
 import type { AuthUser, LoginRequest, Role } from '@/types'
@@ -26,20 +27,44 @@ function parseJwt(token: string): { sub: string; username: string; role: Role; s
   }
 }
 
+function userFromToken(token: string): AuthUser | null {
+  const claims = parseJwt(token)
+  if (!claims) return null
+  return { userId: claims.sub, username: claims.username, role: claims.role, storeId: claims.storeId ?? null }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser]         = useState<AuthUser | null>(null)
   const [isLoading, setLoading] = useState(true)
 
-  // Restore session from in-memory token on mount (e.g. after SPA navigation)
   useEffect(() => {
-    const token = tokenStore.getAccess()
-    if (token) {
-      const claims = parseJwt(token)
-      if (claims) {
-        setUser({ userId: claims.sub, username: claims.username, role: claims.role, storeId: claims.storeId ?? null })
-      }
+    const accessToken = tokenStore.getAccess()
+
+    if (accessToken) {
+      // In-memory token present (same-session SPA navigation)
+      setUser(userFromToken(accessToken))
+      setLoading(false)
+      return
     }
-    setLoading(false)
+
+    // No in-memory token — try a silent refresh using the sessionStorage refresh token
+    const refreshToken = tokenStore.getRefresh()
+    if (!refreshToken) {
+      setLoading(false)
+      return
+    }
+
+    axios
+      .post<{ data: { accessToken: string; refreshToken: string } }>(
+        '/api/auth/refresh',
+        { refreshToken }
+      )
+      .then(({ data }) => {
+        tokenStore.set(data.data.accessToken, data.data.refreshToken)
+        setUser(userFromToken(data.data.accessToken))
+      })
+      .catch(() => tokenStore.clear())
+      .finally(() => setLoading(false))
   }, [])
 
   const login = useCallback(async (req: LoginRequest) => {
