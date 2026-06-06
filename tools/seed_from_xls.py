@@ -210,7 +210,7 @@ def get_or_create_store(api, store_code, store_name):
         return sid
     # fallback: find existing
     resp2 = api.get('/api/stores?size=200')
-    for s in (resp2.get('data') or {}).get('content') or []:
+    for s in _extract_list(resp2.get('data') or []):
         if s.get('storeCode') == store_code:
             info(f"Store {store_code} already exists → {s['id']}")
             return s['id']
@@ -234,9 +234,18 @@ def ensure_zones(api, store_id):
     ok("Zones ensured")
 
 
+def _extract_list(resp_data):
+    """Handle both paginated {content:[]} and plain [] API responses."""
+    if isinstance(resp_data, list):
+        return resp_data
+    if isinstance(resp_data, dict):
+        return resp_data.get('content') or []
+    return []
+
+
 def ensure_readers(api, store_id, store_code):
     zones_resp = api.get(f'/api/stores/{store_id}/zones')
-    content = (zones_resp.get('data') or {}).get('content') or []
+    content = _extract_list(zones_resp.get('data') or [])
     floor_id = next((z['id'] for z in content if z.get('zoneType') == 'floor'), None)
     back_id  = next((z['id'] for z in content if z.get('zoneType') == 'backroom'), None)
 
@@ -262,7 +271,7 @@ def fetch_all_product_ids(api):
     page = 0
     while True:
         resp = api.get(f'/api/products?size=200&page={page}')
-        content = (resp.get('data') or {}).get('content') or []
+        content = _extract_list(resp.get('data') or [])
         if not content:
             break
         for p in content:
