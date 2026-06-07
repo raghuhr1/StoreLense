@@ -1,0 +1,186 @@
+groups:
+
+  # ── Service availability ──────────────────────────────────────────────────────
+  - name: service_availability
+    rules:
+
+      - alert: ServiceDown
+        expr: up{job="storelense-services"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: support
+        annotations:
+          summary: "Service {{ $labels.instance }} is DOWN"
+          description: "{{ $labels.instance }} has been unreachable for more than 1 minute. Check container logs."
+          runbook: "docker compose logs {{ $labels.instance }} --tail=100"
+
+      - alert: ServiceRestarting
+        expr: rate(process_uptime_seconds{job="storelense-services"}[5m]) < 0
+        for: 2m
+        labels:
+          severity: warning
+          team: support
+        annotations:
+          summary: "Service {{ $labels.instance }} is restarting frequently"
+          description: "Container {{ $labels.instance }} has restarted in the last 5 minutes."
+
+  # ── Disk space ────────────────────────────────────────────────────────────────
+  - name: disk_space
+    rules:
+
+      - alert: DiskSpaceCritical
+        expr: |
+          (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|fuse.lxcfs|squashfs"}
+               / node_filesystem_size_bytes{fstype!~"tmpfs|fuse.lxcfs|squashfs"})) * 100 > 90
+        for: 2m
+        labels:
+          severity: critical
+          team: support
+        annotations:
+          summary: "CRITICAL: Disk {{ $labels.mountpoint }} is {{ $value | printf \"%.1f\" }}% full"
+          description: "Less than 10% free space on {{ $labels.mountpoint }}. Immediate action required."
+          runbook: "truncate -s 0 $(docker info --format '{{.DockerRootDir}}')/containers/*/*-json.log && docker builder prune -f"
+
+      - alert: DiskSpaceWarning
+        expr: |
+          (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|fuse.lxcfs|squashfs"}
+               / node_filesystem_size_bytes{fstype!~"tmpfs|fuse.lxcfs|squashfs"})) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+          team: support
+        annotations:
+          summary: "WARNING: Disk {{ $labels.mountpoint }} is {{ $value | printf \"%.1f\" }}% full"
+          description: "Plan cleanup soon — less than 20% free on {{ $labels.mountpoint }}."
+
+      - alert: DockerVolumeGrowing
+        expr: |
+          delta(node_filesystem_free_bytes{mountpoint=~"/opt.*"}[1h]) < -1073741824
+        for: 30m
+        labels:
+          severity: warning
+          team: support
+        annotations:
+          summary: "Disk on /opt shrinking fast — lost >1 GB in last hour"
+          description: "Check container logs: docker system df"
+
+  # ── JVM / memory ─────────────────────────────────────────────────────────────
+  - name: jvm_memory
+    rules:
+
+      - alert: JvmHeapHigh
+        expr: |
+          (jvm_memory_used_bytes{area="heap", job="storelense-services"}
+          / jvm_memory_max_bytes{area="heap", job="storelense-services"}) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          team: support
+        annotations:
+          summary: "High JVM heap on {{ $labels.instance }}: {{ $value | printf \"%.0f\" }}%"
+          description: "{{ $labels.instance }} heap is above 85% for 5 minutes. May cause GC pauses or OOM."
+
+      - alert: JvmHeapCritical
+        expr: |
+          (jvm_memory_used_bytes{area="heap", job="storelense-services"}
+          / jvm_memory_max_bytes{area="heap", job="storelense-services"}) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+          team: support
+        annotations:
+          summary: "CRITICAL JVM heap on {{ $labels.instance }}: {{ $value | printf \"%.0f\" }}%"
+          description: "{{ $labels.instance }} is near OOM. Service may crash imminently."
+
+  # ── HTTP errors ───────────────────────────────────────────────────────────────
+  - name: http_errors
+    rules:
+
+      - alert: HighErrorRate
+        expr: |
+          sum by (instance) (
+            rate(http_server_requests_seconds_count{status=~"5..", job="storelense-services"}[5m])
+          ) > 0.5
+        for: 3m
+        labels:
+          severity: warning
+          team: support
+        annotations:
+          summary: "High 5xx error rate on {{ $labels.instance }}"
+          description: "More than 0.5 errors/sec on {{ $labels.instance }} for 3 minutes."
+
+      - alert: SlowResponses
+        expr: |
+          histogram_quantile(0.95,
+            rate(http_server_requests_seconds_bucket{job="storelense-services"}[5m])
+          ) > 3
+        for: 5m
+        labels:
+          severity: warning
+          team: support
+        annotations:
+          summary: "Slow responses on {{ $labels.instance }} — p95 = {{ $value | printf \"%.1f\" }}s"
+
+  # ── PostgreSQL ────────────────────────────────────────────────────────────────
+  - name: postgresql
+    rules:
+
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: support
+        annotations:
+          summary: "PostgreSQL is DOWN"
+          description: "Cannot connect to PostgreSQL. All services will fail."
+          runbook: "docker compose up -d postgres"
+
+      - alert: PostgresHighConnections
+        expr: |
+          sum(pg_stat_database_numbackends) / pg_settings_max_connections * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: support
+        annotations:
+          summary: "PostgreSQL connections at {{ $value | printf \"%.0f\" }}%"
+          description: "Connection pool is nearly full. Services may start failing requests."
+
+      - alert: PostgresLongQuery
+        expr: |
+          pg_stat_activity_max_tx_duration{state!="idle"} > 60
+        for: 2m
+        labels:
+          severity: warning
+          team: support
+        annotations:
+          summary: "Long-running PostgreSQL query ({{ $value | printf \"%.0f\" }}s)"
+
+  # ── Container resources ───────────────────────────────────────────────────────
+  - name: containers
+    rules:
+
+      - alert: ContainerHighMemory
+        expr: |
+          (container_memory_usage_bytes{container_label_com_docker_compose_service!=""}
+          / container_spec_memory_limit_bytes{container_label_com_docker_compose_service!=""}) * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+          team: support
+        annotations:
+          summary: "Container {{ $labels.container_label_com_docker_compose_service }} memory > 90%"
+
+      - alert: ContainerCpuThrottled
+        expr: |
+          rate(container_cpu_cfs_throttled_seconds_total{
+            container_label_com_docker_compose_service!=""
+          }[5m]) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          team: support
+        annotations:
+          summary: "Container {{ $labels.container_label_com_docker_compose_service }} is CPU throttled"

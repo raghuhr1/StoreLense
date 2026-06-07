@@ -1,0 +1,148 @@
+name: storelense-obs
+
+# ─── Log limits ──────────────────────────────────────────────────────────────
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "2"
+
+services:
+
+  # ── Metrics store ────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --storage.tsdb.retention.size=2GB
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    networks:
+      - storelense_default   # reach Spring Boot services
+      - obs
+    logging: *logging
+    restart: unless-stopped
+
+  # ── Dashboards + Alerting ─────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.2
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      GF_SERVER_HTTP_PORT: "3001"
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-StoreLense@Obs1}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      # SMTP — fill these in .env to enable email alerts
+      GF_SMTP_ENABLED: ${GRAFANA_SMTP_ENABLED:-false}
+      GF_SMTP_HOST: ${GRAFANA_SMTP_HOST:-smtp.gmail.com:587}
+      GF_SMTP_USER: ${GRAFANA_SMTP_USER:-}
+      GF_SMTP_PASSWORD: ${GRAFANA_SMTP_PASSWORD:-}
+      GF_SMTP_FROM_ADDRESS: ${GRAFANA_SMTP_FROM:-alerts@storelense.in}
+      GF_SMTP_FROM_NAME: "StoreLense Alerts"
+    ports:
+      - "3001:3001"
+    networks:
+      - obs
+    depends_on:
+      - prometheus
+      - loki
+    logging: *logging
+    restart: unless-stopped
+
+  # ── Log aggregation ───────────────────────────────────────────────────────────
+  loki:
+    image: grafana/loki:2.9.8
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/config.yml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/config.yml
+    ports:
+      - "3100:3100"
+    networks:
+      - obs
+    logging: *logging
+    restart: unless-stopped
+
+  # ── Log shipper — reads Docker container logs ─────────────────────────────────
+  promtail:
+    image: grafana/promtail:2.9.8
+    volumes:
+      - ./promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - obs
+    depends_on:
+      - loki
+    logging: *logging
+    restart: unless-stopped
+
+  # ── Host metrics (CPU / RAM / disk / network) ─────────────────────────────────
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    ports:
+      - "9100:9100"
+    networks:
+      - obs
+    logging: *logging
+    restart: unless-stopped
+
+  # ── Container metrics (CPU / RAM / network per container) ─────────────────────
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /dev/disk/:/dev/disk:ro
+    privileged: true
+    devices:
+      - /dev/kmsg
+    ports:
+      - "9082:8080"
+    networks:
+      - obs
+    logging: *logging
+    restart: unless-stopped
+
+  # ── PostgreSQL metrics ────────────────────────────────────────────────────────
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${DB_USERNAME:-storelense_app}:${DB_PASSWORD:-changeme}@postgres:5432/${DB_NAME:-storelense}?sslmode=disable"
+    networks:
+      - storelense_default   # reach postgres container
+      - obs
+    logging: *logging
+    restart: unless-stopped
+
+networks:
+  storelense_default:
+    external: true          # main stack network — must exist before starting obs
+  obs:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  loki_data:

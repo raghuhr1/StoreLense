@@ -1,0 +1,488 @@
+{
+  "uid": "storelense-overview",
+  "title": "StoreLense — Support Overview",
+  "tags": ["storelense", "support"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "time": { "from": "now-3h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Service",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "query": "label_values(up{job=\"storelense-services\"}, instance)",
+        "multi": true,
+        "includeAll": true,
+        "current": { "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "mountpoint",
+        "label": "Disk Mount",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "query": "label_values(node_filesystem_avail_bytes{fstype!~\"tmpfs|squashfs\"}, mountpoint)",
+        "multi": false,
+        "includeAll": false
+      }
+    ]
+  },
+  "panels": [
+
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Service Health",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Services UP",
+      "gridPos": { "x": 0, "y": 1, "w": 4, "h": 3 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 11,   "color": "green" }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "targets": [{
+        "expr": "sum(up{job=\"storelense-services\"})",
+        "legendFormat": "Services Up"
+      }]
+    },
+
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Services DOWN",
+      "gridPos": { "x": 4, "y": 1, "w": 4, "h": 3 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 1,   "color": "red" }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "expr": "sum(up{job=\"storelense-services\"} == 0) OR vector(0)",
+        "legendFormat": "Services Down"
+      }]
+    },
+
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Disk Used %",
+      "gridPos": { "x": 8, "y": 1, "w": 4, "h": 3 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 80,  "color": "yellow" },
+              { "value": 90,  "color": "red" }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "expr": "(1 - node_filesystem_avail_bytes{mountpoint=~\"$mountpoint\"} / node_filesystem_size_bytes{mountpoint=~\"$mountpoint\"}) * 100",
+        "legendFormat": "{{ mountpoint }}"
+      }]
+    },
+
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "PostgreSQL Connections",
+      "gridPos": { "x": 12, "y": 1, "w": 4, "h": 3 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 80,  "color": "yellow" },
+              { "value": 100, "color": "red" }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "expr": "sum(pg_stat_database_numbackends)",
+        "legendFormat": "Active Connections"
+      }]
+    },
+
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Active Alerts",
+      "gridPos": { "x": 16, "y": 1, "w": 4, "h": 3 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 1,   "color": "red" }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "expr": "count(ALERTS{alertstate=\"firing\"}) OR vector(0)",
+        "legendFormat": "Firing Alerts"
+      }]
+    },
+
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Service Status — All Instances",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "options": {
+        "sortBy": [{ "displayName": "Status", "desc": false }]
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Status" },
+            "properties": [
+              { "id": "custom.width", "value": 80 },
+              {
+                "id": "mappings",
+                "value": [
+                  { "options": { "1": { "text": "UP",   "color": "green" }, "0": { "text": "DOWN", "color": "red" } }, "type": "value" }
+                ]
+              },
+              { "id": "color", "value": { "mode": "thresholds" } },
+              { "id": "custom.displayMode", "value": "color-background" }
+            ]
+          }
+        ]
+      },
+      "targets": [{
+        "expr":           "up{job=\"storelense-services\"}",
+        "legendFormat":   "{{instance}}",
+        "instant":        true,
+        "format":         "table"
+      }],
+      "transformations": [
+        { "id": "organize", "options": { "renameByName": { "instance": "Service", "Value": "Status" } } }
+      ]
+    },
+
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "HTTP Request Rate (req/s)",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "lineWidth": 2 } }
+      },
+      "targets": [
+        {
+          "expr":         "sum by (instance) (rate(http_server_requests_seconds_count{job=\"storelense-services\", instance=~\"$service\"}[2m]))",
+          "legendFormat": "{{instance}}"
+        }
+      ]
+    },
+
+    {
+      "id": 9,
+      "type": "row",
+      "title": "JVM & Container Resources",
+      "gridPos": { "x": 0, "y": 12, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "JVM Heap Usage % per Service",
+      "gridPos": { "x": 0, "y": 13, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": { "lineWidth": 2 },
+          "color": { "mode": "palette-classic" },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 85,  "color": "yellow" },
+              { "value": 95,  "color": "red" }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "expr":         "sum by (instance) (jvm_memory_used_bytes{area=\"heap\", instance=~\"$service\"}) / sum by (instance) (jvm_memory_max_bytes{area=\"heap\", instance=~\"$service\"}) * 100",
+        "legendFormat": "{{instance}}"
+      }]
+    },
+
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Container Memory Usage",
+      "gridPos": { "x": 12, "y": 13, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes", "custom": { "lineWidth": 2 } }
+      },
+      "targets": [{
+        "expr":         "container_memory_usage_bytes{container_label_com_docker_compose_project=\"storelense\", container_label_com_docker_compose_service!=\"\"}",
+        "legendFormat": "{{container_label_com_docker_compose_service}}"
+      }]
+    },
+
+    {
+      "id": 12,
+      "type": "row",
+      "title": "HTTP Errors & Slow Responses",
+      "gridPos": { "x": 0, "y": 21, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "5xx Error Rate per Service",
+      "gridPos": { "x": 0, "y": 22, "w": 12, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2 },
+          "color": { "fixedColor": "red", "mode": "fixed" }
+        }
+      },
+      "targets": [{
+        "expr":         "sum by (instance) (rate(http_server_requests_seconds_count{job=\"storelense-services\", status=~\"5..\", instance=~\"$service\"}[5m]))",
+        "legendFormat": "{{instance}}"
+      }]
+    },
+
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "p95 Response Time per Service",
+      "gridPos": { "x": 12, "y": 22, "w": 12, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "lineWidth": 2 }
+        }
+      },
+      "targets": [{
+        "expr":         "histogram_quantile(0.95, sum by (le, instance) (rate(http_server_requests_seconds_bucket{job=\"storelense-services\", instance=~\"$service\"}[5m])))",
+        "legendFormat": "{{instance}} p95"
+      }]
+    },
+
+    {
+      "id": 15,
+      "type": "row",
+      "title": "Infrastructure — Disk / CPU / PostgreSQL",
+      "gridPos": { "x": 0, "y": 29, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+
+    {
+      "id": 16,
+      "type": "gauge",
+      "title": "Disk Used — $mountpoint",
+      "gridPos": { "x": 0, "y": 30, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "minVizWidth": 75,
+        "minVizHeight": 75
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 80,  "color": "yellow" },
+              { "value": 90,  "color": "red" }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "expr":         "(1 - node_filesystem_avail_bytes{mountpoint=~\"$mountpoint\"} / node_filesystem_size_bytes{mountpoint=~\"$mountpoint\"}) * 100",
+        "legendFormat": "{{ mountpoint }}"
+      }]
+    },
+
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Disk Free — $mountpoint",
+      "gridPos": { "x": 6, "y": 30, "w": 9, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "lineWidth": 2 },
+          "color": { "fixedColor": "blue", "mode": "fixed" }
+        }
+      },
+      "targets": [{
+        "expr":         "node_filesystem_avail_bytes{mountpoint=~\"$mountpoint\"}",
+        "legendFormat": "Free on {{ mountpoint }}"
+      }]
+    },
+
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Host CPU Usage %",
+      "gridPos": { "x": 15, "y": 30, "w": 9, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": { "lineWidth": 2 }
+        }
+      },
+      "targets": [{
+        "expr":         "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[2m])) * 100)",
+        "legendFormat": "CPU %"
+      }]
+    },
+
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "PostgreSQL Active Connections",
+      "gridPos": { "x": 0, "y": 36, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "lineWidth": 2 } }
+      },
+      "targets": [
+        {
+          "expr":         "sum(pg_stat_database_numbackends)",
+          "legendFormat": "Active Connections"
+        },
+        {
+          "expr":         "pg_settings_max_connections",
+          "legendFormat": "Max Connections"
+        }
+      ]
+    },
+
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "PostgreSQL DB Size Growth",
+      "gridPos": { "x": 12, "y": 36, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes", "custom": { "lineWidth": 2 } }
+      },
+      "targets": [{
+        "expr":         "pg_database_size_bytes{datname=\"storelense\"}",
+        "legendFormat": "storelense DB"
+      }]
+    },
+
+    {
+      "id": 21,
+      "type": "row",
+      "title": "Logs — Live Tail",
+      "gridPos": { "x": 0, "y": 42, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+
+    {
+      "id": 22,
+      "type": "logs",
+      "title": "Error Logs — All Services",
+      "gridPos": { "x": 0, "y": 43, "w": 24, "h": 10 },
+      "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [{
+        "expr":         "{compose_project=\"storelense\", level=~\"ERROR|WARN\"} |= \"\"",
+        "legendFormat": ""
+      }]
+    }
+  ]
+}
