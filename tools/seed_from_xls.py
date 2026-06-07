@@ -436,7 +436,7 @@ def _generate_sql(store_id, union_products, all_files):
 
     w(f"-- StoreLense bulk seed — store {store_id}")
     w(f"-- Generated: {datetime.now().isoformat()}")
-    w("\\set ON_ERROR_STOP off")
+    w("\\set ON_ERROR_STOP on")
     w("BEGIN;")
     w()
 
@@ -754,14 +754,16 @@ def run_sql(sql_text, args):
     stdout = result.stdout.decode('utf-8', errors='replace')
     stderr = result.stderr.decode('utf-8', errors='replace')
 
-    if 'COMMIT' in stdout or result.returncode == 0:
+    committed = 'COMMIT' in stdout and 'ROLLBACK' not in stdout
+    if committed:
         insert_lines = [l for l in stdout.splitlines()
                         if l.startswith('INSERT') or l.startswith('UPDATE') or l.startswith('DELETE')]
         ok(f"SQL committed  ({len(insert_lines)} DML statements)")
         return True
     else:
-        fail(f"SQL failed (exit {result.returncode})")
-        for line in (stdout + stderr).splitlines()[-30:]:
+        fail(f"SQL failed / rolled back (exit {result.returncode})")
+        # Print last 50 lines so the user can see the actual error
+        for line in (stdout + '\n' + stderr).splitlines()[-50:]:
             if line.strip():
                 print(f"    {line}", file=sys.stderr)
         return False

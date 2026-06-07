@@ -75,6 +75,10 @@ export default function DashboardPage() {
     refill:   k.refillCompletionRatePct ?? 0,
   }))
 
+  const accMin = chartData.length
+    ? Math.max(0, Math.floor(Math.min(...chartData.map(d => d.accuracy)) / 10) * 10)
+    : 0
+
   const sessionCount = kpi?.reduce((s, k) => s + k.sohSessionsCount, 0) ?? 0
   const selectedStore = allStores?.content.find(s => s.id === storeId)
 
@@ -180,7 +184,7 @@ export default function DashboardPage() {
                 <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-                  <YAxis domain={[80, 100]} tick={{ fontSize: 11 }} unit="%" />
+                  <YAxis domain={[accMin, 100]} tick={{ fontSize: 11 }} unit="%" />
                   <Tooltip formatter={(v: number) => [`${v.toFixed(1)}%`, 'Accuracy']} />
                   <Line type="monotone" dataKey="accuracy" stroke="#2563eb" strokeWidth={2} dot={false} />
                 </LineChart>
