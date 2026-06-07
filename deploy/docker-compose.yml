@@ -19,6 +19,8 @@ x-spring-env: &spring-env
   JWT_SECRET:  ${JWT_SECRET:-storelense-dev-secret-key-minimum-32-chars}
   PRODUCT_SERVICE_URL: http://product-service:8083
   STORE_SERVICE_URL:   http://store-service:8082
+  # Separate management port — bypasses JWT Spring Security, allows Prometheus to scrape /actuator/prometheus
+  MANAGEMENT_SERVER_PORT: "9000"
 
 # ─── Healthcheck defaults ────────────────────────────────────────────────────
 x-spring-healthcheck: &spring-healthcheck
@@ -228,8 +230,6 @@ services:
       <<: *spring-env
     ports:
       - "8088:8088"
-    deploy:
-      replicas: 1   # Scale up for load: docker compose up --scale rfid-processing-service=3
     logging: *default-logging
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8088/actuator/health"]

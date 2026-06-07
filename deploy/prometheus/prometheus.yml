@@ -10,43 +10,27 @@ rule_files:
 
 scrape_configs:
 
-  # ── Spring Boot microservices (/actuator/prometheus) ─────────────────────────
+  # ── Spring Boot microservices ─────────────────────────────────────────────────
+  # Scraped on port 9000 (MANAGEMENT_SERVER_PORT) which bypasses JWT Spring Security.
+  # /actuator/prometheus is open on the management port without authentication.
   - job_name: storelense-services
     metrics_path: /actuator/prometheus
     scrape_interval: 30s
     static_configs:
       - targets:
-          - auth-service:8081
-          - store-service:8082
-          - product-service:8083
-          - inventory-service:8084
-          - soh-service:8085
-          - refill-service:8086
-          - rfid-ingest-service:8087
-          - rfid-processing-service:8088
-          - reporting-service:8089
-          - erp-integration-service:8090
-          - notification-service:8091
+          - auth-service:9000
+          - store-service:9000
+          - product-service:9000
+          - inventory-service:9000
+          - soh-service:9000
+          - refill-service:9000
+          - rfid-ingest-service:9000
+          - rfid-processing-service:9000
+          - reporting-service:9000
+          - erp-integration-service:9000
+          - notification-service:9000
         labels:
           app: storelense
-
-  # ── Service health probes (/actuator/health) ──────────────────────────────────
-  - job_name: storelense-health
-    metrics_path: /actuator/health
-    scrape_interval: 30s
-    static_configs:
-      - targets:
-          - auth-service:8081
-          - store-service:8082
-          - product-service:8083
-          - inventory-service:8084
-          - soh-service:8085
-          - refill-service:8086
-          - rfid-ingest-service:8087
-          - rfid-processing-service:8088
-          - reporting-service:8089
-          - erp-integration-service:8090
-          - notification-service:8091
 
   # ── Infrastructure exporters ──────────────────────────────────────────────────
   - job_name: node-exporter
