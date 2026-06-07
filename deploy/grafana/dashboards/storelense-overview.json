@@ -12,7 +12,7 @@
         "name": "service",
         "label": "Service",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "datasource": { "type": "prometheus", "uid": "storelense-prometheus" },
         "query": "label_values(up{job=\"storelense-services\"}, instance)",
         "multi": true,
         "includeAll": true,
@@ -22,7 +22,7 @@
         "name": "mountpoint",
         "label": "Disk Mount",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "datasource": { "type": "prometheus", "uid": "storelense-prometheus" },
         "query": "label_values(node_filesystem_avail_bytes{fstype!~\"tmpfs|squashfs\"}, mountpoint)",
         "multi": false,
         "includeAll": false
@@ -44,7 +44,7 @@
       "type": "stat",
       "title": "Services UP",
       "gridPos": { "x": 0, "y": 1, "w": 4, "h": 3 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "storelense-prometheus" },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"] },
         "colorMode": "background",
@@ -74,7 +74,7 @@
       "type": "stat",
       "title": "Services DOWN",
       "gridPos": { "x": 4, "y": 1, "w": 4, "h": 3 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "storelense-prometheus" },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"] },
         "colorMode": "background",
@@ -102,7 +102,7 @@
       "type": "stat",
       "title": "Disk Used %",
       "gridPos": { "x": 8, "y": 1, "w": 4, "h": 3 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "storelense-prometheus" },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"] },
         "colorMode": "background",
@@ -133,7 +133,7 @@
       "type": "stat",
       "title": "PostgreSQL Connections",
       "gridPos": { "x": 12, "y": 1, "w": 4, "h": 3 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "storelense-prometheus" },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"] },
         "colorMode": "background",
@@ -163,7 +163,7 @@
       "type": "stat",
       "title": "Active Alerts",
       "gridPos": { "x": 16, "y": 1, "w": 4, "h": 3 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "storelense-prometheus" },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"] },
         "colorMode": "background",
@@ -191,7 +191,7 @@
       "type": "table",
       "title": "Service Status — All Instances",
       "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "storelense-prometheus" },
       "options": {
         "sortBy": [{ "displayName": "Status", "desc": false }]
       },
@@ -230,7 +230,7 @@
       "type": "timeseries",
       "title": "HTTP Request Rate (req/s)",
       "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "storelense-prometheus" },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "fieldConfig": {
         "defaults": { "unit": "reqps", "custom": { "lineWidth": 2 } }
@@ -256,7 +256,7 @@
       "type": "timeseries",
       "title": "JVM Heap Usage % per Service",
       "gridPos": { "x": 0, "y": 13, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "storelense-prometheus" },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "fieldConfig": {
         "defaults": {
@@ -285,7 +285,7 @@
       "type": "timeseries",
       "title": "Container Memory Usage",
       "gridPos": { "x": 12, "y": 13, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "storelense-prometheus" },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "fieldConfig": {
         "defaults": { "unit": "bytes", "custom": { "lineWidth": 2 } }
@@ -309,7 +309,7 @@
       "type": "timeseries",
       "title": "5xx Error Rate per Service",
       "gridPos": { "x": 0, "y": 22, "w": 12, "h": 7 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "storelense-prometheus" },
       "fieldConfig": {
         "defaults": {
           "unit": "reqps",
@@ -328,7 +328,7 @@
       "type": "timeseries",
       "title": "p95 Response Time per Service",
       "gridPos": { "x": 12, "y": 22, "w": 12, "h": 7 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "storelense-prometheus" },
       "fieldConfig": {
         "defaults": {
           "unit": "s",
@@ -354,7 +354,7 @@
       "type": "gauge",
       "title": "Disk Used — $mountpoint",
       "gridPos": { "x": 0, "y": 30, "w": 6, "h": 6 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "storelense-prometheus" },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"] },
         "minVizWidth": 75,
@@ -386,7 +386,7 @@
       "type": "timeseries",
       "title": "Disk Free — $mountpoint",
       "gridPos": { "x": 6, "y": 30, "w": 9, "h": 6 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "storelense-prometheus" },
       "fieldConfig": {
         "defaults": {
           "unit": "bytes",
@@ -405,7 +405,7 @@
       "type": "timeseries",
       "title": "Host CPU Usage %",
       "gridPos": { "x": 15, "y": 30, "w": 9, "h": 6 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "storelense-prometheus" },
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
@@ -425,7 +425,7 @@
       "type": "timeseries",
       "title": "PostgreSQL Active Connections",
       "gridPos": { "x": 0, "y": 36, "w": 12, "h": 6 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "storelense-prometheus" },
       "fieldConfig": {
         "defaults": { "unit": "short", "custom": { "lineWidth": 2 } }
       },
@@ -446,7 +446,7 @@
       "type": "timeseries",
       "title": "PostgreSQL DB Size Growth",
       "gridPos": { "x": 12, "y": 36, "w": 12, "h": 6 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "storelense-prometheus" },
       "fieldConfig": {
         "defaults": { "unit": "bytes", "custom": { "lineWidth": 2 } }
       },
@@ -469,7 +469,7 @@
       "type": "logs",
       "title": "Error Logs — All Services",
       "gridPos": { "x": 0, "y": 43, "w": 24, "h": 10 },
-      "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+      "datasource": { "type": "loki", "uid": "storelense-loki" },
       "options": {
         "showTime": true,
         "showLabels": true,
