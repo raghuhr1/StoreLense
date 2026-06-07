@@ -148,8 +148,10 @@ _COL_ALIASES: dict[str, list[str]] = {
                     'item_group', 'item group',                 # P004 format
                     'product code', 'sku'],
     'dept':        ['item_class', 'item class',                 # P004: 'MEN APPAREL', 'WOMEN APPAREL'
-                    'item_subclass', 'item subclass',           # more specific sub-category
                     'dept', 'department', 'dept.', 'category', 'cat', 'div', 'division'],
+    'subcat':      ['item_subclass', 'item subclass', 'sub class', 'sub_class',  # P004: 'T-SHIRT', 'SHIRT'
+                    'sub_category', 'product type', 'garment type', 'article type'],
+    'brand':       ['brand', 'brand name', 'label', 'brand_name', 'make'],
     'description': ['description', 'desc', 'item desc', 'product name', 'item description', 'name'],
     'barcode':     ['barcode', 'bar code', 'ean', 'upc', 'item barcode', 'ean13',
                     'gtin', 'item_barcode',                     # P004 format
@@ -163,6 +165,7 @@ _COL_ALIASES: dict[str, list[str]] = {
                     'rfid qty', 'scan qty'],
     'back stock':  ['back stock', 'backstock', 'back room', 'backroom', 'back', 'br stock', 'b/s'],
     'sales floor': ['sales floor', 'salesfloor', 'floor', 'shop floor', 'sf', 's/f', 'floor stock'],
+    'location':    ['handscan_location', 'handscan location', 'scan_location', 'zone', 'location'],
 }
 
 def _resolve_col(row: dict, canonical: str):
@@ -255,21 +258,37 @@ def aggregate_products(rows):
         if not style:
             continue
         dept        = _str(_resolve_col(r, 'dept'))
+        subcat      = _str(_resolve_col(r, 'subcat'))
+        raw_brand   = _str(_resolve_col(r, 'brand'))
         desc        = _str(_resolve_col(r, 'description')) or style
         barcode     = clean_barcode(_resolve_col(r, 'barcode'))
         expected    = max(0, int(_resolve_col(r, 'expected') or 0))
         scan        = int(_resolve_col(r, 'scan') or 0)
-        back_stock  = max(0, int(_resolve_col(r, 'back stock') or 0))
-        sales_floor = max(0, int(_resolve_col(r, 'sales floor') or 0))
+
+        # Zone stock: prefer dedicated columns; fall back to handscan_location values
+        bs_raw = _resolve_col(r, 'back stock')
+        sf_raw = _resolve_col(r, 'sales floor')
+        if bs_raw is not None or sf_raw is not None:
+            back_stock  = max(0, int(bs_raw  or 0))
+            sales_floor = max(0, int(sf_raw  or 0))
+        else:
+            loc = _str(_resolve_col(r, 'location')).lower()
+            back_stock  = scan if 'back stock'  in loc else 0
+            sales_floor = scan if 'sales floor' in loc else 0
+
+        # Brand priority: actual brand → subcat (product type) → dept (class)
+        brand = raw_brand or subcat or dept
 
         if style not in products:
             products[style] = {
-                'dept': dept, 'style': style, 'name': desc,
+                'dept': dept, 'brand': brand, 'style': style, 'name': desc,
                 'epcs': [], 'epc_set': set(),
                 'expected_total': 0, 'scan_total': 0,
                 'back_stock_total': 0, 'sales_floor_total': 0,
             }
         p = products[style]
+        if not p.get('brand') and brand:
+            p['brand'] = brand
         p['expected_total']    += expected
         p['scan_total']        += scan        # sum actual units scanned, not just presence
         p['back_stock_total']  += back_stock
@@ -454,12 +473,13 @@ def _generate_sql(store_id, union_products, all_files):
         chunk = styles[i:i + BATCH]
         vals  = []
         for style, p in chunk:
-            nm   = (p.get('name') or style)[:250]
-            dept = (p.get('dept') or 'General')[:255]
-            desc = f"{dept} - {nm}"[:500]
+            nm    = (p.get('name') or style)[:250]
+            dept  = (p.get('dept') or 'General')[:255]
+            brand = (p.get('brand') or dept)[:255]
+            desc  = f"{dept} - {nm}"[:500]
             vals.append(
                 f"  (gen_random_uuid(), {_sq(style)}, {_sq(nm)}, {_sq(desc)}, "
-                f"{_sq(dept)}, {_sq('ERP-' + style)}, 'EACH', true, true)"
+                f"{_sq(brand)}, {_sq('ERP-' + style)}, 'EACH', true, true)"
             )
         w("INSERT INTO products.products")
         w("  (id, sku, name, description, brand, erp_product_code, unit_of_measure, is_rfid_enabled, is_active)")
