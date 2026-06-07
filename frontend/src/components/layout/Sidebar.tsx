@@ -3,24 +3,28 @@
 import Link              from 'next/link'
 import { usePathname }   from 'next/navigation'
 import {
+  type LucideIcon,
   LayoutDashboard, Package, PackageCheck, RotateCw,
-  ArrowLeftRight, BarChart3, Users, Store, Cpu, ScanLine, Tag,
+  ArrowLeftRight, BarChart3, Users, Store, Cpu, ScanLine, Tag, TrendingUp,
 } from 'lucide-react'
 import { useAuth }       from '@/lib/auth/AuthContext'
 import { cn }            from '@/lib/utils'
 
-const allNavItems = [
+type NavItem = { href: string; label: string; icon: LucideIcon; roles: readonly string[] }
+
+const allNavItems: NavItem[] = [
   { href: '/dashboard',   label: 'Dashboard',    icon: LayoutDashboard, roles: ['ADMIN','STORE_MANAGER','STORE_ASSOCIATE','REFILL_ASSOCIATE'] },
   { href: '/inventory',   label: 'Inventory',    icon: Package,         roles: ['ADMIN','STORE_MANAGER'] },
   { href: '/receiving',   label: 'Receiving',    icon: PackageCheck,    roles: ['ADMIN','STORE_MANAGER','REFILL_ASSOCIATE'] },
   { href: '/cycle-count', label: 'Cycle Count',  icon: RotateCw,        roles: ['ADMIN','STORE_MANAGER','STORE_ASSOCIATE'] },
   { href: '/transfers',   label: 'Transfers',    icon: ArrowLeftRight,  roles: ['ADMIN','STORE_MANAGER'] },
   { href: '/reports',     label: 'Reports',      icon: BarChart3,       roles: ['ADMIN','STORE_MANAGER'] },
+  { href: '/analytics',   label: 'Analytics',    icon: TrendingUp,      roles: ['ADMIN','STORE_MANAGER'] },
   { href: '/products',    label: 'Products',     icon: Tag,             roles: ['ADMIN'] },
   { href: '/users',       label: 'Users',        icon: Users,           roles: ['ADMIN'] },
   { href: '/stores',      label: 'Stores',       icon: Store,           roles: ['ADMIN'] },
   { href: '/devices',     label: 'Devices',      icon: Cpu,             roles: ['ADMIN','STORE_MANAGER'] },
-] as const
+]
 
 export default function Sidebar() {
   const pathname   = usePathname()
