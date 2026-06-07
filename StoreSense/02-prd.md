@@ -2,7 +2,7 @@
 
 **Project:** StoreLense — RFID Store Operations Platform
 **Version:** 1.1
-**Date:** 2026-06-06
+**Date:** 2026-06-07
 
 ---
 
@@ -33,7 +33,7 @@ StoreLense is a real-time RFID inventory operations platform for retail store ne
 |---|---|
 | User Management | Create, update, and deactivate users; assign roles and store |
 | Store Management | Create and maintain store master records (address, timezone, ERP code) |
-| Zone Management | Define zones within each store (floor, backroom, fitting room, etc.) |
+| Zone Management | Define zones within each store; zone types: `floor`, `backroom`, `fitting_room`, `stockroom`, `display`, `entrance` |
 | RFID Reader Management | Register readers per store/zone; track last heartbeat |
 | Product Master | Create and update product records; manage EPC-to-product mappings |
 | ERP Sync Admin | Manually trigger product or inventory sync; view sync audit logs |
@@ -108,7 +108,7 @@ The web portal is a Next.js 15 application with role-based navigation.
 | Dashboard | `/dashboard` | All | Overview KPIs and recent activity |
 | Stores | `/stores` | ADMIN | Store list, create, view details |
 | Store Detail | `/stores/[id]` | ADMIN | Zones, readers, store config |
-| Products | `/products` | ADMIN | Product list, create, EPC registration |
+| Products | `/products` | ADMIN | Product list with search (SKU/name) and filter (brand, RFID status, active/inactive); create product; UOM: EACH, PAIR, PACK, KG, LTR |
 | Users | `/users` | ADMIN | User list, create, manage |
 | SOH Sessions | `/soh` | STORE_MANAGER, STORE_ASSOCIATE | Session list, start, results |
 | Refill Tasks | `/refill` | STORE_MANAGER, REFILL_ASSOCIATE | Task board, assign, complete |

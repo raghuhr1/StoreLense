@@ -162,7 +162,7 @@ export default function InventoryPage() {
     },
     {
       accessorKey: 'brand',
-      header: 'Brand',
+      header: 'Department',
       cell: i => <span className="text-sm text-gray-700">{i.getValue<string|null>() ?? '—'}</span>,
     },
     {
@@ -236,9 +236,9 @@ export default function InventoryPage() {
                 </select>
               )}
 
-              {/* Brand */}
+              {/* Department */}
               <select value={filterBrand} onChange={e => setFilterBrand(e.target.value)} className={selectCls}>
-                <option value="">All Brands</option>
+                <option value="">All Departments</option>
                 {brands.map(b => <option key={b} value={b}>{b}</option>)}
               </select>
 

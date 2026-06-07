@@ -191,6 +191,42 @@
 
 ---
 
+### TC-PROD-08: Update Product
+**Precondition:** ADMIN auth; product exists
+**Steps:** `PUT /api/products/{id}` with updated `name` and `brand`
+**Expected:** HTTP 200; returned product reflects updated fields
+
+---
+
+### TC-PROD-09: Products Page — ADMIN Access Only
+**Steps:**
+1. Log in as `STORE_MANAGER`
+2. Navigate to `/products`
+**Expected:** Page not accessible (redirected) or "Products" not visible in sidebar; no API call to `/api/products` succeeds with 403
+
+---
+
+### TC-PROD-10: Products Page — Search and Filter
+**Precondition:** ADMIN auth; at least 5 products exist with mixed brands and RFID status
+**Steps:**
+1. Open `/products`
+2. Enter partial SKU in search box
+3. Apply brand filter
+4. Toggle RFID status filter to "disabled"
+**Expected:** Each filter narrows the result set; results update without full page reload; pagination controls reflect filtered total
+
+---
+
+### TC-PROD-11: Products Page — Create via Modal
+**Precondition:** ADMIN auth
+**Steps:**
+1. Click "Add Product" button
+2. Fill in: SKU (unique), Name, Brand, UOM = "PAIR", RFID Enabled = true
+3. Submit form
+**Expected:** Product appears in list; modal closes; success toast displayed
+
+---
+
 ## 5. SOH Session Test Cases
 
 ### TC-SOH-01: Start SOH Session

@@ -3,7 +3,7 @@
 **Project:** StoreLense — RFID Store Operations Platform
 **Base URL:** `http://<gateway-host>:8080`
 **Auth:** `Authorization: Bearer <access_token>` on all endpoints except `/api/auth/login` and `/api/auth/refresh`
-**Version:** 1.1 — 2026-06-06
+**Version:** 1.2 — 2026-06-07
 
 ---
 
@@ -207,6 +207,8 @@ Create a zone. ADMIN only.
 }
 ```
 
+`zoneType` values: `floor`, `backroom`, `fitting_room`, `stockroom`, `display`, `entrance`
+
 ---
 
 ### PUT /api/stores/{storeId}/zones/{zoneId}
@@ -242,7 +244,7 @@ Register an RFID reader. ADMIN only.
 
 List or search products.
 
-**Query params:** `search` (SKU or name), `page`, `size`
+**Query params:** `search` (SKU or name), `brand`, `rfidEnabled` (true/false), `active` (true/false), `page`, `size`
 
 ---
 
@@ -278,12 +280,15 @@ Create a new product. ADMIN only.
 {
   "sku": "MENS-SHIRT-RED-M",
   "name": "Classic Red Shirt — Medium",
+  "description": "Optional free-text description",
   "brand": "Arrow",
-  "categoryId": "uuid",
   "unitOfMeasure": "EACH",
-  "rfidEnabled": true
+  "rfidEnabled": true,
+  "erpProductCode": "ERP-MENS-SHIRT-RED-M"
 }
 ```
+
+`unitOfMeasure` values: `EACH`, `PAIR`, `PACK`, `KG`, `LTR`
 
 ---
 

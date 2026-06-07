@@ -413,9 +413,9 @@ export default function AnalyticsPage() {
                 )}
               </div>
 
-              {/* Accuracy by Brand horizontal bar */}
+              {/* Accuracy by Department horizontal bar */}
               <div className="card">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">Accuracy by Brand</h3>
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Accuracy by Department</h3>
                 {brandAccuracy.length === 0 ? (
                   <div className="flex items-center justify-center h-[180px] text-sm text-gray-400">No data</div>
                 ) : (
@@ -584,11 +584,11 @@ export default function AnalyticsPage() {
         {tab === 'breakdown' && (
           <div className="space-y-8">
 
-            {/* ─ Brand Performance ────────────────────────────────────────── */}
+            {/* ─ Department Performance ───────────────────────────────────── */}
             <section>
               <div className="flex items-center gap-2 mb-4">
                 <Layers size={16} className="text-brand-600" />
-                <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Brand Performance</h2>
+                <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Department Performance</h2>
               </div>
 
               {brandMetrics.length === 0 ? (
@@ -596,9 +596,9 @@ export default function AnalyticsPage() {
               ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-                  {/* Accuracy by brand */}
+                  {/* Accuracy by department */}
                   <div className="card">
-                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Accuracy by Brand</h3>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Accuracy by Department</h3>
                     <ResponsiveContainer width="100%" height={Math.max(200, brandMetrics.length * 30)}>
                       <BarChart layout="vertical" data={brandMetrics} margin={{ left: 8, right: 48 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
@@ -619,9 +619,9 @@ export default function AnalyticsPage() {
                     </ResponsiveContainer>
                   </div>
 
-                  {/* ERP gap by brand */}
+                  {/* ERP gap by department */}
                   <div className="card">
-                    <h3 className="text-sm font-semibold text-gray-700 mb-3">ERP Gap by Brand (units missing)</h3>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">ERP Gap by Department (units missing)</h3>
                     <ResponsiveContainer width="100%" height={Math.max(200, brandMetrics.length * 30)}>
                       <BarChart layout="vertical" data={[...brandMetrics].sort((a, b) => b.gap - a.gap)} margin={{ left: 8, right: 48 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
@@ -637,14 +637,14 @@ export default function AnalyticsPage() {
                 </div>
               )}
 
-              {/* Brand summary table */}
+              {/* Department summary table */}
               {brandMetrics.length > 0 && (
                 <div className="card mt-6 overflow-x-auto">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Brand Summary</h3>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Department Summary</h3>
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b border-gray-100">
-                        <th className="text-left py-2 pr-3 font-medium text-gray-500">Brand / Dept</th>
+                        <th className="text-left py-2 pr-3 font-medium text-gray-500">Department</th>
                         <th className="text-right py-2 px-2 font-medium text-gray-500">SKUs</th>
                         <th className="text-right py-2 px-2 font-medium text-gray-500">ERP Expected</th>
                         <th className="text-right py-2 px-2 font-medium text-gray-500">RFID On Hand</th>

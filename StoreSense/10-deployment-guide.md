@@ -126,18 +126,50 @@ curl -s -X POST http://localhost:8080/api/auth/login \
 
 ### Step 6 — Seed Demo Store Data
 
+Two seeding options are available:
+
+#### Option A — Fixed Demo Seed (Pantaloons P037)
+
 ```bash
 bash /opt/StoreLense-master/tools/seed_pantaloons_p037.sh \
   --url http://localhost:8080
 ```
 
-This creates:
-- Store: Pantaloons P037 (Jaipur)
-- Zones: Floor levels, fitting rooms, stockroom
-- 100+ products with EPC registrations
-- Users: `mgr_p037` (Manager@P0371!), `asc_p037` (Assoc@P0371!), `rfl_p037` (Refill@P0371!), `asc2_p037` (Assoc2@P0371!)
+Creates: Store P037 (Jaipur), zones, 100+ products, 1067 EPC registrations, demo users.
 
-> Seed takes ~20 minutes (1067 EPC registrations). It automatically re-logins mid-run to handle the 15-minute JWT expiry.
+> Takes ~20 minutes (REST API calls per EPC). Auto re-logins to handle JWT expiry.
+
+#### Option B — Real XLS Data (Recommended for Production)
+
+Requires `openpyxl`: `pip install openpyxl`
+
+```bash
+# SQL bulk mode — seconds instead of hours (recommended)
+python3 /opt/StoreLense-master/tools/seed_from_xls.py --sql \
+    --dir /path/to/XLS_FILES \
+    --store-code P036 \
+    --store-name "Pantaloons P036" \
+    --url http://localhost:8080 \
+    --pg-container deploy-postgres-1
+
+# Write SQL to file first (for review before execution):
+python3 /opt/StoreLense-master/tools/seed_from_xls.py --sql \
+    --sql-out /tmp/seed_p036.sql \
+    --dir /path/to/XLS_FILES \
+    --store-code P036
+cat /tmp/seed_p036.sql | docker exec -i deploy-postgres-1 psql -U postgres -d storelense
+
+# REST mode (no direct DB access required — slow on large datasets):
+python3 /opt/StoreLense-master/tools/seed_from_xls.py \
+    --dir /path/to/XLS_FILES \
+    --store-code P036 \
+    --url http://localhost:8080 \
+    --workers 3
+```
+
+**XLS file naming convention:** files should include the date in `YYYYMMDD` format (e.g. `P036_20260105.xlsx`) — the seeder extracts it as the SOH session date.
+
+The seeder creates one SOH session per XLS file (representing one cycle-count day), loads all products and EPC tags, and sets inventory state from the most recent file.
 
 ### Step 7 — Access the Web Portal
 

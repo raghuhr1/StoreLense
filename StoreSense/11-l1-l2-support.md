@@ -392,6 +392,48 @@ docker exec storelense-auth-service-1 env | grep JWT_SECRET
 
 ---
 
+### L2-10: seed_from_xls.py — XLS Seeder Failures
+
+**Symptom:** `seed_from_xls.py` exits with error or produces no data.
+
+**Issue: `openpyxl` not installed**
+```
+ERROR: openpyxl not installed.  Run: pip install openpyxl
+```
+Fix: `pip install openpyxl`
+
+**Issue: SQL execution fails — `psql: command not found` inside container**
+The container may not have `psql` in PATH.
+```bash
+# Find the postgres binary path:
+docker exec deploy-postgres-1 find /usr -name psql 2>/dev/null
+# Then write SQL to file and execute:
+python3 tools/seed_from_xls.py --sql --sql-out /tmp/seed.sql --dir /path/to/xls ...
+cat /tmp/seed.sql | docker exec -i deploy-postgres-1 psql -U postgres -d storelense
+```
+
+**Issue: SQL completes but no data visible in portal**
+The SQL uses `BEGIN; ... COMMIT;` — check for a `ROLLBACK` in the output:
+```bash
+python3 tools/seed_from_xls.py --sql --sql-out /tmp/seed.sql ...
+cat /tmp/seed.sql | docker exec -i deploy-postgres-1 psql -U postgres -d storelense 2>&1 | grep -E "ERROR|ROLLBACK|COMMIT"
+```
+Expected last line: `COMMIT`. If `ROLLBACK` — look for the `ERROR` line above it.
+
+**Issue: `products.products` table not found**
+The Flyway migrations for `product-service` haven't run yet.
+Fix: Ensure product-service is healthy before running the seeder:
+```bash
+curl -s http://localhost:8083/actuator/health | python3 -m json.tool
+```
+
+**Issue: Login fails after 6 attempts**
+All services must be healthy. Run after Step 4 of deployment (`docker compose ps` shows all healthy).
+
+**Re-run safety:** The seeder in SQL mode does `DELETE + re-insert` for inventory and SOH sessions, and `ON CONFLICT DO NOTHING/UPDATE` for products and EPCs — safe to re-run with the same XLS files. For REST mode, the API is idempotent (existing stores/products returned by lookup).
+
+---
+
 ## 5. Log Locations and Analysis
 
 ### Container Logs

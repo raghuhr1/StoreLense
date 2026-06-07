@@ -276,8 +276,12 @@ def aggregate_products(rows):
             back_stock  = scan if 'back stock'  in loc else 0
             sales_floor = scan if 'sales floor' in loc else 0
 
-        # Brand priority: actual brand → subcat (product type) → dept (class)
-        brand = raw_brand or subcat or dept
+        # Strip placeholder values that P004/P785 put in the brand column
+        _BRAND_PLACEHOLDERS = {'?', '-', 'n/a', 'na', 'none', 'null', 'tbd', 'unknown', '.', ''}
+        if raw_brand.lower() in _BRAND_PLACEHOLDERS:
+            raw_brand = ''
+        # Brand priority: actual brand → dept (item_class = 'MEN APPAREL') → subcat
+        brand = raw_brand or dept or subcat
 
         if style not in products:
             products[style] = {

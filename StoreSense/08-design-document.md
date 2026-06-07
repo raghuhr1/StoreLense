@@ -2,7 +2,7 @@
 
 **Project:** StoreLense — RFID Store Operations Platform
 **Version:** 1.0
-**Date:** 2026-06-06
+**Date:** 2026-06-07
 
 ---
 
@@ -18,10 +18,10 @@ This document provides the low-level design for StoreLense: component interactio
 
 | Token | Lifetime | Storage | Purpose |
 |---|---|---|---|
-| Access token | 15 minutes | In-memory (JS variable) | Authorise every API call |
-| Refresh token | 7 days | Room DB (encrypted) on mobile; server-side session on web | Renew access token silently |
+| Access token | 15 minutes | In-memory (JS variable) on web; Android EncryptedSharedPreferences | Authorise every API call |
+| Refresh token | 7 days | `sessionStorage` on web portal (cleared when tab closes); Android EncryptedSharedPreferences | Renew access token silently |
 
-Access tokens are **never stored in localStorage** to prevent XSS theft. The access token is held in a React context variable and lost on page refresh — the refresh token is used to silently re-obtain it.
+Access tokens are **never stored in localStorage** to prevent XSS theft. The access token is held in a React context variable (`AuthContext`) and lost on hard page refresh — on reload, `AuthContext` calls `/api/auth/refresh` using the `sessionStorage` refresh token to silently re-obtain it. On Android, both tokens are stored in `EncryptedSharedPreferences` (Android Keystore-backed AES-256-GCM).
 
 ### 2.2 Login Sequence
 
@@ -364,14 +364,15 @@ WorkManager Workers:
 ### 8.2 RFID SDK Integration
 
 ```
-RfidReaderInterface (interface)
-├── ZebraRfidReader           — real implementation using EMDK SDK
-│    └── RfidEventsListener
-│         └── eventReadNotify(readEvents[]) → emit to StateFlow
-└── MockRfidReader            — dev/test implementation
-     └── emits pre-configured EPC list on trigger
+RfidReader (interface — `com.storelense.zebra.rfid.RfidReader`)
+├── EmDkRfidReader            — Zebra EMDK implementation (production)
+│    └── RfidEventsListener.eventReadNotify() → getReadTags(100) → callbackFlow<EpcRead>
+└── MockRfidReader            — coroutine simulator (development)
+     └── emits random EPCs from pool of 200 at 5–12 reads/second
 
-Selection at runtime: if EMDK service available → ZebraRfidReader else MockRfidReader
+Selection at **compile time** via Hilt `RfidModule`:
+  BuildConfig.USE_MOCK_RFID=true  (debug build)  → MockRfidReader
+  BuildConfig.USE_MOCK_RFID=false (release build) → EmDkRfidReader
 ```
 
 ---
@@ -481,3 +482,70 @@ ERP_BASE_URL=https://erp.yourdomain.com/api
 ERP_API_KEY=your-erp-api-key
 ERP_PUSH_SOH_ENABLED=true
 ```
+
+---
+
+## 12. Data Seeding Design
+
+### 12.1 Seeding Tools
+
+Two seeding tools exist in `tools/`:
+
+| Tool | Mode | Speed | Use case |
+|---|---|---|---|
+| `seed_pantaloons_p037.sh` | REST only | ~20 min | Demo store (P037) with fixed data |
+| `seed_from_xls.py` | SQL bulk (recommended) or REST | SQL: seconds; REST: hours | Real Pantaloons XLS variance files |
+
+### 12.2 seed_from_xls.py — Design
+
+The XLS seeder ingests Pantaloons cycle-count variance Excel files (one per counting day) and loads them into StoreLense. It uses `openpyxl` to read the spreadsheet and produces either bulk SQL or REST API calls.
+
+**Supported XLS columns:**
+`dept | style | barcode | item barcode | description | color | size | cost | price | expected | scan | Back Stock | Sales Floor | variance | difference | ext cost | ext price | loss | scan%`
+
+**Data flow:**
+
+```
+XLS Files (one per counting day)
+  └→ parse rows → aggregate_products()
+       ├── Deduplicate styles across all days (union)
+       ├── Collect all barcodes (EPC candidates)
+       ├── Track expected qty and scan qty per style per day
+       └── Identify best EPC status per barcode (in_store if ever scanned)
+```
+
+**SQL bulk mode (`--sql`):**
+
+Generates a single transactional SQL file targeting 6 tables directly:
+
+| SQL section | Target table |
+|---|---|
+| Products | `products.products` (INSERT ON CONFLICT DO UPDATE) |
+| SKU→ID map | `_sp` (temp table — joins style to product UUID) |
+| EPC tags | `products.epc_tags` (INSERT ON CONFLICT DO NOTHING — idempotent) |
+| Inventory state | `inventory.inventory_state` (DELETE + re-insert for store) |
+| EPC registry | `inventory.epc_registry` (INSERT ON CONFLICT UPDATE status/last_seen) |
+| SOH sessions | `soh.soh_sessions` + `soh.soh_results` (one per XLS day, DELETE + re-insert) |
+
+The temp table `_sp` maps SKUs to their actual database UUIDs after ON CONFLICT resolution — this is necessary because `INSERT ON CONFLICT DO UPDATE` on `products` keeps the original UUID, not `gen_random_uuid()`.
+
+**REST mode (fallback):**
+
+For each style: `POST /api/products` → `POST /api/products/{id}/epc` (per barcode) → `POST /api/inventory/expected`. Parallel execution via `ThreadPoolExecutor` (default 3 workers). Token auto-refreshed every 500 products to handle 15-min JWT expiry.
+
+**Execution command (SQL mode):**
+```bash
+python3 tools/seed_from_xls.py --sql \
+    --dir /path/to/P036 \
+    --store-code P036 \
+    --pg-container deploy-postgres-1
+```
+
+Always 3 REST calls regardless of dataset size: store create, zones, readers.
+
+### 12.3 Supporting Scripts
+
+| Script | Purpose |
+|---|---|
+| `tools/parse_p036.py` | Parse raw P036 Excel files → `tools/p036_data.json` (grouped by dept/style) |
+| `tools/generate_seed.py` | Generate `tools/seed_pantaloons_p037.sh` from `p036_data.json` — samples up to 8 products/dept, caps EPC registrations at 30/style |
