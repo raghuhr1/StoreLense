@@ -7,7 +7,7 @@ import Link                from 'next/link'
 import Header              from '@/components/layout/Header'
 import DataTable           from '@/components/ui/DataTable'
 import StatCard            from '@/components/ui/StatCard'
-import { Package, AlertTriangle, TrendingDown, MapPin } from 'lucide-react'
+import { Package, AlertTriangle, ScanLine, Target, MapPin } from 'lucide-react'
 import { inventoryApi }  from '@/lib/api/inventory'
 import { productsApi }   from '@/lib/api/products'
 import { storesApi }     from '@/lib/api/stores'
@@ -66,11 +66,6 @@ export default function InventoryPage() {
     enabled:  !!storeId,
   })
 
-  const { data: lowAcc } = useQuery({
-    queryKey: ['low-accuracy', storeId],
-    queryFn:  () => inventoryApi.getLowAccuracy(storeId, 95),
-    enabled:  !!storeId,
-  })
 
   // Store zones (Sales Floor, Backroom, etc.)
   const { data: zones } = useQuery({
@@ -143,6 +138,14 @@ export default function InventoryPage() {
 
   const hasFilters = filterZone || filterBrand || filterAccuracy || filterStock
 
+  const inventoryStats = useMemo(() => {
+    const storeLevel = (items ?? []).filter(i => i.zoneId == null)
+    const totalExpected = storeLevel.reduce((s, i) => s + i.quantityExpected, 0)
+    const totalScanned  = storeLevel.reduce((s, i) => s + i.quantityOnHand,   0)
+    const accuracyPct   = totalExpected > 0 ? (totalScanned / totalExpected) * 100 : null
+    return { totalSkus: storeLevel.length, totalExpected, totalScanned, accuracyPct }
+  }, [items])
+
   const zoneLabel = useMemo(() => {
     if (!filterZone || filterZone === 'store') return null
     return (zones ?? []).find(({ id }) => id === filterZone)?.name ?? null
@@ -206,10 +209,37 @@ export default function InventoryPage() {
         )}
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard title="Total SKUs"     value={(items ?? []).filter(i => i.zoneId == null).length}      icon={Package}       color="blue" />
-          <StatCard title="In Store (EPC)" value={summary?.in_store ?? 0}  icon={Package}       color="green" />
-          <StatCard title="Missing (EPC)"  value={summary?.missing ?? 0}   icon={AlertTriangle} color="red" />
-          <StatCard title="Low Accuracy"   value={lowAcc?.length ?? 0}     icon={TrendingDown}  color="yellow" />
+          <StatCard
+            title="Total SKUs"
+            value={inventoryStats.totalSkus.toLocaleString()}
+            icon={Package}
+            color="blue"
+          />
+          <StatCard
+            title="RFID Scanned"
+            value={inventoryStats.totalScanned.toLocaleString()}
+            sub={`of ${inventoryStats.totalExpected.toLocaleString()} ERP expected`}
+            icon={ScanLine}
+            color="green"
+          />
+          <StatCard
+            title="Missing EPC"
+            value={(summary?.missing ?? 0).toLocaleString()}
+            sub="not detected by RFID"
+            icon={AlertTriangle}
+            color="red"
+          />
+          <StatCard
+            title="Accuracy"
+            value={inventoryStats.accuracyPct != null ? `${inventoryStats.accuracyPct.toFixed(1)}%` : '—'}
+            sub={inventoryStats.accuracyPct != null && inventoryStats.accuracyPct < 95 ? 'Below 95% target' : 'On target'}
+            icon={Target}
+            color={
+              inventoryStats.accuracyPct == null  ? 'blue'   :
+              inventoryStats.accuracyPct >= 95    ? 'green'  :
+              inventoryStats.accuracyPct >= 80    ? 'yellow' : 'red'
+            }
+          />
         </div>
 
         <div className="card">
