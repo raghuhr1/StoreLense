@@ -156,28 +156,32 @@ def date_from_filename(filename):
 
 # ── Data aggregation ──────────────────────────────────────────────────────────
 def aggregate_products(rows):
-    """Returns dict: style → {dept, style, name, epcs[], expected_total, scan_total}."""
+    """Returns dict: style → {dept, style, name, epcs[], expected_total, scan_total, back_stock_total, sales_floor_total}."""
     products = {}
     for r in rows:
         style = (r.get('style') or '').strip()
         if not style:
             continue
-        dept     = (r.get('dept') or '').strip()
-        desc     = (r.get('description') or style).strip()
-        barcode  = clean_barcode(r.get('barcode'))
-        expected = max(0, int(r.get('expected') or 0))
-        scan     = int(r.get('scan') or 0)
+        dept        = (r.get('dept') or '').strip()
+        desc        = (r.get('description') or style).strip()
+        barcode     = clean_barcode(r.get('barcode'))
+        expected    = max(0, int(r.get('expected') or 0))
+        scan        = int(r.get('scan') or 0)
+        back_stock  = max(0, int(r.get('back stock') or 0))
+        sales_floor = max(0, int(r.get('sales floor') or 0))
 
         if style not in products:
             products[style] = {
                 'dept': dept, 'style': style, 'name': desc,
                 'epcs': [], 'epc_set': set(),
                 'expected_total': 0, 'scan_total': 0,
+                'back_stock_total': 0, 'sales_floor_total': 0,
             }
         p = products[style]
-        p['expected_total'] += expected
-        if scan >= 1:
-            p['scan_total'] += 1
+        p['expected_total']    += expected
+        p['scan_total']        += scan        # sum actual units scanned, not just presence
+        p['back_stock_total']  += back_stock
+        p['sales_floor_total'] += sales_floor
         if barcode and barcode not in p['epc_set']:
             p['epcs'].append(barcode)
             p['epc_set'].add(barcode)
@@ -426,6 +430,40 @@ def _generate_sql(store_id, union_products, all_files):
         w(',\n'.join(vals))
         w(") AS v(style, oh, ex, acc) JOIN _sp s ON s.style = v.style;")
         w()
+
+    # ── 4b. Zone-specific inventory state (Backroom + Sales Floor) ────────────
+    zone_stock_vals = [
+        (style, p.get('back_stock_total', 0), p.get('sales_floor_total', 0))
+        for style, p in last_prods.items()
+        if p.get('back_stock_total', 0) > 0 or p.get('sales_floor_total', 0) > 0
+    ]
+    if zone_stock_vals:
+        w("-- ── 4b. Zone-specific Inventory (Backroom + Sales Floor) ──────────────")
+        w("CREATE TEMP TABLE IF NOT EXISTS _zones (code TEXT PRIMARY KEY, zid UUID);")
+        w("TRUNCATE _zones;")
+        w(f"INSERT INTO _zones SELECT zone_code, id FROM stores.zones WHERE store_id = {_sq(store_id)};")
+        w()
+        for i in range(0, len(zone_stock_vals), BATCH):
+            chunk = zone_stock_vals[i:i + BATCH]
+            vals  = [f"  ({_sq(style)}, {bs}::int, {sf}::int)" for style, bs, sf in chunk]
+            w("INSERT INTO inventory.inventory_state")
+            w("  (id, store_id, product_id, zone_id, quantity_on_hand, quantity_expected, last_counted_at, accuracy_pct)")
+            w(f"SELECT gen_random_uuid(), {_sq(store_id)}, s.pid, z.zid, v.bs, v.bs, now(), 100.0::numeric")
+            w("FROM (VALUES")
+            w(',\n'.join(vals))
+            w(") AS v(style, bs, sf) JOIN _sp s ON s.style = v.style")
+            w("JOIN _zones z ON z.code = 'BACKROOM'")
+            w("WHERE v.bs > 0;")
+            w()
+            w("INSERT INTO inventory.inventory_state")
+            w("  (id, store_id, product_id, zone_id, quantity_on_hand, quantity_expected, last_counted_at, accuracy_pct)")
+            w(f"SELECT gen_random_uuid(), {_sq(store_id)}, s.pid, z.zid, v.sf, v.sf, now(), 100.0::numeric")
+            w("FROM (VALUES")
+            w(',\n'.join(vals))
+            w(") AS v(style, bs, sf) JOIN _sp s ON s.style = v.style")
+            w("JOIN _zones z ON z.code = 'FLOOR-GF'")
+            w("WHERE v.sf > 0;")
+            w()
 
     # ── 5. inventory.epc_registry ─────────────────────────────────────
     w("-- ── 5. EPC Registry ─────────────────────────────────────────────────")

@@ -113,7 +113,8 @@ export default function SoldItemsPage() {
 
   const rows = useMemo((): SaleRow[] => {
     if (!invState) return []
-    return (invState as InventoryState[]).map(inv => {
+    // Only store-level rows (zone_id=NULL); zone-specific rows are for zone breakdown only
+    return (invState as InventoryState[]).filter(inv => inv.zoneId == null).map(inv => {
       const p    = productMap[inv.productId]
       const gap  = Math.max(0, inv.quantityExpected - inv.quantityOnHand)
       const rcvd = grnReceivedMap[inv.productId] ?? 0

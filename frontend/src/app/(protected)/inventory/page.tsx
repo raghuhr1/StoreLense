@@ -206,7 +206,7 @@ export default function InventoryPage() {
         )}
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard title="Total SKUs"     value={items?.length ?? 0}      icon={Package}       color="blue" />
+          <StatCard title="Total SKUs"     value={(items ?? []).filter(i => i.zoneId == null).length}      icon={Package}       color="blue" />
           <StatCard title="In Store (EPC)" value={summary?.in_store ?? 0}  icon={Package}       color="green" />
           <StatCard title="Missing (EPC)"  value={summary?.missing ?? 0}   icon={AlertTriangle} color="red" />
           <StatCard title="Low Accuracy"   value={lowAcc?.length ?? 0}     icon={TrendingDown}  color="yellow" />

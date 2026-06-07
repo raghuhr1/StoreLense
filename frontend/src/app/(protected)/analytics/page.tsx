@@ -4,9 +4,9 @@ import { useQuery, useQueries }    from '@tanstack/react-query'
 import { useMemo, useState }        from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, PieChart, Pie, Cell, Legend,
+  CartesianGrid, PieChart, Pie, Cell, Legend, LabelList,
 } from 'recharts'
-import { TrendingUp, Package, AlertTriangle, CheckCircle2, BarChart3 } from 'lucide-react'
+import { TrendingUp, Package, AlertTriangle, CheckCircle2, BarChart3, Layers } from 'lucide-react'
 import Header           from '@/components/layout/Header'
 import { inventoryApi } from '@/lib/api/inventory'
 import { storesApi }    from '@/lib/api/stores'
@@ -31,7 +31,7 @@ const tabCls    = (active: boolean) =>
 
 export default function AnalyticsPage() {
   const { user, isAdmin } = useAuth()
-  const [tab, setTab]               = useState<'store' | 'network'>('store')
+  const [tab, setTab]               = useState<'store' | 'network' | 'breakdown'>('store')
   const [selStoreId, setSelStoreId] = useState<string>('')
 
   const { data: allStores } = useQuery({
@@ -110,8 +110,11 @@ export default function AnalyticsPage() {
     return map
   }, [allProducts])
 
+  // Only store-level rows (zone_id=null) for aggregate stats; zone rows used only in breakdown tab
+  const storeItems = useMemo(() => (items ?? []).filter(i => i.zoneId == null), [items])
+
   const stockPosition = useMemo(() => {
-    const list = items ?? []
+    const list = storeItems
     let healthy = 0, overstock = 0, outOfStock = 0
     for (const item of list) {
       if (item.quantityOnHand === 0 && item.quantityExpected > 0) outOfStock++
@@ -123,11 +126,11 @@ export default function AnalyticsPage() {
       { name: 'Overstock',     value: overstock,  color: '#d97706' },
       { name: 'Out of Stock',  value: outOfStock, color: '#dc2626' },
     ]
-  }, [items])
+  }, [storeItems])
 
   const brandAccuracy = useMemo(() => {
     const brandMap: Record<string, { sum: number; count: number }> = {}
-    for (const item of items ?? []) {
+    for (const item of storeItems) {
       if (item.accuracyPct == null) continue
       const brand = productMap[item.productId]?.brand ?? 'Unknown'
       if (!brandMap[brand]) brandMap[brand] = { sum: 0, count: 0 }
@@ -138,10 +141,10 @@ export default function AnalyticsPage() {
       .map(([brand, { sum, count }]) => ({ brand, accuracy: sum / count }))
       .sort((a, b) => b.accuracy - a.accuracy)
       .slice(0, 12)
-  }, [items, productMap])
+  }, [storeItems, productMap])
 
   const varianceTop10 = useMemo(() => {
-    return (items ?? [])
+    return storeItems
       .map(item => {
         const variance    = item.quantityOnHand - item.quantityExpected
         const absVariance = Math.abs(variance)
@@ -151,7 +154,7 @@ export default function AnalyticsPage() {
       .filter(item => item.absVariance > 0)
       .sort((a, b) => b.absVariance - a.absVariance)
       .slice(0, 10)
-  }, [items, productMap])
+  }, [storeItems, productMap])
 
   const zoneStock = useMemo(() => {
     const zoneMap: Record<string, string> = {}
@@ -234,6 +237,56 @@ export default function AnalyticsPage() {
     [networkData],
   )
 
+  // ── Breakdown: brand + zone metrics ─────────────────────────────────────────
+
+  const brandMetrics = useMemo(() => {
+    const map: Record<string, { sku: number; onHand: number; expected: number }> = {}
+    for (const item of storeItems) {
+      const brand = productMap[item.productId]?.brand ?? 'Unknown'
+      if (!map[brand]) map[brand] = { sku: 0, onHand: 0, expected: 0 }
+      map[brand].sku++
+      map[brand].onHand    += item.quantityOnHand
+      map[brand].expected  += item.quantityExpected
+    }
+    return Object.entries(map)
+      .map(([brand, m]) => ({
+        brand,
+        sku:      m.sku,
+        onHand:   m.onHand,
+        expected: m.expected,
+        gap:      Math.max(0, m.expected - m.onHand),
+        accuracy: m.expected > 0 ? Math.round((m.onHand / m.expected) * 100) : null,
+      }))
+      .sort((a, b) => (a.accuracy ?? 0) - (b.accuracy ?? 0))
+  }, [storeItems, productMap])
+
+  const zoneMetrics = useMemo(() => {
+    const zoneMap: Record<string, { name: string; type: string }> = {}
+    for (const z of zones ?? []) zoneMap[z.id] = { name: z.name, type: z.zoneType }
+    const byType: Record<string, { label: string; onHand: number; expected: number; sku: number }> = {}
+    for (const item of items ?? []) {  // use ALL items (zone-specific rows are what we want here)
+      if (!item.zoneId) continue
+      const z = zoneMap[item.zoneId]
+      if (!z) continue
+      if (!byType[z.type]) byType[z.type] = { label: z.name, onHand: 0, expected: 0, sku: 0 }
+      byType[z.type].onHand   += item.quantityOnHand
+      byType[z.type].expected += item.quantityExpected
+      byType[z.type].sku++
+    }
+    const LABELS: Record<string, string> = {
+      floor: 'Sales Floor', backroom: 'Backroom', stockroom: 'Stockroom',
+      fitting_room: 'Fitting Room', display: 'Display', entrance: 'Entrance',
+    }
+    return Object.entries(byType).map(([type, m]) => ({
+      zone:     LABELS[type] ?? type,
+      type,
+      onHand:   m.onHand,
+      expected: m.expected,
+      sku:      m.sku,
+      accuracy: m.expected > 0 ? Math.round((m.onHand / m.expected) * 100) : null,
+    }))
+  }, [items, zones])
+
   // ── Inline bar color helper ──────────────────────────────────────────────────
   function barAccuracyColor(val: number | null): string {
     if (val == null) return '#6b7280'
@@ -244,7 +297,7 @@ export default function AnalyticsPage() {
 
   const inStockCount  = stockPosition[0].value + stockPosition[1].value
   const outStockCount = stockPosition[2].value
-  const totalItems    = items?.length ?? 0
+  const totalItems    = storeItems.length
   const inStockPct    = totalItems > 0 ? Math.round((inStockCount / totalItems) * 100) : 0
 
   const epcEntries = Object.entries(epcSummary ?? []).map(([name, value], i) => ({
@@ -272,11 +325,10 @@ export default function AnalyticsPage() {
               <div className="h-5 w-px bg-gray-200" />
             </>
           )}
+          <button onClick={() => setTab('store')}     className={tabCls(tab === 'store')}>Store View</button>
+          <button onClick={() => setTab('breakdown')} className={tabCls(tab === 'breakdown')}>Breakdown</button>
           {isAdmin && (
-            <>
-              <button onClick={() => setTab('store')}   className={tabCls(tab === 'store')}>Store View</button>
-              <button onClick={() => setTab('network')} className={tabCls(tab === 'network')}>Network View</button>
-            </>
+            <button onClick={() => setTab('network')} className={tabCls(tab === 'network')}>Network View</button>
           )}
         </div>
 
@@ -525,6 +577,230 @@ export default function AnalyticsPage() {
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ── BREAKDOWN TAB ────────────────────────────────────────────────── */}
+        {tab === 'breakdown' && (
+          <div className="space-y-8">
+
+            {/* ─ Brand Performance ────────────────────────────────────────── */}
+            <section>
+              <div className="flex items-center gap-2 mb-4">
+                <Layers size={16} className="text-brand-600" />
+                <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Brand Performance</h2>
+              </div>
+
+              {brandMetrics.length === 0 ? (
+                <div className="card flex items-center justify-center h-32 text-sm text-gray-400">No inventory data</div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                  {/* Accuracy by brand */}
+                  <div className="card">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Accuracy by Brand</h3>
+                    <ResponsiveContainer width="100%" height={Math.max(200, brandMetrics.length * 30)}>
+                      <BarChart layout="vertical" data={brandMetrics} margin={{ left: 8, right: 48 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                        <XAxis type="number" domain={[0, 100]} unit="%" tick={{ fontSize: 10 }} />
+                        <YAxis type="category" dataKey="brand" tick={{ fontSize: 10 }} width={90} />
+                        <Tooltip formatter={(v: number) => [`${v}%`, 'Accuracy']} />
+                        <Bar dataKey="accuracy" radius={[0, 3, 3, 0]}>
+                          <LabelList dataKey="accuracy" position="right" formatter={(v: number) => `${v}%`} style={{ fontSize: 10, fill: '#6b7280' }} />
+                          {brandMetrics.map((entry, i) => (
+                            <Cell key={i} fill={
+                              entry.accuracy == null ? '#6b7280' :
+                              entry.accuracy >= 95 ? '#16a34a' :
+                              entry.accuracy >= 80 ? '#d97706' : '#dc2626'
+                            } />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* ERP gap by brand */}
+                  <div className="card">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">ERP Gap by Brand (units missing)</h3>
+                    <ResponsiveContainer width="100%" height={Math.max(200, brandMetrics.length * 30)}>
+                      <BarChart layout="vertical" data={[...brandMetrics].sort((a, b) => b.gap - a.gap)} margin={{ left: 8, right: 48 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                        <XAxis type="number" tick={{ fontSize: 10 }} />
+                        <YAxis type="category" dataKey="brand" tick={{ fontSize: 10 }} width={90} />
+                        <Tooltip formatter={(v: number) => [v, 'Gap (units)']} />
+                        <Bar dataKey="gap" fill="#dc2626" radius={[0, 3, 3, 0]}>
+                          <LabelList dataKey="gap" position="right" style={{ fontSize: 10, fill: '#6b7280' }} />
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {/* Brand summary table */}
+              {brandMetrics.length > 0 && (
+                <div className="card mt-6 overflow-x-auto">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Brand Summary</h3>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        <th className="text-left py-2 pr-3 font-medium text-gray-500">Brand / Dept</th>
+                        <th className="text-right py-2 px-2 font-medium text-gray-500">SKUs</th>
+                        <th className="text-right py-2 px-2 font-medium text-gray-500">ERP Expected</th>
+                        <th className="text-right py-2 px-2 font-medium text-gray-500">RFID On Hand</th>
+                        <th className="text-right py-2 px-2 font-medium text-gray-500">Gap</th>
+                        <th className="text-right py-2 pl-2 font-medium text-gray-500">Accuracy</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {[...brandMetrics].sort((a, b) => (a.accuracy ?? 0) - (b.accuracy ?? 0)).map(m => (
+                        <tr key={m.brand}>
+                          <td className="py-2 pr-3 font-medium text-gray-800">{m.brand}</td>
+                          <td className="text-right py-2 px-2 text-gray-600">{m.sku}</td>
+                          <td className="text-right py-2 px-2 text-gray-600">{m.expected.toLocaleString()}</td>
+                          <td className="text-right py-2 px-2 text-gray-600">{m.onHand.toLocaleString()}</td>
+                          <td className={`text-right py-2 px-2 font-semibold ${m.gap > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                            {m.gap > 0 ? `-${m.gap}` : '0'}
+                          </td>
+                          <td className="text-right py-2 pl-2">
+                            <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${
+                              m.accuracy == null ? 'text-gray-400' :
+                              m.accuracy >= 95 ? 'bg-green-50 text-green-700' :
+                              m.accuracy >= 80 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'
+                            }`}>
+                              {m.accuracy != null ? `${m.accuracy}%` : '—'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="border-t border-gray-200">
+                      <tr>
+                        <td className="py-2 pr-3 font-semibold text-gray-700">Total</td>
+                        <td className="text-right py-2 px-2 font-semibold text-gray-700">
+                          {brandMetrics.reduce((s, m) => s + m.sku, 0)}
+                        </td>
+                        <td className="text-right py-2 px-2 font-semibold text-gray-700">
+                          {brandMetrics.reduce((s, m) => s + m.expected, 0).toLocaleString()}
+                        </td>
+                        <td className="text-right py-2 px-2 font-semibold text-gray-700">
+                          {brandMetrics.reduce((s, m) => s + m.onHand, 0).toLocaleString()}
+                        </td>
+                        <td className="text-right py-2 px-2 font-semibold text-red-600">
+                          -{brandMetrics.reduce((s, m) => s + m.gap, 0).toLocaleString()}
+                        </td>
+                        <td className="text-right py-2 pl-2 font-semibold text-gray-700">
+                          {(() => {
+                            const tot = brandMetrics.reduce((s, m) => s + m.expected, 0)
+                            const oh  = brandMetrics.reduce((s, m) => s + m.onHand, 0)
+                            return tot > 0 ? `${Math.round((oh / tot) * 100)}%` : '—'
+                          })()}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </section>
+
+            {/* ─ Zone / Location Breakdown ────────────────────────────────── */}
+            <section>
+              <div className="flex items-center gap-2 mb-4">
+                <Package size={16} className="text-brand-600" />
+                <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Zone Breakdown — Backroom vs Sales Floor</h2>
+              </div>
+
+              {zoneMetrics.length === 0 ? (
+                <div className="card flex flex-col items-center justify-center h-32 gap-1 text-sm text-gray-400">
+                  <span>No zone-level data available.</span>
+                  <span className="text-xs">Re-run the seeder to populate Backroom / Sales Floor quantities.</span>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                  {/* Units on hand per zone */}
+                  <div className="card">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Units On Hand by Zone</h3>
+                    <ResponsiveContainer width="100%" height={Math.max(160, zoneMetrics.length * 52)}>
+                      <BarChart layout="vertical" data={zoneMetrics} margin={{ left: 8, right: 48 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                        <XAxis type="number" tick={{ fontSize: 10 }} />
+                        <YAxis type="category" dataKey="zone" tick={{ fontSize: 11, fontWeight: 500 }} width={90} />
+                        <Tooltip formatter={(v: number) => [v.toLocaleString(), 'Units']} />
+                        <Bar dataKey="onHand" radius={[0, 3, 3, 0]}>
+                          <LabelList dataKey="onHand" position="right" formatter={(v: number) => v.toLocaleString()} style={{ fontSize: 10, fill: '#6b7280' }} />
+                          {zoneMetrics.map((entry, i) => (
+                            <Cell key={i} fill={
+                              entry.type === 'floor' ? '#2563eb' :
+                              entry.type === 'backroom' ? '#7c3aed' :
+                              entry.type === 'fitting_room' ? '#0891b2' : '#16a34a'
+                            } />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* SKU count per zone */}
+                  <div className="card">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">SKU Count by Zone</h3>
+                    <ResponsiveContainer width="100%" height={Math.max(160, zoneMetrics.length * 52)}>
+                      <BarChart layout="vertical" data={zoneMetrics} margin={{ left: 8, right: 48 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                        <XAxis type="number" tick={{ fontSize: 10 }} />
+                        <YAxis type="category" dataKey="zone" tick={{ fontSize: 11, fontWeight: 500 }} width={90} />
+                        <Tooltip formatter={(v: number) => [v, 'SKUs']} />
+                        <Bar dataKey="sku" fill="#d97706" radius={[0, 3, 3, 0]}>
+                          <LabelList dataKey="sku" position="right" style={{ fontSize: 10, fill: '#6b7280' }} />
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {/* Zone summary table */}
+              {zoneMetrics.length > 0 && (
+                <div className="card mt-6 overflow-x-auto">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Zone Summary</h3>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        <th className="text-left py-2 pr-3 font-medium text-gray-500">Zone</th>
+                        <th className="text-right py-2 px-2 font-medium text-gray-500">SKUs</th>
+                        <th className="text-right py-2 px-2 font-medium text-gray-500">On Hand</th>
+                        <th className="text-right py-2 px-2 font-medium text-gray-500">Expected</th>
+                        <th className="text-right py-2 pl-2 font-medium text-gray-500">Accuracy</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {zoneMetrics.map(z => (
+                        <tr key={z.zone}>
+                          <td className="py-2 pr-3">
+                            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${
+                              z.type === 'floor'        ? 'bg-blue-50 text-blue-700' :
+                              z.type === 'backroom'     ? 'bg-purple-50 text-purple-700' :
+                              z.type === 'fitting_room' ? 'bg-cyan-50 text-cyan-700' : 'bg-gray-100 text-gray-600'
+                            }`}>{z.zone}</span>
+                          </td>
+                          <td className="text-right py-2 px-2 text-gray-600">{z.sku}</td>
+                          <td className="text-right py-2 px-2 text-gray-600">{z.onHand.toLocaleString()}</td>
+                          <td className="text-right py-2 px-2 text-gray-600">{z.expected.toLocaleString()}</td>
+                          <td className="text-right py-2 pl-2">
+                            <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${
+                              z.accuracy == null ? 'text-gray-400' :
+                              z.accuracy >= 95 ? 'bg-green-50 text-green-700' :
+                              z.accuracy >= 80 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'
+                            }`}>{z.accuracy != null ? `${z.accuracy}%` : '—'}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
           </div>
         )}
 
