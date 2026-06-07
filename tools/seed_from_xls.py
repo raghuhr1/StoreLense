@@ -141,6 +141,28 @@ class Api:
         return self.token
 
 
+# ── Column alias map — handles variations across store XLS formats ────────────
+_COL_ALIASES: dict[str, list[str]] = {
+    'style':       ['style', 'style no', 'style no.', 'style_no', 'styleno',
+                    'article', 'article no', 'article no.', 'item no', 'item code'],
+    'dept':        ['dept', 'department', 'dept.', 'category', 'cat', 'div', 'division'],
+    'description': ['description', 'desc', 'item desc', 'product name', 'item description', 'name'],
+    'barcode':     ['barcode', 'bar code', 'ean', 'upc', 'item barcode', 'ean13'],
+    'expected':    ['expected', 'exp qty', 'expected qty', 'erp qty', 'system qty',
+                    'book qty', 'book stock', 'erp expected', 'quantity'],
+    'scan':        ['scan', 'scanned', 'rfid scan', 'rfid count', 'physical', 'physical count', 'counted'],
+    'back stock':  ['back stock', 'backstock', 'back room', 'backroom', 'back', 'br stock', 'b/s'],
+    'sales floor': ['sales floor', 'salesfloor', 'floor', 'shop floor', 'sf', 's/f', 'floor stock'],
+}
+
+def _resolve_col(row: dict, canonical: str):
+    """Return value for a canonical column, trying all known aliases."""
+    for alias in _COL_ALIASES.get(canonical, [canonical]):
+        if alias in row:
+            return row[alias]
+    return None
+
+
 # ── XLS parsing ───────────────────────────────────────────────────────────────
 def load_xls(path):
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
@@ -150,6 +172,22 @@ def load_xls(path):
     header = [str(h).strip().lower() if h else f'col{i}' for i, h in enumerate(raw_hdr)]
     rows = [dict(zip(header, r)) for r in rows_iter if any(v is not None for v in r)]
     wb.close()
+
+    # Always print actual column names (helps diagnose mismatches)
+    non_empty_headers = [h for h in header if not h.startswith('col')]
+    info(f"  XLS columns     : {non_empty_headers}")
+
+    # Diagnostic: show which canonical columns were found / missing
+    found, missing = [], []
+    for canon in ('style', 'dept', 'description', 'barcode', 'expected', 'scan', 'back stock', 'sales floor'):
+        matched = next((a for a in _COL_ALIASES.get(canon, [canon]) if a in header), None)
+        if matched:
+            found.append(f'{canon}→"{matched}"' if matched != canon else canon)
+        else:
+            missing.append(canon)
+    info(f"  Columns matched : {', '.join(found) or 'NONE — column names do not match!'}")
+    if missing:
+        warn(f"  Columns missing : {', '.join(missing)}")
     return rows
 
 
@@ -160,12 +198,36 @@ def clean_barcode(v):
     return s.zfill(14) if s.isdigit() else None
 
 
+import re as _re
+
 def date_from_filename(filename):
-    base = os.path.basename(filename).replace('.xlsx', '').replace('.xls', '')
-    for part in reversed(base.split('_')):
-        if part.isdigit() and len(part) == 8:
-            return f'{part[:4]}-{part[4:6]}-{part[6:]}'
-    return base
+    """Extract YYYY-MM-DD from filename.  Handles YYYYMMDD and DDMMYYYY,
+    with or without separators (-, /, ., space, _)."""
+    base = os.path.basename(filename)
+    base = _re.sub(r'\.(xlsx?|XLS[Xx]?)$', '', base)
+
+    # Separated formats: YYYY-MM-DD or DD-MM-YYYY (any separator)
+    m = _re.search(r'(\d{4})[-/._](\d{2})[-/._](\d{2})', base)
+    if m:
+        y, mo, d = m.groups()
+        if 1 <= int(mo) <= 12 and 1 <= int(d) <= 31:
+            return f'{y}-{mo}-{d}'
+
+    m = _re.search(r'(\d{2})[-/._](\d{2})[-/._](\d{4})', base)
+    if m:
+        d, mo, y = m.groups()
+        if 1 <= int(mo) <= 12 and 1 <= int(d) <= 31:
+            return f'{y}-{mo}-{d}'
+
+    # Compact 8-digit: YYYYMMDD or DDMMYYYY
+    for s in _re.findall(r'\d{8}', base):
+        if s[:4].startswith('20') and 1 <= int(s[4:6]) <= 12 and 1 <= int(s[6:]) <= 31:
+            return f'{s[:4]}-{s[4:6]}-{s[6:]}'     # YYYYMMDD
+        if s[4:].startswith('20') and 1 <= int(s[2:4]) <= 12 and 1 <= int(s[:2]) <= 31:
+            return f'{s[4:]}-{s[2:4]}-{s[:2]}'      # DDMMYYYY
+
+    warn(f'Could not parse date from filename "{os.path.basename(filename)}" — using today')
+    return datetime.now().strftime('%Y-%m-%d')
 
 
 # ── Data aggregation ──────────────────────────────────────────────────────────
@@ -173,16 +235,16 @@ def aggregate_products(rows):
     """Returns dict: style → {dept, style, name, epcs[], expected_total, scan_total, back_stock_total, sales_floor_total}."""
     products = {}
     for r in rows:
-        style = (r.get('style') or '').strip()
+        style = (_resolve_col(r, 'style') or '').strip()
         if not style:
             continue
-        dept        = (r.get('dept') or '').strip()
-        desc        = (r.get('description') or style).strip()
-        barcode     = clean_barcode(r.get('barcode'))
-        expected    = max(0, int(r.get('expected') or 0))
-        scan        = int(r.get('scan') or 0)
-        back_stock  = max(0, int(r.get('back stock') or 0))
-        sales_floor = max(0, int(r.get('sales floor') or 0))
+        dept        = (_resolve_col(r, 'dept') or '').strip()
+        desc        = (_resolve_col(r, 'description') or style).strip()
+        barcode     = clean_barcode(_resolve_col(r, 'barcode'))
+        expected    = max(0, int(_resolve_col(r, 'expected') or 0))
+        scan        = int(_resolve_col(r, 'scan') or 0)
+        back_stock  = max(0, int(_resolve_col(r, 'back stock') or 0))
+        sales_floor = max(0, int(_resolve_col(r, 'sales floor') or 0))
 
         if style not in products:
             products[style] = {
