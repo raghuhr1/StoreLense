@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState }  from 'react'
 import { type ColumnDef }     from '@tanstack/react-table'
 import { Plus }               from 'lucide-react'
+import Link                   from 'next/link'
 import Header                 from '@/components/layout/Header'
 import DataTable              from '@/components/ui/DataTable'
 import { statusBadge }        from '@/components/ui/Badge'
@@ -42,7 +43,16 @@ export default function ReceivingPage() {
   })
 
   const columns = useMemo<ColumnDef<RefillTask, unknown>[]>(() => [
-    { accessorKey: 'id',       header: 'ID',       cell: i => <span className="font-mono text-xs">{i.getValue<string>().slice(-8)}</span> },
+    {
+      accessorKey: 'id',
+      header: 'ID',
+      cell: i => (
+        <Link href={`/receiving/${i.getValue<string>()}`}
+              className="font-mono text-xs text-blue-600 hover:underline">
+          {i.getValue<string>().slice(-8)}
+        </Link>
+      ),
+    },
     { accessorKey: 'taskType', header: 'Type' },
     { accessorKey: 'status',   header: 'Status',   cell: i => statusBadge(i.getValue<string>()) },
     { accessorKey: 'priority', header: 'Priority', cell: i => <span className="font-semibold">P{i.getValue<number>()}</span> },

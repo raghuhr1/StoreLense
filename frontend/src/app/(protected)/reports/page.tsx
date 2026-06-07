@@ -16,7 +16,7 @@ function iso(d: Date) { return d.toISOString().slice(0,10) }
 
 export default function ReportsPage() {
   const { user, isAdmin }  = useAuth()
-  const [range, setRange]  = useState<'7d' | '30d' | '90d'>('30d')
+  const [range, setRange]  = useState<'7d' | '30d' | '90d'>('90d')
   const [selectedStoreId, setSelectedStoreId] = useState<string>('')
 
   const { data: allStores } = useQuery({

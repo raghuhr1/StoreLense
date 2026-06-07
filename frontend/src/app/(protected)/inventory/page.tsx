@@ -7,7 +7,7 @@ import Link                from 'next/link'
 import Header              from '@/components/layout/Header'
 import DataTable           from '@/components/ui/DataTable'
 import StatCard            from '@/components/ui/StatCard'
-import { Package, AlertTriangle, TrendingDown } from 'lucide-react'
+import { Package, AlertTriangle, TrendingDown, MapPin } from 'lucide-react'
 import { inventoryApi }  from '@/lib/api/inventory'
 import { productsApi }   from '@/lib/api/products'
 import { storesApi }     from '@/lib/api/stores'
@@ -30,16 +30,17 @@ const ACC_BANDS = [
 ]
 
 const STOCK_OPTS = [
-  { value: '',          label: 'All Stock' },
-  { value: 'instock',   label: 'In Stock (>0)' },
-  { value: 'outstock',  label: 'Out of Stock (0)' },
-  { value: 'variance',  label: 'Has Variance' },
+  { value: '',         label: 'All Stock' },
+  { value: 'instock',  label: 'In Stock (>0)' },
+  { value: 'outstock', label: 'Out of Stock (0)' },
+  { value: 'variance', label: 'Has Variance' },
 ]
 
 export default function InventoryPage() {
   const { user, isAdmin }   = useAuth()
   const [selectedStoreId, setSelectedStoreId] = useState<string>('')
   const [filterBrand,    setFilterBrand]    = useState('')
+  const [filterZone,     setFilterZone]     = useState('')   // '' = all zones, 'store' = zone_id IS NULL
   const [filterAccuracy, setFilterAccuracy] = useState('')
   const [filterStock,    setFilterStock]    = useState('')
 
@@ -71,7 +72,14 @@ export default function InventoryPage() {
     enabled:  !!storeId,
   })
 
-  // Load all products for brand/name enrichment (cached, background)
+  // Store zones (Sales Floor, Backroom, etc.)
+  const { data: zones } = useQuery({
+    queryKey: ['store-zones', storeId],
+    queryFn:  () => storesApi.zones(storeId),
+    enabled:  !!storeId,
+  })
+
+  // Load all products for brand/name enrichment (cached 5 min)
   const { data: allProducts } = useQuery({
     queryKey: ['products-all-lookup'],
     queryFn:  async () => {
@@ -100,9 +108,9 @@ export default function InventoryPage() {
       const p = productMap[item.productId]
       return {
         ...item,
-        sku:         p?.sku         ?? item.productId.slice(-8),
-        productName: p?.name        ?? '—',
-        brand:       p?.brand       ?? null,
+        sku:         p?.sku   ?? item.productId.slice(-8),
+        productName: p?.name  ?? '—',
+        brand:       p?.brand ?? null,
       }
     }),
   [items, productMap])
@@ -115,19 +123,30 @@ export default function InventoryPage() {
 
   const filteredItems = useMemo(() => {
     return enrichedItems.filter(r => {
+      // Zone filter
+      if (filterZone === 'store' && r.zoneId !== null) return false
+      if (filterZone && filterZone !== 'store' && r.zoneId !== filterZone) return false
+      // Brand
       if (filterBrand && r.brand !== filterBrand) return false
-      if (filterAccuracy === 'high'   && (r.accuracyPct === null || r.accuracyPct < 95))  return false
+      // Accuracy band
+      if (filterAccuracy === 'high'   && (r.accuracyPct === null || r.accuracyPct < 95))               return false
       if (filterAccuracy === 'medium' && (r.accuracyPct === null || r.accuracyPct < 80 || r.accuracyPct >= 95)) return false
-      if (filterAccuracy === 'low'    && (r.accuracyPct === null || r.accuracyPct >= 80)) return false
-      if (filterAccuracy === 'na'     && r.accuracyPct !== null) return false
-      if (filterStock === 'instock'   && r.quantityOnHand === 0) return false
-      if (filterStock === 'outstock'  && r.quantityOnHand > 0)   return false
-      if (filterStock === 'variance'  && r.quantityOnHand === r.quantityExpected) return false
+      if (filterAccuracy === 'low'    && (r.accuracyPct === null || r.accuracyPct >= 80))               return false
+      if (filterAccuracy === 'na'     && r.accuracyPct !== null)                                        return false
+      // Stock status
+      if (filterStock === 'instock'   && r.quantityOnHand === 0)                        return false
+      if (filterStock === 'outstock'  && r.quantityOnHand > 0)                          return false
+      if (filterStock === 'variance'  && r.quantityOnHand === r.quantityExpected)        return false
       return true
     })
-  }, [enrichedItems, filterBrand, filterAccuracy, filterStock])
+  }, [enrichedItems, filterZone, filterBrand, filterAccuracy, filterStock])
 
-  const hasFilters = filterBrand || filterAccuracy || filterStock
+  const hasFilters = filterZone || filterBrand || filterAccuracy || filterStock
+
+  const zoneLabel = useMemo(() => {
+    if (!filterZone || filterZone === 'store') return null
+    return (zones ?? []).find(({ id }) => id === filterZone)?.name ?? null
+  }, [filterZone, zones])
 
   const columns = useMemo<ColumnDef<EnrichedRow, unknown>[]>(() => [
     {
@@ -135,8 +154,7 @@ export default function InventoryPage() {
       header: 'Product',
       accessorFn: r => r.sku + ' ' + r.productName,
       cell: ({ row: r }) => (
-        <Link href={`/inventory/${r.original.productId}`}
-              className="hover:underline block">
+        <Link href={`/inventory/${r.original.productId}`} className="hover:underline block">
           <p className="font-mono text-xs text-blue-600">{r.original.sku}</p>
           <p className="text-xs text-gray-500 truncate max-w-[200px]">{r.original.productName}</p>
         </Link>
@@ -179,7 +197,7 @@ export default function InventoryPage() {
         {isAdmin && allStores && allStores.content.length > 0 && (
           <div className="flex items-center gap-3">
             <label className="text-sm font-medium text-gray-600 shrink-0">Store</label>
-            <select value={storeId} onChange={e => setSelectedStoreId(e.target.value)} className={selectCls}>
+            <select value={storeId} onChange={e => { setSelectedStoreId(e.target.value); setFilterZone('') }} className={selectCls}>
               {allStores.content.map(s => (
                 <option key={s.id} value={s.id}>{s.name} ({s.storeCode})</option>
               ))}
@@ -196,10 +214,28 @@ export default function InventoryPage() {
 
         <div className="card">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <h2 className="text-sm font-semibold text-gray-700">Inventory State by Product</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-gray-700">Inventory State by Product</h2>
+              {zoneLabel && (
+                <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2 py-0.5">
+                  <MapPin size={10} /> {zoneLabel}
+                </span>
+              )}
+            </div>
 
             {/* Filters */}
             <div className="flex flex-wrap items-center gap-2">
+              {/* Zone (Sales Floor / Backroom) */}
+              {zones && zones.length > 0 && (
+                <select value={filterZone} onChange={e => setFilterZone(e.target.value)} className={selectCls}>
+                  <option value="">All Zones</option>
+                  {zones.map(({ id, name }) => (
+                    <option key={id} value={id}>{name}</option>
+                  ))}
+                  <option value="store">Store Level</option>
+                </select>
+              )}
+
               {/* Brand */}
               <select value={filterBrand} onChange={e => setFilterBrand(e.target.value)} className={selectCls}>
                 <option value="">All Brands</option>
@@ -218,7 +254,7 @@ export default function InventoryPage() {
 
               {hasFilters && (
                 <button
-                  onClick={() => { setFilterBrand(''); setFilterAccuracy(''); setFilterStock('') }}
+                  onClick={() => { setFilterZone(''); setFilterBrand(''); setFilterAccuracy(''); setFilterStock('') }}
                   className="text-xs text-gray-500 hover:text-gray-700 underline"
                 >
                   Clear
