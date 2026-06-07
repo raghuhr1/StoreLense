@@ -701,13 +701,17 @@ def main():
     ap.add_argument('--username',      default='admin')
     ap.add_argument('--password',      default='Admin@StoreLense1')
     ap.add_argument('--file',          help='Single XLS file')
-    ap.add_argument('--dir',           help='Directory of .xlsx files (sorted)')
-    ap.add_argument('--store-code',    default='P036')
+    ap.add_argument('--dir',           default=None,
+                    help='Directory of .xlsx files (default: current directory)')
+    ap.add_argument('--store-code',    default=None,
+                    help='Store code, e.g. P004 (default: derived from --dir folder name)')
     ap.add_argument('--store-name',    default=None)
 
-    # SQL mode
-    ap.add_argument('--sql',           action='store_true',
-                    help='Fast SQL bulk-insert mode (bypasses REST for products/EPCs/inventory)')
+    # SQL mode — on by default; use --no-sql to force REST mode
+    ap.add_argument('--sql',           action='store_true', default=True,
+                    help='Fast SQL bulk-insert mode (default: on)')
+    ap.add_argument('--no-sql',        action='store_true',
+                    help='Force REST API mode instead of SQL')
     ap.add_argument('--sql-out',       default=None,
                     help='Write SQL to this file and exit (do not execute)')
     ap.add_argument('--pg-container',  default=None,
@@ -734,26 +738,32 @@ def main():
         args.skip_products = True
         args.skip_expected = True
 
-    store_code = args.store_code
+    if getattr(args, 'no_sql', False):
+        args.sql = False
+
+    # ── Auto-detect dir (current directory) and store code (from dir name)
+    xls_dir = args.dir or (os.path.dirname(args.file) if args.file else None) or os.getcwd()
+    xls_dir = os.path.abspath(xls_dir)
+
+    store_code = args.store_code or os.path.basename(xls_dir)
     store_name = args.store_name or f'Pantaloons {store_code}'
 
     # ── Collect XLS files
     xls_files = []
-    if args.dir:
-        for f in sorted(os.listdir(args.dir)):
-            if f.lower().endswith(('.xlsx', '.xls')):
-                xls_files.append(os.path.join(args.dir, f))
-    elif args.file:
+    if args.file:
         xls_files = [args.file]
     else:
-        ap.error('Provide --file or --dir')
+        for f in sorted(os.listdir(xls_dir)):
+            if f.lower().endswith(('.xlsx', '.xls')) and not f.startswith('~'):
+                xls_files.append(os.path.join(xls_dir, f))
     if not xls_files:
-        fail('No XLS files found');  sys.exit(1)
+        fail(f'No XLS files found in {xls_dir}');  sys.exit(1)
 
     mode_label = 'SQL bulk-insert' if args.sql else 'REST API'
     print(f"\n{BOLD}{CYAN}  StoreLense XLS Seeder  [{mode_label}]{RESET}")
     print(f"  Gateway  : {args.url}")
     print(f"  Store    : {store_code} — {store_name}")
+    print(f"  Dir      : {xls_dir}")
     print(f"  XLS files: {len(xls_files)}")
     for f in xls_files:
         print(f"             {os.path.basename(f)}")
