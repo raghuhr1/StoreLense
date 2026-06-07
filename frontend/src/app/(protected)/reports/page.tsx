@@ -120,7 +120,7 @@ function ReportCard({ icon: Icon, title, description, columns, onDownload, loadi
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function ReportsPage() {
   const { user, isAdmin }  = useAuth()
-  const [range, setRange]  = useState<'7d' | '30d' | '90d'>('90d')
+  const [range, setRange]  = useState<'7d' | '30d' | '90d'>('30d')
   const [selectedStoreId, setSelectedStoreId] = useState('')
   const [downloading, setDownloading]         = useState<string | null>(null)
   const [done, setDone]                       = useState<string | null>(null)
@@ -374,7 +374,20 @@ export default function ReportsPage() {
               }`}
             >{r}</button>
           ))}
-          <span className="ml-auto text-xs text-gray-400">Reports include data for selected range & store</span>
+          {(() => {
+            if (!kpiData?.length) return null
+            const actualDays = kpiData.length === 1 ? 1
+              : Math.round((new Date(kpiData[kpiData.length - 1].kpiDate).getTime() - new Date(kpiData[0].kpiDate).getTime()) / 864e5) + 1
+            const rangeDays  = range === '7d' ? 7 : range === '30d' ? 30 : 90
+            return actualDays < rangeDays ? (
+              <span className="text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full">
+                {actualDays} day{actualDays !== 1 ? 's' : ''} of data available
+              </span>
+            ) : (
+              <span className="text-xs text-gray-400">{actualDays} days</span>
+            )
+          })()}
+          <span className="ml-auto text-xs text-gray-400">Reports include data for selected range &amp; store</span>
         </div>
 
         {/* Downloadable report cards */}

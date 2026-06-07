@@ -26,7 +26,7 @@ type Range = typeof RANGES[number]['label']
 export default function DashboardPage() {
   const { user, isAdmin } = useAuth()
   const [selectedStoreId, setSelectedStoreId] = useState<string>('')
-  const [range, setRange] = useState<Range>('90d')
+  const [range, setRange] = useState<Range>('30d')
 
   const { data: allStores } = useQuery({
     queryKey: ['stores-all'],
@@ -78,6 +78,14 @@ export default function DashboardPage() {
   const sessionCount = kpi?.reduce((s, k) => s + k.sohSessionsCount, 0) ?? 0
   const selectedStore = allStores?.content.find(s => s.id === storeId)
 
+  // Actual data span (may be less than selected range)
+  const actualDays = useMemo(() => {
+    if (!kpi?.length) return 0
+    if (kpi.length === 1) return 1
+    const ms = new Date(kpi[kpi.length - 1].kpiDate).getTime() - new Date(kpi[0].kpiDate).getTime()
+    return Math.round(ms / 864e5) + 1
+  }, [kpi])
+
   const selectCls = "text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
 
   return (
@@ -114,6 +122,16 @@ export default function DashboardPage() {
               {r.label}
             </button>
           ))}
+
+          {/* Actual data span badge */}
+          {actualDays > 0 && actualDays < days && (
+            <span className="ml-1 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full">
+              {actualDays} day{actualDays !== 1 ? 's' : ''} of data available
+            </span>
+          )}
+          {actualDays > 0 && actualDays >= days && (
+            <span className="ml-1 text-xs text-gray-400">{actualDays} days</span>
+          )}
         </div>
 
         {/* KPI cards */}
