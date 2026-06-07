@@ -643,8 +643,7 @@ def _generate_sql(store_id, union_products, all_files):
         w(f"  soh_sessions_count      = EXCLUDED.soh_sessions_count,")
         w(f"  total_epc_reads         = EXCLUDED.total_epc_reads,")
         w(f"  unique_skus_counted     = EXCLUDED.unique_skus_counted,")
-        w(f"  variance_items_count    = EXCLUDED.variance_items_count,")
-        w(f"  updated_at              = now();")
+        w(f"  variance_items_count    = EXCLUDED.variance_items_count;")
         w()
 
     # ── 7. Auto GRN tasks from positive ERP diff (consecutive XLS pairs) ─────
@@ -913,7 +912,8 @@ def main():
             step("Executing bulk SQL")
             success = run_sql(sql_text, args)
             if not success:
-                warn("SQL execution had errors — check output above")
+                fail("SQL execution failed — data NOT committed. Fix errors above and re-run.")
+                sys.exit(1)
 
         # KPI aggregation — call for every XLS date so new stores get full history
         step("Triggering KPI aggregation")
