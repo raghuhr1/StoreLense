@@ -19,6 +19,8 @@ export default function CycleCountPage() {
   const [selectedStoreId, setSelectedStoreId] = useState<string>('')
   const qc                  = useQueryClient()
   const [starting, setStarting] = useState(false)
+  const [filterStatus, setFilterStatus] = useState('')   // '' | 'completed' | 'in_progress' | 'pending'
+  const [filterType,   setFilterType]   = useState('')   // '' | 'full_store' | 'spot_check' | 'manual'
 
   const { data: allStores } = useQuery({
     queryKey: ['stores-all'],
@@ -32,7 +34,7 @@ export default function CycleCountPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['soh-sessions', storeId],
-    queryFn:  () => sohApi.listSessions(storeId, { size: 50 }),
+    queryFn:  () => sohApi.listSessions(storeId, { size: 100 }),
     enabled:  !!storeId,
   })
 
@@ -62,6 +64,18 @@ export default function CycleCountPage() {
   ], [])
 
   const activeSession = data?.content.find(s => s.status === 'in_progress')
+
+  const filtered = useMemo(() => {
+    return (data?.content ?? []).filter(s => {
+      if (filterStatus && s.status      !== filterStatus) return false
+      if (filterType   && s.sessionType !== filterType)   return false
+      return true
+    })
+  }, [data, filterStatus, filterType])
+
+  const hasFilters = filterStatus || filterType
+
+  const selectCls = "text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
 
   return (
     <>
@@ -99,21 +113,48 @@ export default function CycleCountPage() {
             )}
           </div>
 
-          <button
-            onClick={() => setStarting(true)}
-            disabled={!!activeSession || !storeId}
-            className="btn-primary disabled:opacity-40"
-          >
-            <Plus size={16} /> Start Count
-          </button>
+          {/* Filters + action */}
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={selectCls}>
+              <option value="">All Status</option>
+              <option value="completed">Completed</option>
+              <option value="in_progress">In Progress</option>
+              <option value="pending">Pending</option>
+            </select>
+
+            <select value={filterType} onChange={e => setFilterType(e.target.value)} className={selectCls}>
+              <option value="">All Types</option>
+              <option value="full_store">Full Store</option>
+              <option value="spot_check">Spot Check</option>
+              <option value="manual">Manual</option>
+            </select>
+
+            {hasFilters && (
+              <button
+                onClick={() => { setFilterStatus(''); setFilterType('') }}
+                className="text-xs text-gray-500 hover:text-gray-700 underline"
+              >
+                Clear
+              </button>
+            )}
+
+            <button
+              onClick={() => setStarting(true)}
+              disabled={!!activeSession || !storeId}
+              className="btn-primary disabled:opacity-40"
+            >
+              <Plus size={16} /> Start Count
+            </button>
+          </div>
         </div>
 
         <div className="card">
           <DataTable
-            data={data?.content ?? []}
+            data={filtered}
             columns={columns}
             isLoading={isLoading}
-            searchable={false}
+            searchable
+            searchPlaceholder="Search sessions…"
           />
         </div>
 

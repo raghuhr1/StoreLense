@@ -28,11 +28,14 @@ type FormValues = z.infer<typeof schema>
 export default function ProductsPage() {
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
-  const [search, setSearch] = useState('')
+  const [search, setSearch]       = useState('')
+  const [filterBrand, setFilterBrand]   = useState('')
+  const [filterRfid,  setFilterRfid]    = useState('')   // '' | 'enabled' | 'disabled'
+  const [filterStatus, setFilterStatus] = useState('')   // '' | 'active' | 'inactive'
 
   const { data, isLoading } = useQuery({
     queryKey: ['products', search],
-    queryFn:  () => productsApi.list({ search: search || undefined, size: 200 }),
+    queryFn:  () => productsApi.list({ search: search || undefined, size: 500 }),
   })
 
   const createMut = useMutation({
@@ -45,10 +48,29 @@ export default function ProductsPage() {
     defaultValues: { unitOfMeasure: 'EACH', rfidEnabled: true },
   })
 
+  const brands = useMemo(() => {
+    const s = new Set<string>()
+    for (const p of data?.content ?? []) if (p.brand) s.add(p.brand)
+    return Array.from(s).sort()
+  }, [data])
+
+  const filtered = useMemo(() => {
+    return (data?.content ?? []).filter(p => {
+      if (filterBrand  && p.brand !== filterBrand)                         return false
+      if (filterRfid === 'enabled'  && !p.rfidEnabled)                    return false
+      if (filterRfid === 'disabled' && p.rfidEnabled)                     return false
+      if (filterStatus === 'active'   && p.active === false)              return false
+      if (filterStatus === 'inactive' && p.active !== false)              return false
+      return true
+    })
+  }, [data, filterBrand, filterRfid, filterStatus])
+
+  const hasFilters = filterBrand || filterRfid || filterStatus
+
   const columns = useMemo<ColumnDef<Product, unknown>[]>(() => [
-    { accessorKey: 'sku',           header: 'SKU',         cell: i => <span className="font-mono text-xs font-semibold">{i.getValue<string>()}</span> },
-    { accessorKey: 'name',          header: 'Name',        cell: i => <span className="font-medium">{i.getValue<string>()}</span> },
-    { accessorKey: 'brand',         header: 'Brand',       cell: i => i.getValue<string | null>() ?? '—' },
+    { accessorKey: 'sku',           header: 'SKU',    cell: i => <span className="font-mono text-xs font-semibold">{i.getValue<string>()}</span> },
+    { accessorKey: 'name',          header: 'Name',   cell: i => <span className="font-medium">{i.getValue<string>()}</span> },
+    { accessorKey: 'brand',         header: 'Brand',  cell: i => i.getValue<string | null>() ?? '—' },
     { accessorKey: 'unitOfMeasure', header: 'UOM' },
     {
       accessorKey: 'rfidEnabled',
@@ -63,26 +85,60 @@ export default function ProductsPage() {
     { accessorKey: 'createdAt',  header: 'Created', cell: i => fmt(i.getValue<string>()) },
   ], [])
 
+  const selectCls = "text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
+
   return (
     <>
       <Header title="Products" />
       <div className="p-6 space-y-4">
 
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Search */}
           <input
             className="input-field max-w-xs"
             placeholder="Search by SKU or name…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
-          <button onClick={() => setOpen(true)} className="btn-primary">
-            <Plus size={16} /> Add Product
-          </button>
+
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={filterBrand} onChange={e => setFilterBrand(e.target.value)} className={selectCls}>
+              <option value="">All Brands</option>
+              {brands.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+
+            <select value={filterRfid} onChange={e => setFilterRfid(e.target.value)} className={selectCls}>
+              <option value="">All RFID</option>
+              <option value="enabled">RFID Enabled</option>
+              <option value="disabled">RFID Disabled</option>
+            </select>
+
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={selectCls}>
+              <option value="">All Status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+
+            {hasFilters && (
+              <button
+                onClick={() => { setFilterBrand(''); setFilterRfid(''); setFilterStatus('') }}
+                className="text-xs text-gray-500 hover:text-gray-700 underline"
+              >
+                Clear
+              </button>
+            )}
+
+            <button onClick={() => setOpen(true)} className="btn-primary">
+              <Plus size={16} /> Add Product
+            </button>
+          </div>
         </div>
 
         <div className="card">
+          <p className="text-xs text-gray-400 mb-3">{filtered.length.toLocaleString()} products</p>
           <DataTable
-            data={data?.content ?? []}
+            data={filtered}
             columns={columns}
             isLoading={isLoading}
             searchable={false}
@@ -141,9 +197,7 @@ export default function ProductsPage() {
                 )}
 
                 <div className="flex gap-3 justify-end pt-2">
-                  <button type="button" onClick={() => { setOpen(false); reset() }} className="btn-secondary">
-                    Cancel
-                  </button>
+                  <button type="button" onClick={() => { setOpen(false); reset() }} className="btn-secondary">Cancel</button>
                   <button type="submit" disabled={createMut.isPending} className="btn-primary">
                     {createMut.isPending ? 'Adding…' : 'Add Product'}
                   </button>
