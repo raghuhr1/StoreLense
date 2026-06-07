@@ -144,22 +144,36 @@ class Api:
 # ── Column alias map — handles variations across store XLS formats ────────────
 _COL_ALIASES: dict[str, list[str]] = {
     'style':       ['style', 'style no', 'style no.', 'style_no', 'styleno',
-                    'article', 'article no', 'article no.', 'item no', 'item code'],
-    'dept':        ['dept', 'department', 'dept.', 'category', 'cat', 'div', 'division'],
+                    'article', 'article no', 'article no.', 'item no', 'item code',
+                    'item_group', 'item group',                 # P004 format
+                    'product code', 'sku'],
+    'dept':        ['item_class', 'item class',                 # P004: 'MEN APPAREL', 'WOMEN APPAREL'
+                    'item_subclass', 'item subclass',           # more specific sub-category
+                    'dept', 'department', 'dept.', 'category', 'cat', 'div', 'division'],
     'description': ['description', 'desc', 'item desc', 'product name', 'item description', 'name'],
-    'barcode':     ['barcode', 'bar code', 'ean', 'upc', 'item barcode', 'ean13'],
+    'barcode':     ['barcode', 'bar code', 'ean', 'upc', 'item barcode', 'ean13',
+                    'gtin', 'item_barcode',                     # P004 format
+                    'barcode no', 'ean/upc'],
     'expected':    ['expected', 'exp qty', 'expected qty', 'erp qty', 'system qty',
-                    'book qty', 'book stock', 'erp expected', 'quantity'],
-    'scan':        ['scan', 'scanned', 'rfid scan', 'rfid count', 'physical', 'physical count', 'counted'],
+                    'book qty', 'book stock', 'erp expected', 'quantity',
+                    'expected_qty',                             # P004 format
+                    'sys qty', 'system stock'],
+    'scan':        ['scan', 'scanned', 'rfid scan', 'rfid count', 'physical', 'physical count', 'counted',
+                    'handscan_qty', 'handscan qty', 'handscan', # P004 format
+                    'rfid qty', 'scan qty'],
     'back stock':  ['back stock', 'backstock', 'back room', 'backroom', 'back', 'br stock', 'b/s'],
     'sales floor': ['sales floor', 'salesfloor', 'floor', 'shop floor', 'sf', 's/f', 'floor stock'],
 }
 
 def _resolve_col(row: dict, canonical: str):
-    """Return value for a canonical column, trying all known aliases."""
+    """Return value for a canonical column, trying all known aliases.
+    For text fields, skips '?' placeholder values and falls through to next alias."""
     for alias in _COL_ALIASES.get(canonical, [canonical]):
         if alias in row:
-            return row[alias]
+            v = row[alias]
+            # Skip '?' placeholders and empty strings in text fields
+            if v is not None and str(v).strip() not in ('', '?', 'N/A', 'NA', '-'):
+                return v
     return None
 
 
@@ -234,12 +248,14 @@ def date_from_filename(filename):
 def aggregate_products(rows):
     """Returns dict: style → {dept, style, name, epcs[], expected_total, scan_total, back_stock_total, sales_floor_total}."""
     products = {}
+    def _str(v): return str(v).strip() if v is not None else ''
+
     for r in rows:
-        style = (_resolve_col(r, 'style') or '').strip()
+        style = _str(_resolve_col(r, 'style'))
         if not style:
             continue
-        dept        = (_resolve_col(r, 'dept') or '').strip()
-        desc        = (_resolve_col(r, 'description') or style).strip()
+        dept        = _str(_resolve_col(r, 'dept'))
+        desc        = _str(_resolve_col(r, 'description')) or style
         barcode     = clean_barcode(_resolve_col(r, 'barcode'))
         expected    = max(0, int(_resolve_col(r, 'expected') or 0))
         scan        = int(_resolve_col(r, 'scan') or 0)
