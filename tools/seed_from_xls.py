@@ -102,18 +102,32 @@ class Api:
         self._refresh()
 
     def _refresh(self):
-        for attempt in range(6):
+        step("Authenticating …")
+        cred_failures = 0
+        for attempt in range(40):          # up to ~10 min waiting for Spring Boot
             resp = _call('POST', f'{self.base}/api/auth/login',
                          {'username': self._user, 'password': self._pass},
-                         retries=0, timeout=20)
+                         retries=1, timeout=20)
             tok = (resp.get('data') or {}).get('accessToken')
             if tok:
                 self.token = tok
+                ok("Authenticated")
                 return
-            wait = 5 * (attempt + 1)
-            warn(f"Login attempt {attempt+1} failed ({resp.get('message')}), retrying in {wait}s …")
+            msg = resp.get('message', '')
+            # 502 / 503 / connection errors → service still starting, wait longer
+            is_infra = any(x in msg for x in ('HTTP 50', 'Connection', 'timed out', 'Failed after'))
+            if is_infra:
+                wait = 15
+                warn(f"Service not ready (attempt {attempt+1}), retrying in {wait}s …")
+            else:
+                cred_failures += 1
+                wait = 5 * cred_failures
+                warn(f"Login attempt {cred_failures} failed ({msg}), retrying in {wait}s …")
+                if cred_failures >= 5:
+                    fail("Login failed — check --username / --password")
+                    sys.exit(1)
             time.sleep(wait)
-        fail("Login failed after 6 attempts")
+        fail("Service unavailable after 40 attempts — is the stack running?")
         sys.exit(1)
 
     def get(self, path, **kw):
