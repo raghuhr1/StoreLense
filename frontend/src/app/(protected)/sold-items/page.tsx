@@ -14,7 +14,7 @@ import { productsApi }  from '@/lib/api/products'
 import { refillApi }    from '@/lib/api/refill'
 import { storesApi }    from '@/lib/api/stores'
 import { useAuth }      from '@/lib/auth/AuthContext'
-import type { InventoryState, Product, RefillTask } from '@/types'
+import type { InventoryState, Product } from '@/types'
 
 // ── types ──────────────────────────────────────────────────────────────────
 interface SaleRow {
@@ -141,22 +141,24 @@ export default function SoldItemsPage() {
     ),
   [rows, filterBrand, gapMin])
 
-  // Summary stats
+  // Summary stats — driven by `filtered` so cards respond to dropdowns
   const stats = useMemo(() => ({
-    totalSKUs:       rows.filter(r => r.gap > 0).length,
-    totalGap:        rows.reduce((s, r) => s + r.gap, 0),
-    phantomSKUs:     rows.filter(r => r.rfidExcess > 0).length,
-    totalPhantom:    rows.reduce((s, r) => s + r.rfidExcess, 0),
-    perfectMatch:    rows.filter(r => r.gap === 0 && r.rfidExcess === 0).length,
-    avgAccuracy:     rows.length > 0
-      ? Math.round(rows.reduce((s, r) => s + (r.accuracyPct ?? 0), 0) / rows.length)
+    totalSKUs:       filtered.filter(r => r.gap > 0).length,
+    totalGap:        filtered.reduce((s, r) => s + r.gap, 0),
+    phantomSKUs:     filtered.filter(r => r.rfidExcess > 0).length,
+    totalPhantom:    filtered.reduce((s, r) => s + r.rfidExcess, 0),
+    perfectMatch:    filtered.filter(r => r.gap === 0 && r.rfidExcess === 0).length,
+    avgAccuracy:     filtered.length > 0
+      ? Math.round(filtered.reduce((s, r) => s + (r.accuracyPct ?? 0), 0) / filtered.length)
       : 0,
-  }), [rows])
+  }), [filtered])
 
-  // Brand-level gap chart
+  // Brand-level gap chart — always shows ALL brands for context (not filtered by brand)
+  // but respects the gap-size filter so numbers stay consistent
   const brandGapData = useMemo(() => {
+    const src = gapMin > 0 ? rows.filter(r => r.gap >= gapMin) : rows
     const m: Record<string, { gap: number; phantom: number; skus: number }> = {}
-    for (const r of rows) {
+    for (const r of src) {
       if (!m[r.brand]) m[r.brand] = { gap: 0, phantom: 0, skus: 0 }
       m[r.brand].gap     += r.gap
       m[r.brand].phantom += r.rfidExcess
@@ -165,19 +167,19 @@ export default function SoldItemsPage() {
     return Object.entries(m)
       .map(([brand, v]) => ({ brand, ...v }))
       .sort((a, b) => b.gap - a.gap)
-  }, [rows])
+  }, [rows, gapMin])
 
-  // ERP vs RFID distribution pie
+  // ERP vs RFID distribution pie — driven by `filtered`
   const pieDist = useMemo(() => [
-    { name: 'ERP = RFID (matched)',    value: rows.filter(r => r.gap === 0 && r.rfidExcess === 0).length, fill: '#10b981' },
-    { name: 'ERP > RFID (sold/miss)', value: rows.filter(r => r.gap > 0).length,      fill: '#f59e0b' },
-    { name: 'RFID > ERP (phantom)',   value: rows.filter(r => r.rfidExcess > 0).length, fill: '#ef4444' },
-  ].filter(d => d.value > 0), [rows])
+    { name: 'ERP = RFID (matched)',    value: filtered.filter(r => r.gap === 0 && r.rfidExcess === 0).length, fill: '#10b981' },
+    { name: 'ERP > RFID (sold/miss)', value: filtered.filter(r => r.gap > 0).length,      fill: '#f59e0b' },
+    { name: 'RFID > ERP (phantom)',   value: filtered.filter(r => r.rfidExcess > 0).length, fill: '#ef4444' },
+  ].filter(d => d.value > 0), [filtered])
 
-  // ── inconsistency checks ──────────────────────────────────────────────────
+  // ── inconsistency checks — driven by `filtered` ───────────────────────────
   const inconsistencies = useMemo((): Inconsistency[] => {
     const issues: Inconsistency[] = []
-    for (const r of rows) {
+    for (const r of filtered) {
       // Phantom inventory: RFID found more than ERP expects
       if (r.rfidExcess > 0) {
         issues.push({
@@ -388,7 +390,7 @@ export default function SoldItemsPage() {
             <h3 className="text-sm font-semibold text-gray-700 mb-3">ERP vs RFID Status</h3>
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
-                <Pie data={pieDist} dataKey="value" nameKey="name" cx="50%" cy="45%" outerRadius={70} label={({ name, value }) => `${value}`}>
+                <Pie data={pieDist} dataKey="value" nameKey="name" cx="50%" cy="45%" outerRadius={70} label={({ value }) => `${value}`}>
                   {pieDist.map((d, i) => <Cell key={i} fill={d.fill} />)}
                 </Pie>
                 <Legend wrapperStyle={{ fontSize: 11 }} />
