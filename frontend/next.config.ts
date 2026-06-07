@@ -21,6 +21,11 @@ const DEV_SERVICE_MAP: [string, string][] = [
 
 const config: NextConfig = {
   output: 'standalone',        // Required for Docker production image
+  // Stamp every build with a unique ID so AuthContext can detect a new deploy
+  // and clear stale sessionStorage refresh tokens automatically.
+  env: {
+    NEXT_PUBLIC_BUILD_ID: new Date().toISOString(),
+  },
   async rewrites() {
     if (isDev) {
       return DEV_SERVICE_MAP.map(([prefix, dest]) => ({

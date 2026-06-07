@@ -33,11 +33,30 @@ function userFromToken(token: string): AuthUser | null {
   return { userId: claims.sub, username: claims.username, role: claims.role, storeId: claims.storeId ?? null }
 }
 
+const BUILD_ID      = process.env.NEXT_PUBLIC_BUILD_ID ?? ''
+const BUILD_ID_KEY  = 'sl_build'
+
+function clearStaleSession() {
+  // If the stored build ID doesn't match this build, a new frontend was deployed.
+  // Wipe all auth sessionStorage so the user gets a clean login rather than a
+  // broken refresh attempt against a JWT the backend may no longer recognise.
+  const stored = typeof window !== 'undefined' ? sessionStorage.getItem(BUILD_ID_KEY) : null
+  if (BUILD_ID && stored && stored !== BUILD_ID) {
+    sessionStorage.clear()
+  }
+  if (typeof window !== 'undefined' && BUILD_ID) {
+    sessionStorage.setItem(BUILD_ID_KEY, BUILD_ID)
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser]         = useState<AuthUser | null>(null)
   const [isLoading, setLoading] = useState(true)
 
   useEffect(() => {
+    // Detect new deploy and wipe stale tokens before attempting any refresh
+    clearStaleSession()
+
     const accessToken = tokenStore.getAccess()
 
     if (accessToken) {
