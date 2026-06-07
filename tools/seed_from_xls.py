@@ -32,6 +32,7 @@ Columns expected in each XLS:
 """
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -497,6 +498,63 @@ def _generate_sql(store_id, union_products, all_files):
         w(f"VALUES ({_sq(rid)}, {_sq(sid)}, {_sq(store_id)},")
         w(f"  {len(day_prods)}, {total_oh}, {total_exp}, {accuracy},")
         w(f"  {variance_count}, {overcount}, {undercount});")
+        w()
+
+    # ── 7. Auto GRN tasks from positive ERP diff (consecutive XLS pairs) ─────
+    w("-- ── 7. Auto GRN Tasks (positive ERP diff → new stock received) ──────────────")
+    if len(all_files) >= 2:
+        for idx in range(1, len(all_files)):
+            _prev_bname, prev_date, prev_rows = all_files[idx - 1]
+            _curr_bname, curr_date, curr_rows = all_files[idx]
+
+            prev_prods = aggregate_products(prev_rows)
+            curr_prods = aggregate_products(curr_rows)
+
+            grn_items = []   # (style, units_received)
+            for style, curr in curr_prods.items():
+                prev_exp = prev_prods.get(style, {}).get('expected_total', 0)
+                curr_exp = curr.get('expected_total', 0)
+                diff = curr_exp - prev_exp
+                if diff > 0:
+                    grn_items.append((style, diff))
+
+            if not grn_items:
+                w(f"-- No positive ERP diff between {prev_date} and {curr_date}")
+                w()
+                continue
+
+            # Deterministic task ID so re-seeding doesn't duplicate
+            task_seed   = f"{store_id}|GRN|{curr_date}"
+            grn_task_id = str(uuid.UUID(hashlib.md5(task_seed.encode()).hexdigest()))
+            grn_number  = f"GRN-{curr_date.replace('-', '')}"
+            total_units = sum(d for _, d in grn_items)
+
+            w(f"-- {grn_number}: {len(grn_items)} SKUs, {total_units} units ({prev_date} → {curr_date})")
+            w(f"INSERT INTO refill.refill_tasks")
+            w(f"  (id, store_id, task_type, status, priority, source, notes, created_by, created_at, completed_at)")
+            w(f"VALUES ({_sq(grn_task_id)}, {_sq(store_id)}, 'replenishment', 'completed', 3, 'erp',")
+            w(f"  {_sq(grn_number + f' — {len(grn_items)} SKUs received, {total_units} units from DC')},")
+            w(f"  gen_random_uuid(), {_sq(curr_date + 'T08:00:00+05:30')}::timestamptz,")
+            w(f"  {_sq(curr_date + 'T10:00:00+05:30')}::timestamptz)")
+            w(f"ON CONFLICT (id) DO NOTHING;")
+            w()
+
+            # Delete existing items (safe re-seed since task ON CONFLICT does nothing)
+            w(f"DELETE FROM refill.refill_task_items WHERE task_id = {_sq(grn_task_id)};")
+
+            # Insert items via _sp temp-table join (style → product UUID)
+            for i in range(0, len(grn_items), BATCH):
+                chunk = grn_items[i:i + BATCH]
+                vals  = [f"  ({_sq(style)}, {qty}::int)" for style, qty in chunk]
+                w(f"INSERT INTO refill.refill_task_items")
+                w(f"  (id, task_id, product_id, requested_quantity, fulfilled_quantity, status)")
+                w(f"SELECT gen_random_uuid(), {_sq(grn_task_id)}, s.pid, v.qty, v.qty, 'fulfilled'")
+                w(f"FROM (VALUES")
+                w(',\n'.join(vals))
+                w(f") AS v(style, qty) JOIN _sp s ON s.style = v.style;")
+                w()
+    else:
+        w("-- Only one XLS file — no consecutive pair to diff for GRN tasks")
         w()
 
     w("COMMIT;")

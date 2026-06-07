@@ -6,7 +6,7 @@ import {
   type LucideIcon,
   LayoutDashboard, Package, RotateCw,
   ArrowLeftRight, BarChart3, Users, Store, Cpu, ScanLine, Tag, TrendingUp,
-  Truck, RefreshCw,
+  Truck, RefreshCw, ShoppingCart,
 } from 'lucide-react'
 import { useAuth }       from '@/lib/auth/AuthContext'
 import { cn }            from '@/lib/utils'
@@ -22,6 +22,7 @@ const allNavItems: NavItem[] = [
   { href: '/transfers',   label: 'Transfers',    icon: ArrowLeftRight,  roles: ['ADMIN','STORE_MANAGER'] },
   { href: '/reports',     label: 'Reports',      icon: BarChart3,       roles: ['ADMIN','STORE_MANAGER'] },
   { href: '/analytics',   label: 'Analytics',    icon: TrendingUp,      roles: ['ADMIN','STORE_MANAGER'] },
+  { href: '/sold-items',  label: 'Sales',        icon: ShoppingCart,    roles: ['ADMIN','STORE_MANAGER'] },
   { href: '/products',    label: 'Products',     icon: Tag,             roles: ['ADMIN'] },
   { href: '/users',       label: 'Users',        icon: Users,           roles: ['ADMIN'] },
   { href: '/stores',      label: 'Stores',       icon: Store,           roles: ['ADMIN'] },
