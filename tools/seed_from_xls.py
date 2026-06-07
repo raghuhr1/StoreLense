@@ -582,11 +582,12 @@ def _generate_sql(store_id, union_products, all_files):
     epc_best: dict = {}
     for _, date_str, rows in all_files:
         for r in rows:
-            bc    = clean_barcode(r.get('barcode'))
-            style = (r.get('style') or '').strip()
+            def _str_r(v): return str(v).strip() if v is not None else ''
+            bc    = clean_barcode(_resolve_col(r, 'barcode'))
+            style = _str_r(_resolve_col(r, 'style'))
             if not bc or not style:
                 continue
-            scan   = int(r.get('scan') or 0)
+            scan   = int(_resolve_col(r, 'scan') or 0)
             status = 'in_store' if scan >= 1 else 'missing'
             if bc not in epc_best or status == 'in_store':
                 epc_best[bc] = (style, status, date_str)
