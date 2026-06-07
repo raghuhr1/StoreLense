@@ -63,7 +63,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: redis-server --save 20 1 --loglevel warning --maxmemory 512mb --maxmemory-policy allkeys-lru
+    command: redis-server --save 20 1 --loglevel warning --maxmemory 512mb --maxmemory-policy allkeys-lru --ignore-warnings ARM64-COW-BUG
     volumes:
       - redis_data:/data
     ports:
