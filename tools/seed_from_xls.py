@@ -552,6 +552,23 @@ def _generate_sql(store_id, union_products, all_files):
         w(f"  {variance_count}, {overcount}, {undercount});")
         w()
 
+        # KPI daily row for this date — covers new stores missed by V2_0 migration
+        w(f"INSERT INTO reporting.kpi_daily")
+        w(f"  (store_id, kpi_date, inventory_accuracy_pct, soh_sessions_count,")
+        w(f"   refill_tasks_created, refill_tasks_completed, refill_completion_rate_pct,")
+        w(f"   total_epc_reads, unique_skus_counted, variance_items_count)")
+        w(f"VALUES ({_sq(store_id)}, {_sq(date_str)}::date,")
+        w(f"  {accuracy}, 1, 0, 0, NULL,")
+        w(f"  {len(scan_epcs)}, {len(day_prods)}, {variance_count})")
+        w(f"ON CONFLICT (store_id, kpi_date) DO UPDATE SET")
+        w(f"  inventory_accuracy_pct  = EXCLUDED.inventory_accuracy_pct,")
+        w(f"  soh_sessions_count      = EXCLUDED.soh_sessions_count,")
+        w(f"  total_epc_reads         = EXCLUDED.total_epc_reads,")
+        w(f"  unique_skus_counted     = EXCLUDED.unique_skus_counted,")
+        w(f"  variance_items_count    = EXCLUDED.variance_items_count,")
+        w(f"  updated_at              = now();")
+        w()
+
     # ── 7. Auto GRN tasks from positive ERP diff (consecutive XLS pairs) ─────
     w("-- ── 7. Auto GRN Tasks (positive ERP diff → new stock received) ──────────────")
     if len(all_files) >= 2:
@@ -808,15 +825,19 @@ def main():
             if not success:
                 warn("SQL execution had errors — check output above")
 
-        # KPI aggregation (still REST — single call)
+        # KPI aggregation — call for every XLS date so new stores get full history
         step("Triggering KPI aggregation")
         api._refresh()
+        kpi_dates = [d for _, d, _ in all_files]
         today = datetime.now().strftime('%Y-%m-%d')
-        resp  = api.post(f'/api/reporting/kpi/aggregate?storeId={store_id}&date={today}', timeout=30)
-        if resp.get('success'):
-            ok(f"KPI aggregated for {store_code} ({today})")
-        else:
-            info(f"KPI: {resp.get('message')}")
+        if today not in kpi_dates:
+            kpi_dates.append(today)
+        for kpi_date in kpi_dates:
+            resp = api.post(f'/api/reporting/kpi/aggregate?storeId={store_id}&date={kpi_date}', timeout=30)
+            if resp.get('success'):
+                ok(f"KPI aggregated for {store_code} ({kpi_date})")
+            else:
+                info(f"KPI {kpi_date}: {resp.get('message')}")
 
         print(f"\n{BOLD}{GREEN}{'═'*52}{RESET}")
         print(f"{BOLD}{GREEN}  Seeding complete!{RESET}")
