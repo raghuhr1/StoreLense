@@ -19,7 +19,7 @@ x-spring-env: &spring-env
   JWT_SECRET:  ${JWT_SECRET:-storelense-dev-secret-key-minimum-32-chars}
   PRODUCT_SERVICE_URL: http://product-service:8083
   STORE_SERVICE_URL:   http://store-service:8082
-  # Separate management port — bypasses JWT Spring Security, allows Prometheus to scrape /actuator/prometheus
+  # Separate management port — not exposed to host; Prometheus reaches it inside Docker network
   MANAGEMENT_SERVER_PORT: "9000"
 
 # ─── Healthcheck defaults ────────────────────────────────────────────────────

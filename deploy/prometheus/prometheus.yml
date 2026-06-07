@@ -11,8 +11,8 @@ rule_files:
 scrape_configs:
 
   # ── Spring Boot microservices ─────────────────────────────────────────────────
-  # Scraped on port 9000 (MANAGEMENT_SERVER_PORT) which bypasses JWT Spring Security.
-  # /actuator/prometheus is open on the management port without authentication.
+  # Scraped on port 9000 (MANAGEMENT_SERVER_PORT). /actuator/** is permitted
+  # without auth by the @Order(1) actuatorSecurityChain in ServiceSecurityConfig.
   - job_name: storelense-services
     metrics_path: /actuator/prometheus
     scrape_interval: 30s
