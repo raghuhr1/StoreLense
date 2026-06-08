@@ -45,22 +45,29 @@ BEGIN
   END LOOP;
 
   -- ── 2. Seed epc_registry from products.epc_tags for each store ─────────────
-  -- For every EPC registered against a product that has expected inventory in a
-  -- store, create an epc_registry entry (status = in_store).
-  INSERT INTO inventory.epc_registry
-    (epc, store_id, product_id, status, last_seen_at, first_seen_at)
-  SELECT
-    et.epc,
-    ist.store_id,
-    et.product_id,
-    'in_store',
-    now() - interval '2 hours',
-    now() - interval '30 days'
-  FROM products.epc_tags   et
-  JOIN inventory.inventory_state ist
-       ON  ist.product_id    = et.product_id
-       AND ist.zone_id       IS NULL
-  WHERE et.is_active          = true
-    AND ist.quantity_expected > 0
-  ON CONFLICT (epc, store_id) DO NOTHING;
+  -- Wrapped in an inner BEGIN/EXCEPTION block so the migration succeeds even
+  -- when inventory-service starts before product-service has created epc_tags.
+  -- RFID ingest at runtime will populate epc_registry for real data.
+  BEGIN
+    INSERT INTO inventory.epc_registry
+      (epc, store_id, product_id, status, last_seen_at, first_seen_at)
+    SELECT
+      et.epc,
+      ist.store_id,
+      et.product_id,
+      'in_store',
+      now() - interval '2 hours',
+      now() - interval '30 days'
+    FROM products.epc_tags   et
+    JOIN inventory.inventory_state ist
+         ON  ist.product_id    = et.product_id
+         AND ist.zone_id       IS NULL
+    WHERE et.is_active          = true
+      AND ist.quantity_expected > 0
+    ON CONFLICT (epc, store_id) DO NOTHING;
+  EXCEPTION WHEN undefined_table THEN
+    -- products.epc_tags not yet created (product-service hasn't started);
+    -- skip silently — the xls seeder and RFID ingest populate this at runtime.
+    NULL;
+  END;
 END $$;
