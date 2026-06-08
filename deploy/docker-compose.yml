@@ -99,9 +99,9 @@ services:
     healthcheck:
       test:         ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
       interval:     15s
-      timeout:      10s
+      timeout:      30s
       retries:      10
-      start_period: 30s
+      start_period: 60s
 
   # ═══════════════════════════════════════════════════════════════════════════
   # MICROSERVICES
@@ -120,7 +120,7 @@ services:
       - "8081:8081"
     logging: *default-logging
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8081/actuator/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:9000/actuator/health"]
       <<: *spring-healthcheck
 
   store-service:
@@ -135,7 +135,7 @@ services:
       - "8082:8082"
     logging: *default-logging
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8082/actuator/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:9000/actuator/health"]
       <<: *spring-healthcheck
 
   product-service:
@@ -151,7 +151,7 @@ services:
       - "8083:8083"
     logging: *default-logging
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8083/actuator/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:9000/actuator/health"]
       <<: *spring-healthcheck
 
   inventory-service:
@@ -167,7 +167,7 @@ services:
       - "8084:8084"
     logging: *default-logging
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8084/actuator/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:9000/actuator/health"]
       <<: *spring-healthcheck
 
   soh-service:
@@ -183,7 +183,7 @@ services:
       - "8085:8085"
     logging: *default-logging
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8085/actuator/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:9000/actuator/health"]
       <<: *spring-healthcheck
 
   refill-service:
@@ -199,7 +199,7 @@ services:
       - "8086:8086"
     logging: *default-logging
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8086/actuator/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:9000/actuator/health"]
       <<: *spring-healthcheck
 
   rfid-ingest-service:
@@ -215,7 +215,7 @@ services:
       - "8087:8087"
     logging: *default-logging
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8087/actuator/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:9000/actuator/health"]
       <<: *spring-healthcheck
 
   rfid-processing-service:
@@ -232,7 +232,7 @@ services:
       - "8088:8088"
     logging: *default-logging
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8088/actuator/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:9000/actuator/health"]
       <<: *spring-healthcheck
 
   reporting-service:
@@ -247,7 +247,7 @@ services:
       - "8089:8089"
     logging: *default-logging
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8089/actuator/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:9000/actuator/health"]
       <<: *spring-healthcheck
 
   erp-integration-service:
@@ -267,7 +267,7 @@ services:
       - "8090:8090"
     logging: *default-logging
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8090/actuator/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:9000/actuator/health"]
       <<: *spring-healthcheck
 
   notification-service:
@@ -282,7 +282,7 @@ services:
       - "8091:8091"
     logging: *default-logging
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8091/actuator/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:9000/actuator/health"]
       <<: *spring-healthcheck
 
   # ═══════════════════════════════════════════════════════════════════════════
