@@ -44,36 +44,54 @@ read -rp "Press ENTER to continue or Ctrl-C to cancel..."
 step "1 / 12 — Network Check + System Update"
 # =============================================================================
 
-# Verify internet / DNS before attempting any downloads
-if ! curl -sf --max-time 5 https://8.8.8.8 >/dev/null 2>&1 && \
-   ! ping -c 1 -W 3 8.8.8.8 >/dev/null 2>&1; then
-  warn "Cannot reach 8.8.8.8 — server may have no internet access."
-  warn "Check your network / firewall and re-run."
-  exit 1
+# ── DNS fix for Ubuntu 22.04 (systemd-resolved) ──────────────────────────────
+# Ubuntu 22.04 manages /etc/resolv.conf via systemd-resolved.
+# Writing directly to /etc/resolv.conf is overwritten on restart.
+# The correct fix is to configure systemd-resolved and repoint the symlink.
+fix_dns() {
+  info "Applying DNS fix via systemd-resolved (Ubuntu 22.04)..."
+  mkdir -p /etc/systemd/resolved.conf.d/
+  tee /etc/systemd/resolved.conf.d/storelense-dns.conf >/dev/null <<'DNSEOF'
+[Resolve]
+DNS=8.8.8.8 8.8.4.4
+FallbackDNS=1.1.1.1
+DNSEOF
+  systemctl restart systemd-resolved 2>/dev/null || true
+  # Point resolv.conf at the full resolver, not the 127.0.0.53 stub
+  ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+  sleep 2
+}
+
+# Check raw IP connectivity first
+if ! ping -c 1 -W 4 8.8.8.8 >/dev/null 2>&1; then
+  err "Cannot reach 8.8.8.8 — server has no internet access. Check your network/firewall."
 fi
 
-if ! nslookup archive.ubuntu.com >/dev/null 2>&1; then
-  warn "DNS resolution failing — attempting auto-fix with Google DNS..."
-  tee /etc/resolv.conf <<'DNSEOF'
-nameserver 8.8.8.8
-nameserver 8.8.4.4
-nameserver 1.1.1.1
-DNSEOF
-  if ! nslookup archive.ubuntu.com >/dev/null 2>&1; then
-    err "DNS still failing after fix. Set nameserver manually in /etc/resolv.conf and re-run."
+# Check DNS; fix if broken
+if ! getent hosts archive.ubuntu.com >/dev/null 2>&1; then
+  warn "DNS resolution failing — running auto-fix..."
+  fix_dns
+  if ! getent hosts archive.ubuntu.com >/dev/null 2>&1; then
+    err "DNS still failing after fix. Run manually:\n  sudo mkdir -p /etc/systemd/resolved.conf.d\n  echo -e '[Resolve]\nDNS=8.8.8.8' | sudo tee /etc/systemd/resolved.conf.d/dns.conf\n  sudo systemctl restart systemd-resolved\n  sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf"
   fi
-  log "DNS fixed — using 8.8.8.8"
+  log "DNS fixed — resolving via 8.8.8.8"
+else
+  log "DNS OK"
 fi
 
 apt-get update -qq
-# upgrade is best-effort — a single unresolvable package should not abort the install
+# Upgrade is best-effort — skip packages that fail to download
 DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -qq --ignore-missing 2>/dev/null || \
-  warn "Some packages could not be upgraded — continuing anyway"
+  warn "Some packages could not be upgraded — continuing"
+
+# Install only what the script actually needs.
+# python3 is pre-installed on Ubuntu 22.04; python3-pip is intentionally
+# excluded — it pulls in -dev headers (~200 MB) which are not needed for deployment.
 apt-get install -y -qq \
   curl wget git jq openssl \
-  python3 python3-pip \
+  python3 \
   ca-certificates gnupg lsb-release \
-  ufw htop net-tools
+  ufw
 log "System packages ready"
 
 # =============================================================================
