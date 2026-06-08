@@ -65,6 +65,45 @@ interface InboundShipmentDao {
 }
 
 @Dao
+interface ProductDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(products: List<ProductEntity>)
+
+    @Query("SELECT * FROM products WHERE storeId = :storeId ORDER BY name ASC")
+    fun getAllForStore(storeId: String): Flow<List<ProductEntity>>
+
+    @Query("SELECT * FROM products WHERE id = :id")
+    suspend fun getById(id: String): ProductEntity?
+
+    @Query("""
+        SELECT * FROM products
+        WHERE (storeId = :storeId OR :storeId = '')
+          AND (name LIKE '%' || :query || '%'
+            OR sku LIKE '%' || :query || '%'
+            OR brand LIKE '%' || :query || '%'
+            OR category LIKE '%' || :query || '%'
+            OR erpCode LIKE '%' || :query || '%'
+            OR description LIKE '%' || :query || '%')
+        ORDER BY
+          CASE WHEN name LIKE :query || '%' THEN 0
+               WHEN sku LIKE :query || '%'  THEN 1
+               ELSE 2 END,
+          name ASC
+        LIMIT 50
+    """)
+    suspend fun search(query: String, storeId: String): List<ProductEntity>
+
+    @Query("SELECT * FROM products WHERE sku = :epc OR erpCode = :epc LIMIT 1")
+    suspend fun getByEpc(epc: String): ProductEntity?
+
+    @Query("SELECT COUNT(*) FROM products WHERE storeId = :storeId")
+    suspend fun countForStore(storeId: String): Int
+
+    @Query("DELETE FROM products WHERE storeId = :storeId")
+    suspend fun deleteForStore(storeId: String)
+}
+
+@Dao
 interface RefillDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertTasks(entities: List<RefillTaskEntity>)

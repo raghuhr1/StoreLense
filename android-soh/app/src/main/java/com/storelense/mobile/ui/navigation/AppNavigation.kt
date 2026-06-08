@@ -10,28 +10,33 @@ import com.storelense.mobile.ui.home.HomeScreen
 import com.storelense.mobile.ui.inbound.InboundListScreen
 import com.storelense.mobile.ui.inbound.InboundResultScreen
 import com.storelense.mobile.ui.inbound.InboundScanScreen
+import com.storelense.mobile.ui.locator.ItemLocatorScreen
 import com.storelense.mobile.ui.login.LoginScreen
+import com.storelense.mobile.ui.products.ProductSearchScreen
 import com.storelense.mobile.ui.replenish.ReplenishListScreen
 import com.storelense.mobile.ui.replenish.ReplenishResultScreen
 import com.storelense.mobile.ui.replenish.ReplenishTaskScreen
 import com.storelense.mobile.ui.soh.ScanScreen
 import com.storelense.mobile.ui.soh.SessionListScreen
 import com.storelense.mobile.ui.soh.SohResultScreen
-import com.storelense.mobile.data.repository.AuthRepository
-import androidx.hilt.navigation.compose.hiltViewModel
+import com.storelense.mobile.ui.spotcount.QuickSpotCountScreen
 
 object Routes {
-    const val LOGIN          = "login"
-    const val HOME           = "home"
-    const val SOH_LIST       = "soh_list"
-    const val SOH_SCAN       = "soh_scan/{sessionId}"
-    const val SOH_RESULT     = "soh_result/{sessionId}"
-    const val INBOUND_LIST   = "inbound_list"
-    const val INBOUND_SCAN   = "inbound_scan/{shipmentId}"
-    const val INBOUND_RESULT = "inbound_result/{received}/{expected}/{shortage}"
-    const val REPLENISH_LIST = "replenish_list"
-    const val REPLENISH_TASK = "replenish_task/{taskId}"
-    const val REPLENISH_DONE = "replenish_done/{taskId}"
+    const val LOGIN            = "login"
+    const val HOME             = "home"
+    const val SOH_LIST         = "soh_list"
+    const val SOH_SCAN         = "soh_scan/{sessionId}"
+    const val SOH_RESULT       = "soh_result/{sessionId}"
+    const val INBOUND_LIST     = "inbound_list"
+    const val INBOUND_SCAN     = "inbound_scan/{shipmentId}"
+    const val INBOUND_RESULT   = "inbound_result/{received}/{expected}/{shortage}"
+    const val REPLENISH_LIST   = "replenish_list"
+    const val REPLENISH_TASK   = "replenish_task/{taskId}"
+    const val REPLENISH_DONE   = "replenish_done/{taskId}"
+    const val PRODUCT_SEARCH   = "product_search"
+    const val ITEM_LOCATOR     = "item_locator"
+    const val ITEM_LOCATOR_EPC = "item_locator/{epc}"
+    const val SPOT_COUNT       = "spot_count"
 
     fun sohScan(sessionId: String)      = "soh_scan/$sessionId"
     fun sohResult(sessionId: String)    = "soh_result/$sessionId"
@@ -40,6 +45,7 @@ object Routes {
         "inbound_result/$received/$expected/$shortage"
     fun replenishTask(taskId: String)   = "replenish_task/$taskId"
     fun replenishDone(taskId: String)   = "replenish_done/$taskId"
+    fun itemLocator(epc: String)        = "item_locator/$epc"
 }
 
 @Composable
@@ -58,10 +64,13 @@ fun AppNavigation() {
 
         composable(Routes.HOME) {
             HomeScreen(
-                onSoh       = { nav.navigate(Routes.SOH_LIST) },
-                onInbound   = { nav.navigate(Routes.INBOUND_LIST) },
-                onReplenish = { nav.navigate(Routes.REPLENISH_LIST) },
-                onLogout    = {
+                onSoh           = { nav.navigate(Routes.SOH_LIST) },
+                onInbound       = { nav.navigate(Routes.INBOUND_LIST) },
+                onReplenish     = { nav.navigate(Routes.REPLENISH_LIST) },
+                onProductSearch = { nav.navigate(Routes.PRODUCT_SEARCH) },
+                onItemLocator   = { nav.navigate(Routes.ITEM_LOCATOR) },
+                onSpotCount     = { nav.navigate(Routes.SPOT_COUNT) },
+                onLogout        = {
                     nav.navigate(Routes.LOGIN) {
                         popUpTo(Routes.HOME) { inclusive = true }
                     }
@@ -160,6 +169,29 @@ fun AppNavigation() {
                 taskId = it.arguments!!.getString("taskId")!!,
                 onDone = { nav.navigate(Routes.HOME) { popUpTo(Routes.HOME) { inclusive = true } } }
             )
+        }
+
+        // ── RFID Tools ────────────────────────────────────────────────────
+        composable(Routes.PRODUCT_SEARCH) {
+            ProductSearchScreen(onBack = { nav.popBackStack() })
+        }
+
+        composable(Routes.ITEM_LOCATOR) {
+            ItemLocatorScreen(onBack = { nav.popBackStack() })
+        }
+
+        composable(
+            Routes.ITEM_LOCATOR_EPC,
+            arguments = listOf(navArgument("epc") { type = NavType.StringType })
+        ) {
+            ItemLocatorScreen(
+                initialEpc = it.arguments!!.getString("epc") ?: "",
+                onBack     = { nav.popBackStack() }
+            )
+        }
+
+        composable(Routes.SPOT_COUNT) {
+            QuickSpotCountScreen(onBack = { nav.popBackStack() })
         }
     }
 }

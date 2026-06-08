@@ -85,3 +85,27 @@ data class RefillTaskItemEntity(
     val fulfilledQty: Int,
     val pendingQty: Int = -1
 )
+
+@Entity(
+    tableName = "products",
+    indices = [
+        Index(value = ["sku"], unique = true),
+        Index(value = ["erpCode"]),
+        Index(value = ["storeId"])
+    ]
+)
+data class ProductEntity(
+    @PrimaryKey val id: String,
+    val sku: String,
+    val name: String,
+    val description: String?,
+    val brand: String?,
+    val category: String?,
+    val erpCode: String?,
+    val storeId: String?,
+    val onHandQty: Int = 0,
+    val expectedQty: Int = 0,
+    val imageUrl: String?,
+    val lastSyncedAt: Long = System.currentTimeMillis()
+)
+

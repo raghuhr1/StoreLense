@@ -59,6 +59,21 @@ interface ApiService {
         @Body req: InboundReceiveRequest
     ): Response<ApiResponse<InboundResultDto>>
 
+    // ── Products ──────────────────────────────────────────────────────────────
+
+    @GET("api/products")
+    suspend fun getProducts(
+        @Query("storeId") storeId: String,
+        @Query("page")    page: Int = 0,
+        @Query("size")    size: Int = 200
+    ): Response<ApiResponse<PagedData<ProductDto>>>
+
+    @GET("api/products/{id}")
+    suspend fun getProduct(@Path("id") id: String): Response<ApiResponse<ProductDto>>
+
+    @GET("api/inventory/epc/{epc}")
+    suspend fun getEpcLocation(@Path("epc") epc: String): Response<ApiResponse<EpcLocationDto>>
+
     // ── Replenishment ─────────────────────────────────────────────────────────
 
     @GET("api/refill/tasks")

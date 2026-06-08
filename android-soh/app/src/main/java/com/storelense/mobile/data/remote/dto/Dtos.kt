@@ -127,3 +127,28 @@ data class FulfilItemRequest(
     val fulfilledQty: Int,
     val scannedEpcs: List<String>? = null
 )
+
+// ── Products ──────────────────────────────────────────────────────────────────
+
+data class ProductDto(
+    val id: String,
+    val sku: String,
+    val name: String,
+    val description: String?,
+    val brand: String?,
+    val category: String?,
+    @SerializedName("erp_code") val erpCode: String?,
+    val storeId: String?,
+    val onHandQty: Int = 0,
+    val expectedQty: Int = 0,
+    val imageUrl: String?
+)
+
+// ── Item Locator ──────────────────────────────────────────────────────────────
+
+data class EpcLocationDto(
+    val epc: String,
+    val zone: String?,
+    val lastSeenAt: String?,
+    val storeId: String?
+)

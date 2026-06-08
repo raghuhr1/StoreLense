@@ -17,12 +17,13 @@ object DatabaseModule {
     @Provides @Singleton
     fun provideDatabase(@ApplicationContext ctx: Context): AppDatabase =
         Room.databaseBuilder(ctx, AppDatabase::class.java, "storelense.db")
-            .fallbackToDestructiveMigration()
+            .addMigrations(AppDatabase.MIGRATION_1_2)
             .build()
 
-    @Provides fun provideEpcReadDao(db: AppDatabase)       = db.epcReadDao()
-    @Provides fun provideSohSessionDao(db: AppDatabase)    = db.sohSessionDao()
-    @Provides fun provideInboundReadDao(db: AppDatabase)   = db.inboundReadDao()
+    @Provides fun provideEpcReadDao(db: AppDatabase)         = db.epcReadDao()
+    @Provides fun provideSohSessionDao(db: AppDatabase)      = db.sohSessionDao()
+    @Provides fun provideInboundReadDao(db: AppDatabase)     = db.inboundReadDao()
     @Provides fun provideInboundShipmentDao(db: AppDatabase) = db.inboundShipmentDao()
-    @Provides fun provideRefillDao(db: AppDatabase)        = db.refillDao()
+    @Provides fun provideRefillDao(db: AppDatabase)          = db.refillDao()
+    @Provides fun provideProductDao(db: AppDatabase)         = db.productDao()
 }
