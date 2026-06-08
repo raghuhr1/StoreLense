@@ -41,16 +41,40 @@ echo ""
 read -rp "Press ENTER to continue or Ctrl-C to cancel..."
 
 # =============================================================================
-step "1 / 12 — System Update"
+step "1 / 12 — Network Check + System Update"
 # =============================================================================
+
+# Verify internet / DNS before attempting any downloads
+if ! curl -sf --max-time 5 https://8.8.8.8 >/dev/null 2>&1 && \
+   ! ping -c 1 -W 3 8.8.8.8 >/dev/null 2>&1; then
+  warn "Cannot reach 8.8.8.8 — server may have no internet access."
+  warn "Check your network / firewall and re-run."
+  exit 1
+fi
+
+if ! nslookup archive.ubuntu.com >/dev/null 2>&1; then
+  warn "DNS resolution failing — attempting auto-fix with Google DNS..."
+  tee /etc/resolv.conf <<'DNSEOF'
+nameserver 8.8.8.8
+nameserver 8.8.4.4
+nameserver 1.1.1.1
+DNSEOF
+  if ! nslookup archive.ubuntu.com >/dev/null 2>&1; then
+    err "DNS still failing after fix. Set nameserver manually in /etc/resolv.conf and re-run."
+  fi
+  log "DNS fixed — using 8.8.8.8"
+fi
+
 apt-get update -qq
-DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -qq
+# upgrade is best-effort — a single unresolvable package should not abort the install
+DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -qq --ignore-missing 2>/dev/null || \
+  warn "Some packages could not be upgraded — continuing anyway"
 apt-get install -y -qq \
   curl wget git jq openssl \
   python3 python3-pip \
   ca-certificates gnupg lsb-release \
   ufw htop net-tools
-log "System packages up to date"
+log "System packages ready"
 
 # =============================================================================
 step "2 / 12 — Docker Engine + Compose Plugin"
