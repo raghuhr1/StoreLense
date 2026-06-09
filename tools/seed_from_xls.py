@@ -529,7 +529,7 @@ def _generate_sql(store_id, union_products, all_files):
     for style, p in last_prods.items():
         on_hand  = p.get('scan_total', 0)
         expected = p.get('expected_total', 0)
-        accuracy = round(on_hand / expected * 100, 2) if expected > 0 else None
+        accuracy = round(min(on_hand / expected * 100, 999.99), 2) if expected > 0 else None
         acc_sql  = f'{accuracy}::numeric' if accuracy is not None else 'NULL::numeric'
         inv_vals.append((style, on_hand, expected, acc_sql))
 
@@ -627,7 +627,7 @@ def _generate_sql(store_id, union_products, all_files):
         scan_epcs = get_scanned_epcs(rows)
         total_exp = sum(p['expected_total'] for p in day_prods.values())
         total_oh  = sum(p.get('scan_total', 0) for p in day_prods.values())
-        accuracy  = round(total_oh / total_exp * 100, 2) if total_exp > 0 else 0.0
+        accuracy  = round(min(total_oh / total_exp * 100, 999.99), 2) if total_exp > 0 else 0.0
         variance_count = sum(
             1 for p in day_prods.values()
             if p.get('scan_total', 0) != p.get('expected_total', 0)
