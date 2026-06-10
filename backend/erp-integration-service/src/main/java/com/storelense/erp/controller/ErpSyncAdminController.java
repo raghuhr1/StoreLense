@@ -3,11 +3,17 @@ package com.storelense.erp.controller;
 import com.storelense.common.dto.ApiResponse;
 import com.storelense.common.dto.PageResponse;
 import com.storelense.erp.domain.entity.ErpSyncLog;
+import com.storelense.erp.domain.repository.ErpImportBatchRepository;
+import com.storelense.erp.domain.repository.ErpSohSnapshotRepository;
 import com.storelense.erp.domain.repository.ErpSyncLogRepository;
+import com.storelense.erp.service.EanResolutionService;
+import com.storelense.erp.service.ErpImportService;
 import com.storelense.erp.service.InventorySyncService;
 import com.storelense.erp.service.ProductSyncService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -15,7 +21,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/erp/admin")
@@ -24,9 +33,15 @@ import java.util.Map;
 @Tag(name = "ERP Admin", description = "Manual ERP sync triggers and audit")
 public class ErpSyncAdminController {
 
-    private final ProductSyncService   productSyncService;
-    private final InventorySyncService inventorySyncService;
-    private final ErpSyncLogRepository syncLogRepository;
+    private final ProductSyncService       productSyncService;
+    private final InventorySyncService     inventorySyncService;
+    private final ErpSyncLogRepository     syncLogRepository;
+    private final ErpImportService         importService;
+    private final EanResolutionService     eanResolutionService;
+    private final ErpImportBatchRepository importBatchRepository;
+    private final ErpSohSnapshotRepository snapshotRepository;
+
+    // ── Existing sync endpoints ────────────────────────────────────────────
 
     @PostMapping("/sync/products")
     @Operation(summary = "Manually trigger a full product master sync from ERP")
@@ -36,11 +51,11 @@ public class ErpSyncAdminController {
             return ResponseEntity.ok(ApiResponse.error("SYNC_RUNNING", "Product sync already in progress"));
         }
         return ResponseEntity.ok(ApiResponse.ok(Map.of(
-                "syncId",   log.getId(),
-                "status",   log.getStatus(),
-                "fetched",  log.getRecordsFetched(),
+                "syncId",    log.getId(),
+                "status",    log.getStatus(),
+                "fetched",   log.getRecordsFetched(),
                 "published", log.getRecordsPublished(),
-                "failed",   log.getRecordsFailed()
+                "failed",    log.getRecordsFailed()
         )));
     }
 
@@ -52,9 +67,9 @@ public class ErpSyncAdminController {
             return ResponseEntity.ok(ApiResponse.error("SYNC_RUNNING", "Inventory sync already in progress"));
         }
         return ResponseEntity.ok(ApiResponse.ok(Map.of(
-                "syncId",   log.getId(),
-                "status",   log.getStatus(),
-                "fetched",  log.getRecordsFetched(),
+                "syncId",    log.getId(),
+                "status",    log.getStatus(),
+                "fetched",   log.getRecordsFetched(),
                 "published", log.getRecordsPublished()
         )));
     }
@@ -78,6 +93,79 @@ public class ErpSyncAdminController {
                 "productSync",   syncLogRepository.findLastSuccessful("PRODUCT_INBOUND").orElse(null),
                 "inventorySync", syncLogRepository.findLastSuccessful("INVENTORY_INBOUND").orElse(null),
                 "sohPush",       syncLogRepository.findLastSuccessful("SOH_OUTBOUND").orElse(null)
+        )));
+    }
+
+    // ── ERP import endpoints ───────────────────────────────────────────────
+
+    record ImportTriggerRequest(@NotBlank String path, String type) {
+        String resolvedType() { return type != null ? type.toUpperCase() : "FILE"; }
+    }
+
+    @PostMapping("/import")
+    @Operation(summary = "Manually trigger an ERP SOH import from a local path or S3 key")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> triggerImport(
+            @Valid @RequestBody ImportTriggerRequest request) {
+
+        var batch = "S3".equals(request.resolvedType())
+                ? importService.processFile(request.path())
+                : importService.processFile(Path.of(request.path()));
+
+        return ResponseEntity.ok(ApiResponse.ok(Map.of(
+                "batchId",        batch.getId(),
+                "status",         batch.getStatus(),
+                "totalRows",      batch.getTotalRows(),
+                "unresolvedRows", batch.getUnresolvedRows()
+        )));
+    }
+
+    @GetMapping("/import/batches")
+    @Operation(summary = "List ERP import batches (paginated, newest first)")
+    public ResponseEntity<ApiResponse<PageResponse<?>>> listBatches(
+            @RequestParam(required = false) UUID storeId,
+            @PageableDefault(size = 20) Pageable pageable) {
+
+        var page = storeId != null
+                ? importBatchRepository.findByStoreIdOrderByCreatedAtDesc(storeId, pageable)
+                : importBatchRepository.findAll(pageable);
+        return ResponseEntity.ok(ApiResponse.ok(PageResponse.from(page)));
+    }
+
+    @GetMapping("/import/batches/{batchId}")
+    @Operation(summary = "Get ERP import batch detail with unresolved snapshot count")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getBatch(@PathVariable UUID batchId) {
+        return importBatchRepository.findById(batchId)
+                .map(batch -> {
+                    long unresolved = snapshotRepository.countUnresolvedByBatchId(batchId);
+                    return ResponseEntity.ok(ApiResponse.ok(Map.of(
+                            "batch",           batch,
+                            "unresolvedCount", unresolved
+                    )));
+                })
+                .orElseGet(() -> ResponseEntity.ok(
+                        ApiResponse.error("NOT_FOUND", "Batch " + batchId + " not found")));
+    }
+
+    @GetMapping("/import/batches/{batchId}/unresolved")
+    @Operation(summary = "List snapshots that could not be resolved to EPCs for a given batch")
+    public ResponseEntity<ApiResponse<List<?>>> getUnresolvedSnapshots(@PathVariable UUID batchId) {
+        var rows = snapshotRepository.findByBatch_IdAndResolutionStatus(batchId, "UNRESOLVED");
+        return ResponseEntity.ok(ApiResponse.ok(rows));
+    }
+
+    @PostMapping("/import/batches/{batchId}/re-resolve")
+    @Operation(summary = "Retry EAN→EPC resolution for all unresolved snapshots in a batch")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> reResolve(@PathVariable UUID batchId) {
+        if (!importBatchRepository.existsById(batchId)) {
+            return ResponseEntity.ok(ApiResponse.error("NOT_FOUND", "Batch " + batchId + " not found"));
+        }
+        eanResolutionService.resolveAll(batchId);
+        long unresolved = snapshotRepository.countUnresolvedByBatchId(batchId);
+        long resolved   = snapshotRepository.countByBatch_IdAndResolutionStatus(batchId, "RESOLVED");
+        return ResponseEntity.ok(ApiResponse.ok(Map.of(
+                "batchId",    batchId,
+                "resolved",   resolved,
+                "unresolved", unresolved
         )));
     }
 }

@@ -42,7 +42,9 @@ data class UserDto(
 data class CreateSohSessionRequest(
     val storeId: String,
     val sessionType: String = "full_store",
-    val notes: String? = null
+    val notes: String? = null,
+    val source: String? = null,
+    val zoneRegion: String? = null
 )
 
 data class SohSessionDto(
@@ -53,7 +55,9 @@ data class SohSessionDto(
     val expectedEpcs: List<String>?,
     val result: SohResultDto?,
     val startedAt: String?,
-    val completedAt: String?
+    val completedAt: String?,
+    val source: String = "manual",
+    val zoneRegion: String? = null
 )
 
 data class SohResultDto(
@@ -151,4 +155,91 @@ data class EpcLocationDto(
     val zone: String?,
     val lastSeenAt: String?,
     val storeId: String?
+)
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+
+data class DashboardSummaryDto(
+    val sohAccuracy: Float = 0f,
+    val accuracyHistory: List<Float> = emptyList(),
+    val missingItems: Int = 0,
+    val missingHistory: List<Int> = emptyList(),
+    val ghostTags: Int = 0,
+    val ghostHistory: List<Int> = emptyList(),
+    val readMisses: Int = 0,
+    val readMissHistory: List<Int> = emptyList()
+)
+
+// ── Stores ────────────────────────────────────────────────────────────────────
+
+data class StoreDto(
+    val id: String,
+    val name: String,
+    @SerializedName("store_code") val code: String?
+)
+
+// ── Transfers ─────────────────────────────────────────────────────────────────
+
+data class CreateTransferRequest(
+    val sourceStoreId: String,
+    val destStoreId: String,
+    val transferType: String,
+    val epcs: List<String>
+)
+
+data class TransferDto(
+    val id: String,
+    val sourceStoreId: String,
+    val destStoreId: String,
+    val transferType: String,
+    val status: String,
+    val epcs: List<String> = emptyList(),
+    val createdAt: String?
+)
+
+data class ReceiveTransferRequest(val receivedEpcs: List<String>)
+
+// ── Exceptions ────────────────────────────────────────────────────────────────
+
+data class ExceptionSummaryDto(
+    val missingEpcs: Int = 0,
+    val ghostTags: Int = 0,
+    val readMisses: Int = 0,
+    val underReview: Int = 0
+)
+
+data class ExceptionItemDto(
+    val epc: String,
+    val type: String,
+    val confidence: Int,
+    val classification: String?,
+    val lastSeen: String?,
+    val status: String
+)
+
+data class GhostAnalysisDetailDto(
+    val epc: String,
+    val status: String,
+    val confidenceScore: Int,
+    val reasons: List<String> = emptyList(),
+    val firstSeen: String?,
+    val lastSeen: String?
+)
+
+data class MissingEpcDetailDto(
+    val epc: String,
+    val sku: String?,
+    val productName: String?,
+    val lastSeen: String?,
+    val confidenceScore: Int,
+    val classification: String   // READ_MISS_LIKELY | ACTUALLY_MISSING
+)
+
+// ── Inventory Lookup ──────────────────────────────────────────────────────────
+
+data class InventorySkuDto(
+    val onFloor: Int = 0,
+    val inBackroom: Int = 0,
+    val total: Int = 0,
+    val epcs: List<String> = emptyList()
 )

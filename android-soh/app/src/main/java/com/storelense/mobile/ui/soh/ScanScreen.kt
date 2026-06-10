@@ -1,13 +1,17 @@
 package com.storelense.mobile.ui.soh
 
-import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.BatteryFull
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -15,6 +19,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScanScreen(
     sessionId: String,
@@ -40,21 +45,62 @@ fun ScanScreen(
             Modifier.fillMaxSize().padding(padding).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-
             PhaseIndicator(state.phase)
-            Spacer(Modifier.height(32.dp))
-
-            // Big scan counter
-            BigCounterRow("Scanned",   state.scannedCount, MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(8.dp))
-            BigCounterRow("Matched",   state.matchedCount, MaterialTheme.colorScheme.secondary)
-            Spacer(Modifier.height(8.dp))
-            BigCounterRow("Expected",  state.expectedCount, MaterialTheme.colorScheme.outline)
             Spacer(Modifier.height(24.dp))
 
+            BigCounterRow("Scanned",  state.scannedCount,  MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(8.dp))
+            BigCounterRow("Matched",  state.matchedCount,  MaterialTheme.colorScheme.secondary)
+            Spacer(Modifier.height(8.dp))
+            BigCounterRow("Expected", state.expectedCount, MaterialTheme.colorScheme.outline)
+            Spacer(Modifier.height(16.dp))
+
+            // ── Metrics row ────────────────────────────────────────────────
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MetricItem(
+                        icon  = { Icon(Icons.Default.Speed, null, modifier = Modifier.size(16.dp)) },
+                        value = "${"%.1f".format(state.readRate)}/s",
+                        label = "Rate"
+                    )
+                    VerticalDivider(modifier = Modifier.height(32.dp))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        SignalBarsIcon(
+                            bars     = state.readerSignalBars,
+                            modifier = Modifier.size(width = 22.dp, height = 18.dp)
+                        )
+                        Text("Reader", style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    VerticalDivider(modifier = Modifier.height(32.dp))
+                    MetricItem(
+                        icon  = { Icon(Icons.Default.BatteryFull, null, modifier = Modifier.size(16.dp)) },
+                        value = "${state.batteryPct}%",
+                        label = "Battery"
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+
+            // Last EPC + timestamp
             if (state.lastEpc.isNotBlank()) {
-                Text("Last: …${state.lastEpc}", style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.outline)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Last: …${state.lastEpc}", style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.outline)
+                    state.lastEpcTime?.let {
+                        Text("  @$it", style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                }
             }
 
             state.error?.let {
@@ -78,14 +124,48 @@ fun ScanScreen(
                         }
                     }
                     Button(
-                        onClick = vm::complete,
+                        onClick  = vm::complete,
                         modifier = Modifier.weight(1f).height(52.dp),
-                        enabled = state.scannedCount > 0 && state.phase != ScanPhase.Uploading && state.phase != ScanPhase.Done
+                        enabled  = state.scannedCount > 0
+                                && state.phase != ScanPhase.Uploading
+                                && state.phase != ScanPhase.Done
                     ) {
                         Text("Complete", fontSize = 16.sp)
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun MetricItem(icon: @Composable () -> Unit, value: String, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            icon()
+            Text(value, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+        }
+        Text(label, style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun SignalBarsIcon(bars: Int, modifier: Modifier = Modifier) {
+    val activeColor  = Color(0xFF4CAF50)
+    val inactiveColor = Color.Gray.copy(alpha = 0.3f)
+    Canvas(modifier = modifier) {
+        if (size.isEmpty()) return@Canvas
+        val totalBars  = 4
+        val gap        = size.width * 0.1f
+        val barWidth   = (size.width - gap * (totalBars - 1)) / totalBars
+        for (i in 0 until totalBars) {
+            val barH = size.height * (i + 1) / totalBars.toFloat()
+            drawRect(
+                color     = if (i < bars) activeColor else inactiveColor,
+                topLeft   = Offset(x = i * (barWidth + gap), y = size.height - barH),
+                size      = Size(barWidth, barH)
+            )
         }
     }
 }
@@ -106,8 +186,12 @@ private fun PhaseIndicator(phase: ScanPhase) {
 }
 
 @Composable
-private fun BigCounterRow(label: String, count: Int, color: androidx.compose.ui.graphics.Color) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+private fun BigCounterRow(label: String, count: Int, color: Color) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Text(label, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface)
         Text(count.toString(), fontSize = 48.sp, fontWeight = FontWeight.Bold, color = color)
     }

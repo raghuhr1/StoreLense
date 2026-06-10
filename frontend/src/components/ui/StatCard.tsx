@@ -5,13 +5,14 @@ interface Props {
   title:   string
   value:   string | number
   icon:    LucideIcon
-  color?:  'blue' | 'green' | 'yellow' | 'red'
+  color?:  'teal' | 'blue' | 'green' | 'yellow' | 'red'
   delta?:  string
   sub?:    string
 }
 
 const colors = {
-  blue:   'bg-blue-50 text-blue-600',
+  teal:   'bg-brand-50 text-brand-700',
+  blue:   'bg-brand-50 text-brand-700',
   green:  'bg-green-50 text-green-600',
   yellow: 'bg-yellow-50 text-yellow-600',
   red:    'bg-red-50 text-red-600',

@@ -58,6 +58,13 @@ public class SohSession {
     @Column(columnDefinition = "TEXT")
     private String notes;
 
+    @Column(nullable = false, length = 30)
+    @Builder.Default
+    private String source = "manual";
+
+    @Column(name = "zone_region", length = 100)
+    private String zoneRegion;
+
     @Column(name = "created_at", updatable = false) private OffsetDateTime createdAt;
     @Column(name = "updated_at")                    private OffsetDateTime updatedAt;
 

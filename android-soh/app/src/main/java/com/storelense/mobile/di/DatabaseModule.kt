@@ -17,7 +17,7 @@ object DatabaseModule {
     @Provides @Singleton
     fun provideDatabase(@ApplicationContext ctx: Context): AppDatabase =
         Room.databaseBuilder(ctx, AppDatabase::class.java, "storelense.db")
-            .addMigrations(AppDatabase.MIGRATION_1_2)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
             .build()
 
     @Provides fun provideEpcReadDao(db: AppDatabase)         = db.epcReadDao()
@@ -26,4 +26,8 @@ object DatabaseModule {
     @Provides fun provideInboundShipmentDao(db: AppDatabase) = db.inboundShipmentDao()
     @Provides fun provideRefillDao(db: AppDatabase)          = db.refillDao()
     @Provides fun provideProductDao(db: AppDatabase)         = db.productDao()
+    @Provides fun provideStoreDao(db: AppDatabase)           = db.storeDao()
+    @Provides fun provideTransferDao(db: AppDatabase)        = db.transferDao()
+    @Provides fun provideExceptionCacheDao(db: AppDatabase)  = db.exceptionCacheDao()
+    @Provides fun provideGhostAnalysisDao(db: AppDatabase)   = db.ghostAnalysisDao()
 }

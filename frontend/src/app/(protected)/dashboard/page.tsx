@@ -2,7 +2,7 @@
 
 import { useQuery }     from '@tanstack/react-query'
 import { useMemo, useState }     from 'react'
-import { BarChart3, ScanLine, CheckCircle2, AlertTriangle }  from 'lucide-react'
+import { BarChart3, ScanLine, CheckCircle2, AlertTriangle, PackageOpen }  from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid } from 'recharts'
 import Link             from 'next/link'
 import Header           from '@/components/layout/Header'
@@ -11,8 +11,10 @@ import { reportingApi } from '@/lib/api/reporting'
 import { storesApi }    from '@/lib/api/stores'
 import { sohApi }       from '@/lib/api/soh'
 import { refillApi }    from '@/lib/api/refill'
+import { erpImportApi } from '@/lib/api/erp'
 import { useAuth }      from '@/lib/auth/AuthContext'
 import { fmtPct, fmtDateTime } from '@/lib/utils'
+import Badge            from '@/components/ui/Badge'
 
 function iso(d: Date) { return d.toISOString().slice(0, 10) }
 
@@ -61,6 +63,13 @@ export default function DashboardPage() {
     queryFn:  () => refillApi.listTasks(storeId, { status: 'pending', size: 5 }),
     enabled:  !!storeId,
   })
+
+  const { data: erpBatches } = useQuery({
+    queryKey: ['erp-batches-latest'],
+    queryFn:  () => erpImportApi.listBatches({ size: 1 }),
+    enabled:  isAdmin,
+  })
+  const latestBatch = erpBatches?.content[0]
 
   // Pick the most recent row that has non-null accuracy
   const latest = useMemo(() => {
@@ -186,7 +195,7 @@ export default function DashboardPage() {
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                   <YAxis domain={[accMin, 100]} tick={{ fontSize: 11 }} unit="%" />
                   <Tooltip formatter={(v: number) => [`${v.toFixed(1)}%`, 'Accuracy']} />
-                  <Line type="monotone" dataKey="accuracy" stroke="#2563eb" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="accuracy" stroke="#0F766E" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             )}
@@ -214,7 +223,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Recent sessions + pending tasks */}
+        {/* Recent sessions + pending tasks + ERP import */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="card">
             <div className="flex items-center justify-between mb-4">
@@ -267,6 +276,70 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
+
+        {/* ERP Import Status (admin only) */}
+        {isAdmin && (
+          <div className="card">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <PackageOpen size={16} className="text-gray-500" />
+                <h3 className="text-sm font-semibold text-gray-700">ERP Import Status</h3>
+              </div>
+              <Link href="/erp-imports" className="text-xs text-brand-600 hover:underline">View all</Link>
+            </div>
+
+            {!latestBatch ? (
+              <p className="text-sm text-gray-400">No import batches found.</p>
+            ) : (
+              <div className="space-y-2.5">
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-500">Last Import</p>
+                    <p className="text-sm font-semibold text-gray-900 mt-0.5">
+                      {fmtDateTime(latestBatch.createdAt)}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-500">Status</p>
+                    <div className="mt-0.5">
+                      <Badge variant={
+                        latestBatch.status === 'COMPLETED'  ? 'green'  :
+                        latestBatch.status === 'FAILED'     ? 'red'    :
+                        latestBatch.status === 'PROCESSING' ? 'yellow' : 'gray'
+                      }>
+                        {latestBatch.status}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-500">Unresolved EANs</p>
+                    <p className={`text-sm font-semibold mt-0.5 ${
+                      latestBatch.unresolvedRows > 0 ? 'text-red-600' : 'text-green-600'
+                    }`}>
+                      {latestBatch.unresolvedRows.toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-gray-400">
+                  <span>
+                    {latestBatch.resolvedRows.toLocaleString()} / {latestBatch.totalRows.toLocaleString()} rows resolved
+                    · Source: {latestBatch.sourceType}
+                  </span>
+                  <Link href={`/erp-imports/${latestBatch.id}`} className="text-brand-600 hover:underline">
+                    View detail →
+                  </Link>
+                </div>
+
+                {latestBatch.errorMessage && (
+                  <p className="text-xs text-red-600 bg-red-50 rounded px-2 py-1 truncate">
+                    {latestBatch.errorMessage}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
       </div>
     </>

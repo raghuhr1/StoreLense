@@ -18,6 +18,9 @@ spring:
     properties:
       hibernate:
         default_schema: erp
+        jdbc.batch_size: 500
+        order_inserts: true
+        order_updates: true
     open-in-view: false
   flyway:
     enabled: true
@@ -51,6 +54,21 @@ storelense:
     inventory-sync-cron: "0 0 1 * * *"
     max-retries: 3
     push-soh-enabled: ${ERP_PUSH_SOH_ENABLED:true}
+    import:
+      store-id: ${ERP_IMPORT_STORE_ID:}
+      local-enabled: ${ERP_IMPORT_LOCAL_ENABLED:false}
+      local-folder: ${ERP_IMPORT_LOCAL_FOLDER:/tmp/erp-import}
+      s3-enabled: ${ERP_IMPORT_S3_ENABLED:false}
+      s3-bucket: ${ERP_IMPORT_S3_BUCKET:}
+      s3-prefix: ${ERP_IMPORT_S3_PREFIX:erp/import/}
+      s3-region: ${ERP_IMPORT_S3_REGION:us-east-1}
+      s3-poll-delay-ms: ${ERP_IMPORT_S3_POLL_MS:60000}
+  product-service:
+    base-url: ${PRODUCT_SERVICE_URL:http://product-service:8082}
+    service-token: ${PRODUCT_SERVICE_TOKEN:}
+  soh-service:
+    base-url: ${SOH_SERVICE_URL:http://soh-service:8085}
+    service-token: ${SOH_SERVICE_TOKEN:}
   jwt:
     secret: ${JWT_SECRET:storelense-dev-secret-key-minimum-32-chars}
     access-token-expiry-ms: 900000

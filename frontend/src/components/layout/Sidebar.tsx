@@ -6,7 +6,7 @@ import {
   type LucideIcon,
   LayoutDashboard, Package, RotateCw,
   ArrowLeftRight, BarChart3, Users, Store, Cpu, ScanLine, Tag, TrendingUp,
-  Truck, RefreshCw, ShoppingCart,
+  Truck, RefreshCw, ShoppingCart, GitCompare, PackageOpen,
 } from 'lucide-react'
 import { useAuth }       from '@/lib/auth/AuthContext'
 import { cn }            from '@/lib/utils'
@@ -23,6 +23,8 @@ const allNavItems: NavItem[] = [
   { href: '/reports',     label: 'Reports',      icon: BarChart3,       roles: ['ADMIN','STORE_MANAGER'] },
   { href: '/analytics',   label: 'Analytics',    icon: TrendingUp,      roles: ['ADMIN','STORE_MANAGER'] },
   { href: '/sold-items',  label: 'Sales',        icon: ShoppingCart,    roles: ['ADMIN','STORE_MANAGER'] },
+  { href: '/variance',    label: 'Variance',     icon: GitCompare,      roles: ['ADMIN','STORE_MANAGER'] },
+  { href: '/erp-imports', label: 'ERP Imports',  icon: PackageOpen,     roles: ['ADMIN'] },
   { href: '/products',    label: 'Products',     icon: Tag,             roles: ['ADMIN'] },
   { href: '/users',       label: 'Users',        icon: Users,           roles: ['ADMIN'] },
   { href: '/stores',      label: 'Stores',       icon: Store,           roles: ['ADMIN'] },
@@ -38,9 +40,9 @@ export default function Sidebar() {
   )
 
   return (
-    <aside className="fixed inset-y-0 left-0 w-[var(--sidebar-width)] bg-gray-900 flex flex-col z-10">
+    <aside className="fixed inset-y-0 left-0 w-[var(--sidebar-width)] bg-[#0F172A] flex flex-col z-10">
       {/* Brand */}
-      <div className="flex items-center gap-3 px-6 h-16 border-b border-gray-800">
+      <div className="flex items-center gap-3 px-6 h-16 border-b border-[#1E293B]">
         <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center flex-shrink-0">
           <ScanLine size={16} className="text-white" />
         </div>
@@ -60,7 +62,7 @@ export default function Sidebar() {
                     'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
                     active
                       ? 'bg-brand-600 text-white'
-                      : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                      : 'text-gray-400 hover:text-white hover:bg-[#1E293B]'
                   )}
                 >
                   <Icon size={18} />
@@ -73,7 +75,7 @@ export default function Sidebar() {
       </nav>
 
       {/* User info */}
-      <div className="px-4 py-4 border-t border-gray-800">
+      <div className="px-4 py-4 border-t border-[#1E293B]">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-brand-700 rounded-full flex items-center justify-center">
             <span className="text-white text-xs font-bold">

@@ -109,6 +109,61 @@ export interface Transfer {
   initiatedAt: string; receivedAt: string | null; notes: string | null
 }
 
+// ─── ERP Import ───────────────────────────────────────────────────────────────
+export interface ErpImportBatch {
+  id: string
+  storeId: string
+  sourceType: 'FILE' | 'S3'
+  filePath: string | null
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
+  totalRows: number
+  resolvedRows: number
+  unresolvedRows: number
+  importedAt: string | null
+  errorMessage: string | null
+  createdAt: string
+}
+
+export interface ErpSohSnapshot {
+  id: string
+  ean: string
+  expectedQty: number
+  zoneRegion: string | null
+  resolutionStatus: 'RAW' | 'RESOLVED' | 'PARTIAL' | 'UNRESOLVED'
+  createdAt: string
+}
+
+export interface ErpBatchDetail {
+  batch: ErpImportBatch
+  unresolvedCount: number
+}
+
+// ─── Reconciliation ───────────────────────────────────────────────────────────
+export interface ReconciliationSession {
+  id: string
+  sessionId: string
+  batchId: string
+  storeId: string
+  runAt: string
+  totalExpected: number
+  totalScanned: number
+  matchedCount: number
+  missingCount: number
+  extraCount: number
+  accuracyPct: number | null
+  status: 'RUNNING' | 'COMPLETED' | 'FAILED'
+  createdAt: string
+}
+
+export interface ReconciliationItem {
+  id: string
+  epc: string
+  ean: string | null
+  status: 'MATCH' | 'MISSING' | 'EXTRA'
+  expectedQty: number
+  scannedQty: number
+}
+
 // ─── Reports / KPI ────────────────────────────────────────────────────────────
 export interface KpiDaily {
   id: string; storeId: string; kpiDate: string

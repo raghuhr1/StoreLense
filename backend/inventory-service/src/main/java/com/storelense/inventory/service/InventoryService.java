@@ -7,8 +7,10 @@ import com.storelense.inventory.domain.entity.EpcRegistry;
 import com.storelense.inventory.domain.entity.InventoryState;
 import com.storelense.inventory.domain.repository.EpcRegistryRepository;
 import com.storelense.inventory.domain.repository.InventoryStateRepository;
+import com.storelense.inventory.dto.SkuInventoryResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +27,7 @@ public class InventoryService {
 
     private final InventoryStateRepository inventoryStateRepository;
     private final EpcRegistryRepository    epcRegistryRepository;
+    private final JdbcClient              jdbcClient;
 
     @KafkaListener(topics = KafkaTopics.RFID_SOH_UPDATED, groupId = "inventory-service")
     @Transactional
@@ -101,6 +104,27 @@ public class InventoryService {
                                 .quantityExpected(quantityExpected)
                                 .quantityOnHand(0)
                                 .build()));
+    }
+
+    @Transactional(readOnly = true)
+    public SkuInventoryResponse getSkuInventory(String sku, UUID storeId) {
+        UUID productId = jdbcClient
+                .sql("SELECT id FROM products.products WHERE sku = :sku AND active = true")
+                .param("sku", sku)
+                .query(UUID.class)
+                .optional()
+                .orElseThrow(() -> new ResourceNotFoundException("Product", sku));
+
+        List<InventoryState> states = inventoryStateRepository.findByStoreIdAndProductId(storeId, productId);
+        int total = states.stream().mapToInt(InventoryState::getQuantityOnHand).sum();
+
+        List<String> epcs = epcRegistryRepository
+                .findByStoreIdAndProductIdAndStatus(storeId, productId, "in_store")
+                .stream()
+                .map(EpcRegistry::getEpc)
+                .toList();
+
+        return new SkuInventoryResponse(sku, productId, storeId, total, 0, total, epcs);
     }
 
     private java.math.BigDecimal calcAccuracy(int onHand, int expected) {

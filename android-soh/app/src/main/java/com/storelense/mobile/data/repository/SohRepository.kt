@@ -113,6 +113,8 @@ class SohRepository @Inject constructor(
         storeId     = storeId,
         status      = status,
         sessionType = sessionType,
-        startedAt   = startedAt
+        startedAt   = startedAt,
+        source      = source,
+        zoneRegion  = zoneRegion
     )
 }

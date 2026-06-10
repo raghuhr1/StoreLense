@@ -3,8 +3,10 @@ package com.storelense.erp.config;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.retry.RetryConfig;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -18,6 +20,19 @@ public class ErpRestClientConfig {
 
     private final ErpProperties erp;
 
+    @Value("${storelense.product-service.base-url:http://product-service:8082}")
+    private String productServiceBaseUrl;
+
+    @Value("${storelense.product-service.service-token:}")
+    private String productServiceToken;
+
+    @Value("${storelense.soh-service.base-url:http://soh-service:8085}")
+    private String sohServiceBaseUrl;
+
+    @Value("${storelense.soh-service.service-token:}")
+    private String sohServiceToken;
+
+    @Primary
     @Bean
     public RestClient erpRestClient() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
@@ -32,6 +47,31 @@ public class ErpRestClientConfig {
                 .defaultHeader("X-Api-Key", erp.apiKey())
                 .defaultHeader("X-Source-System", "StoreLense")
                 .build();
+    }
+
+    @Bean
+    public RestClient productRestClient() {
+        RestClient.Builder builder = RestClient.builder()
+                .baseUrl(productServiceBaseUrl)
+                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE);
+        if (productServiceToken != null && !productServiceToken.isBlank()) {
+            builder.defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + productServiceToken);
+        }
+        return builder.build();
+    }
+
+    @SuppressWarnings("null")
+    @Bean
+    public RestClient sohRestClient() {
+        RestClient.Builder builder = RestClient.builder()
+                .baseUrl(sohServiceBaseUrl)
+                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE);
+        if (sohServiceToken != null && !sohServiceToken.isBlank()) {
+            builder.defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + sohServiceToken);
+        }
+        return builder.build();
     }
 
     @Bean

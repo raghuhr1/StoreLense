@@ -5,6 +5,7 @@ import com.storelense.common.dto.PageResponse;
 import com.storelense.common.security.StoreLensePrincipal;
 import com.storelense.reporting.domain.entity.KpiDaily;
 import com.storelense.reporting.domain.repository.KpiDailyRepository;
+import com.storelense.reporting.dto.DashboardSummaryResponse;
 import com.storelense.reporting.service.KpiAggregationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -55,6 +56,18 @@ public class ReportingController {
         UUID effective = principal.isAdmin() ? storeId : principal.storeId();
         return ResponseEntity.ok(ApiResponse.ok(
                 kpiDailyRepository.findByStoreAndDateRange(effective, from, to)));
+    }
+
+    @GetMapping("/dashboard/summary")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER')")
+    @Operation(summary = "Get dashboard KPI summary with accuracy and exception trends")
+    public ResponseEntity<ApiResponse<DashboardSummaryResponse>> getDashboardSummary(
+            @RequestParam UUID storeId,
+            @RequestParam(defaultValue = "7") int days,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+
+        UUID effective = principal.isAdmin() ? storeId : principal.storeId();
+        return ResponseEntity.ok(ApiResponse.ok(aggregationService.getDashboardSummary(effective, days)));
     }
 
     @PostMapping("/kpi/aggregate")

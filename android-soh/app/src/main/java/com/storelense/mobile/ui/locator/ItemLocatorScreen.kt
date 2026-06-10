@@ -33,15 +33,14 @@ import kotlin.math.roundToInt
 fun ItemLocatorScreen(
     initialEpc: String = "",
     onBack: () -> Unit,
+    onGeigerLocate: (String) -> Unit = {},
     viewModel: ItemLocatorViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
     var epcInput by remember { mutableStateOf(initialEpc) }
 
     LaunchedEffect(initialEpc) {
-        if (initialEpc.isNotBlank()) {
-            viewModel.setTargetEpc(initialEpc)
-        }
+        if (initialEpc.isNotBlank()) viewModel.setTargetEpc(initialEpc)
     }
 
     Scaffold(
@@ -49,16 +48,11 @@ fun ItemLocatorScreen(
             TopAppBar(
                 title = { Text("Item Locator", fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
-                    IconButton(onClick = {
-                        viewModel.stopLocating()
-                        onBack()
-                    }) {
+                    IconButton(onClick = { viewModel.stopLocating(); onBack() }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         }
     ) { padding ->
@@ -67,18 +61,18 @@ fun ItemLocatorScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Spacer(Modifier.height(4.dp))
 
-            // EPC input
+            // ── EPC input ──────────────────────────────────────────────────
             OutlinedTextField(
-                value = epcInput,
+                value    = epcInput,
                 onValueChange = { epcInput = it; viewModel.setTargetEpc(it) },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Target EPC / SKU") },
+                label    = { Text("Target EPC / SKU") },
                 placeholder = { Text("Scan barcode or enter EPC…") },
-                leadingIcon = { Icon(Icons.Default.QrCodeScanner, contentDescription = null) },
+                leadingIcon  = { Icon(Icons.Default.QrCodeScanner, contentDescription = null) },
                 trailingIcon = {
                     if (epcInput.isNotEmpty()) {
                         IconButton(onClick = { epcInput = ""; viewModel.setTargetEpc("") }) {
@@ -86,51 +80,112 @@ fun ItemLocatorScreen(
                         }
                     }
                 },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
+                singleLine    = true,
+                shape         = RoundedCornerShape(12.dp),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { viewModel.setTargetEpc(epcInput) })
             )
 
-            // Target product chip
+            // ── Product card ───────────────────────────────────────────────
             AnimatedVisibility(visible = state.targetProduct != null) {
                 state.targetProduct?.let { product ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
+                    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
                         Row(
                             modifier = Modifier.padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.Inventory2, contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Column {
-                                Text(product.name, fontWeight = FontWeight.SemiBold,
-                                    style = MaterialTheme.typography.bodyMedium, maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis)
-                                Text("SKU: ${product.sku}", style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            // Image placeholder
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(
+                                        Brush.linearGradient(listOf(
+                                            MaterialTheme.colorScheme.primaryContainer,
+                                            MaterialTheme.colorScheme.secondaryContainer
+                                        ))
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Inventory2, contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    product.name,
+                                    fontWeight = FontWeight.SemiBold,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    maxLines = 2, overflow = TextOverflow.Ellipsis
+                                )
+                                product.brand?.let {
+                                    Text(it, style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                product.category?.let {
+                                    Text(it, style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Text("SKU: ${product.sku}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Medium)
                             }
                         }
                     }
                 }
             }
 
-            // Proximity radar / hot-cold indicator
+            // ── Proximity radar ────────────────────────────────────────────
             ProximityRadar(
-                phase = state.phase,
-                closestRssi = state.closestTag?.rssi ?: -100.0,
+                phase        = state.phase,
+                closestRssi  = state.closestTag?.rssi ?: -100.0,
                 targetMatched = state.closestTag?.epc == state.targetEpc && state.targetEpc.isNotBlank(),
-                proximity = state.closestTag?.proximity ?: ProximityLevel.FAR
+                proximity    = state.closestTag?.proximity ?: ProximityLevel.FAR
             )
 
-            // Start / Stop button
+            // ── Signal strength row ────────────────────────────────────────
+            if (state.phase != LocatorPhase.Idle) {
+                val rssi       = state.closestTag?.rssi ?: -100.0
+                val signalPct  = ((rssi + 100) / 55.0).coerceIn(0.0, 1.0).toFloat()
+                val animSignal by animateFloatAsState(signalPct, label = "signal_pct")
+
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Signal Strength",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${(signalPct * 100).roundToInt()}%",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary)
+                        }
+                        LinearProgressIndicator(
+                            progress = { animSignal },
+                            modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape)
+                        )
+                        if (rssi < -65.0) {
+                            Text("Move Closer ›",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFFB8C00),
+                                fontWeight = FontWeight.Medium)
+                        }
+                    }
+                }
+            }
+
+            // ── Start / Stop + Geiger Mode ─────────────────────────────────
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (state.phase == LocatorPhase.Scanning || state.phase == LocatorPhase.Found) {
                     OutlinedButton(
-                        onClick = { viewModel.stopLocating() },
+                        onClick  = { viewModel.stopLocating() },
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(Icons.Default.Stop, contentDescription = null)
@@ -139,18 +194,25 @@ fun ItemLocatorScreen(
                     }
                 } else {
                     Button(
-                        onClick = { if (epcInput.isNotBlank()) viewModel.startLocating(epcInput) },
+                        onClick  = { if (epcInput.isNotBlank()) viewModel.startLocating(epcInput) },
                         modifier = Modifier.weight(1f),
-                        enabled = epcInput.isNotBlank()
+                        enabled  = epcInput.isNotBlank()
                     ) {
                         Icon(Icons.Default.MyLocation, contentDescription = null)
                         Spacer(Modifier.width(6.dp))
                         Text("Start Locating")
                     }
                 }
+                if (state.targetEpc.isNotBlank()) {
+                    OutlinedButton(onClick = { onGeigerLocate(state.targetEpc) }) {
+                        Icon(Icons.Default.Radar, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Geiger", fontSize = 13.sp)
+                    }
+                }
             }
 
-            // Tag list
+            // ── Nearby tag list ────────────────────────────────────────────
             if (state.detectedTags.isNotEmpty()) {
                 Text(
                     "Nearby Tags (${state.detectedTags.size})",
@@ -176,25 +238,25 @@ private fun ProximityRadar(
 ) {
     val pct = ((closestRssi + 100) / 55.0).coerceIn(0.0, 1.0).toFloat()
     val (bgColor, label, icon) = when (proximity) {
-        ProximityLevel.HOT    -> Triple(Color(0xFFE53935), "Very Close!", Icons.Default.Whatshot)
+        ProximityLevel.HOT    -> Triple(Color(0xFFE53935), "Very Close!",    Icons.Default.Whatshot)
         ProximityLevel.NEAR   -> Triple(Color(0xFFFB8C00), "Getting Warmer", Icons.Default.ThermostatAuto)
         ProximityLevel.MEDIUM -> Triple(Color(0xFFFDD835), "Getting Closer", Icons.Default.ArrowUpward)
-        ProximityLevel.FAR    -> Triple(Color(0xFF42A5F5), "Far Away", Icons.Default.ArrowDownward)
+        ProximityLevel.FAR    -> Triple(Color(0xFF42A5F5), "Far Away",       Icons.Default.ArrowDownward)
     }
 
     val pulseScale by rememberInfiniteTransition(label = "pulse").animateFloat(
-        initialValue = 1f, targetValue = if (phase == LocatorPhase.Scanning) 1.08f else 1f,
+        initialValue  = 1f,
+        targetValue   = if (phase == LocatorPhase.Scanning) 1.08f else 1f,
         animationSpec = infiniteRepeatable(tween(800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "pulse_scale"
+        label         = "pulse_scale"
     )
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (phase != LocatorPhase.Idle)
-                bgColor.copy(alpha = 0.12f)
-            else MaterialTheme.colorScheme.surfaceVariant
+        shape    = RoundedCornerShape(16.dp),
+        colors   = CardDefaults.cardColors(
+            containerColor = if (phase != LocatorPhase.Idle) bgColor.copy(alpha = 0.12f)
+                             else MaterialTheme.colorScheme.surfaceVariant
         )
     ) {
         Column(
@@ -216,29 +278,22 @@ private fun ProximityRadar(
                 Icon(
                     imageVector = if (phase == LocatorPhase.Idle) Icons.Default.Radar else icon,
                     contentDescription = null,
-                    tint = if (phase != LocatorPhase.Idle) bgColor else Color.Gray,
+                    tint     = if (phase != LocatorPhase.Idle) bgColor else Color.Gray,
                     modifier = Modifier.size(44.dp)
                 )
             }
-
             if (phase != LocatorPhase.Idle) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = bgColor
-                )
+                Text(label, style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold, color = bgColor)
                 LinearProgressIndicator(
                     progress = { pct },
                     modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape),
-                    color = bgColor,
-                    trackColor = bgColor.copy(alpha = 0.15f)
+                    color       = bgColor,
+                    trackColor  = bgColor.copy(alpha = 0.15f)
                 )
-                Text(
-                    text = "Signal: ${closestRssi.roundToInt()} dBm",
+                Text("Signal: ${closestRssi.roundToInt()} dBm",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 Text("Enter an EPC and tap Start Locating",
                     style = MaterialTheme.typography.bodyMedium,
@@ -257,11 +312,10 @@ private fun NearbyTagRow(tag: LocatorTag, isTarget: Boolean) {
         ProximityLevel.FAR    -> Color(0xFF42A5F5)
     }
     Card(
-        shape = RoundedCornerShape(10.dp),
+        shape  = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isTarget)
-                MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surface
+            containerColor = if (isTarget) MaterialTheme.colorScheme.primaryContainer
+                             else MaterialTheme.colorScheme.surface
         ),
         elevation = CardDefaults.cardElevation(if (isTarget) 4.dp else 1.dp)
     ) {
@@ -269,20 +323,14 @@ private fun NearbyTagRow(tag: LocatorTag, isTarget: Boolean) {
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .width(4.dp)
-                    .height(40.dp)
-                    .clip(CircleShape)
-                    .background(barColor)
-            )
+            Box(modifier = Modifier.width(4.dp).height(40.dp).clip(CircleShape).background(barColor))
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = tag.product?.name ?: tag.epc.takeLast(12),
+                    text       = tag.product?.name ?: tag.epc.takeLast(12),
                     fontWeight = if (isTarget) FontWeight.Bold else FontWeight.Normal,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                    style      = MaterialTheme.typography.bodyMedium,
+                    maxLines   = 1, overflow = TextOverflow.Ellipsis
                 )
                 if (tag.product != null) {
                     Text(tag.epc.takeLast(12), style = MaterialTheme.typography.bodySmall,
@@ -304,4 +352,3 @@ private fun NearbyTagRow(tag: LocatorTag, isTarget: Boolean) {
         }
     }
 }
-

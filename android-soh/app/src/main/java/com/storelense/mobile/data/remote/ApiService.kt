@@ -96,4 +96,72 @@ interface ApiService {
 
     @POST("api/refill/tasks/{id}/complete")
     suspend fun completeRefillTask(@Path("id") id: String): Response<ApiResponse<RefillTaskDto>>
+
+    // ── Dashboard ─────────────────────────────────────────────────────────────
+
+    @GET("api/reporting/dashboard/summary")
+    suspend fun getDashboardSummary(
+        @Query("storeId") storeId: String,
+        @Query("days")    days: Int = 7
+    ): Response<ApiResponse<DashboardSummaryDto>>
+
+    // ── Stores ────────────────────────────────────────────────────────────────
+
+    @GET("api/stores")
+    suspend fun getStores(
+        @Query("page") page: Int = 0,
+        @Query("size") size: Int = 200
+    ): Response<ApiResponse<PagedData<StoreDto>>>
+
+    // ── Transfers ─────────────────────────────────────────────────────────────
+
+    @POST("api/transfers")
+    suspend fun createTransfer(@Body req: CreateTransferRequest): Response<ApiResponse<TransferDto>>
+
+    @GET("api/transfers/{id}")
+    suspend fun getTransfer(@Path("id") id: String): Response<ApiResponse<TransferDto>>
+
+    @POST("api/transfers/{id}/receive")
+    suspend fun receiveTransfer(
+        @Path("id") id: String,
+        @Body req: ReceiveTransferRequest
+    ): Response<ApiResponse<TransferDto>>
+
+    // ── Exceptions ────────────────────────────────────────────────────────────
+
+    @GET("api/exceptions/summary")
+    suspend fun getExceptionsSummary(
+        @Query("storeId") storeId: String
+    ): Response<ApiResponse<ExceptionSummaryDto>>
+
+    @GET("api/exceptions")
+    suspend fun getExceptions(
+        @Query("storeId") storeId: String,
+        @Query("type")    type: String,
+        @Query("page")    page: Int = 0,
+        @Query("size")    size: Int = 50
+    ): Response<ApiResponse<PagedData<ExceptionItemDto>>>
+
+    @GET("api/exceptions/ghost/{epc}")
+    suspend fun getGhostDetail(@Path("epc") epc: String): Response<ApiResponse<GhostAnalysisDetailDto>>
+
+    @POST("api/exceptions/ghost/{epc}/ignore")
+    suspend fun ignoreGhost(@Path("epc") epc: String): Response<ApiResponse<Unit>>
+
+    @POST("api/exceptions/ghost/{epc}/investigate")
+    suspend fun investigateGhost(@Path("epc") epc: String): Response<ApiResponse<Unit>>
+
+    @GET("api/exceptions/missing/{epc}")
+    suspend fun getMissingDetail(@Path("epc") epc: String): Response<ApiResponse<MissingEpcDetailDto>>
+
+    @POST("api/exceptions/missing/{epc}/mark-missing")
+    suspend fun markMissing(@Path("epc") epc: String): Response<ApiResponse<Unit>>
+
+    // ── Inventory Lookup ──────────────────────────────────────────────────────
+
+    @GET("api/inventory/sku/{sku}")
+    suspend fun getInventoryBySku(
+        @Path("sku")      sku: String,
+        @Query("storeId") storeId: String
+    ): Response<ApiResponse<InventorySkuDto>>
 }

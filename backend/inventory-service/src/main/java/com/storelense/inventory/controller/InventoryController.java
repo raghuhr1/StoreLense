@@ -3,6 +3,7 @@ package com.storelense.inventory.controller;
 import com.storelense.common.dto.ApiResponse;
 import com.storelense.common.security.StoreLensePrincipal;
 import com.storelense.inventory.domain.entity.InventoryState;
+import com.storelense.inventory.dto.SkuInventoryResponse;
 import com.storelense.inventory.dto.UpsertExpectedQtyRequest;
 import com.storelense.inventory.service.InventoryService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -64,6 +65,18 @@ public class InventoryController {
                 "sold",        inventoryService.countByStatus(effective, "sold"),
                 "damaged",     inventoryService.countByStatus(effective, "damaged")
         )));
+    }
+
+    @GetMapping("/sku/{sku}")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER')")
+    @Operation(summary = "Get on-hand count and active EPC list for a SKU at a store")
+    public ResponseEntity<ApiResponse<SkuInventoryResponse>> getSkuInventory(
+            @PathVariable String sku,
+            @RequestParam UUID storeId,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+
+        UUID effective = principal.isAdmin() ? storeId : principal.storeId();
+        return ResponseEntity.ok(ApiResponse.ok(inventoryService.getSkuInventory(sku, effective)));
     }
 
     @PostMapping("/expected")

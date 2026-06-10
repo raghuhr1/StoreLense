@@ -17,6 +17,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -62,6 +63,13 @@ public class SohSessionController {
     @Operation(summary = "Complete a SOH session and generate result")
     public ResponseEntity<ApiResponse<SohResultResponse>> complete(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.ok("Session completed", sessionService.completeSession(id)));
+    }
+
+    @GetMapping("/{id}/epcs")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER')")
+    @Operation(summary = "Get all EPCs scanned during a SOH session")
+    public ResponseEntity<ApiResponse<List<String>>> getEpcs(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(sessionService.getSessionEpcs(id)));
     }
 
     @PostMapping("/{id}/cancel")

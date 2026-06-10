@@ -9,5 +9,5 @@ public record SohSessionResponse(
         UUID startedBy, OffsetDateTime startedAt,
         OffsetDateTime completedAt,
         int totalEpcReads, int uniqueEpcCount,
-        String notes
+        String notes, String source, String zoneRegion
 ) {}

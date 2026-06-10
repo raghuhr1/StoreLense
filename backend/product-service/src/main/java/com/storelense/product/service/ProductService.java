@@ -19,6 +19,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -106,6 +107,14 @@ public class ProductService {
 
         redis.delete(EPC_CACHE_PREFIX + upperEpc);
         return epcTagRepository.save(tag);
+    }
+
+    @Transactional(readOnly = true)
+    public List<String> getEpcsByEan(String ean) {
+        return epcTagRepository.findActiveByBarcodeValue(ean)
+                .stream()
+                .map(EpcTag::getEpc)
+                .toList();
     }
 
     private Product findOrThrow(UUID id) {

@@ -19,6 +19,8 @@ public interface EpcRegistryRepository extends JpaRepository<EpcRegistry, UUID> 
 
     long countByStoreIdAndStatus(UUID storeId, String status);
 
+    List<EpcRegistry> findByStoreIdAndProductIdAndStatus(UUID storeId, UUID productId, String status);
+
     @Modifying
     @Query("UPDATE EpcRegistry r SET r.status = :status, r.lastSeenAt = :ts, r.zoneId = :zoneId, " +
            "r.lastSeenByReaderId = :readerId WHERE r.epc = :epc AND r.storeId = :storeId")

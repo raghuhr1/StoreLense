@@ -1,6 +1,7 @@
 package com.storelense.soh.service;
 
 import com.storelense.common.dto.PageResponse;
+import com.storelense.common.event.ErpImportCompletedEvent;
 import com.storelense.common.event.SohSessionCompletedEvent;
 import com.storelense.common.exception.BusinessException;
 import com.storelense.common.exception.ResourceNotFoundException;
@@ -16,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -34,6 +37,7 @@ public class SohSessionService {
     private final SohSessionItemRepository itemRepository;
     private final SohMapper                sohMapper;
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final JdbcClient               jdbcClient;
 
     @Transactional(readOnly = true)
     public PageResponse<SohSessionResponse> listSessions(UUID storeId, String status, Pageable pageable) {
@@ -61,10 +65,26 @@ public class SohSessionService {
                 .zoneId(req.zoneId())
                 .sessionType(req.sessionType() != null ? req.sessionType() : "manual")
                 .status("in_progress")
+                .source(req.source() != null ? req.source() : "manual")
+                .zoneRegion(req.zoneRegion())
                 .startedBy(userId)
                 .notes(req.notes())
                 .build();
 
+        return sohMapper.toResponse(sessionRepository.save(session));
+    }
+
+    @Transactional
+    public SohSessionResponse createFromErpImport(ErpImportCompletedEvent event) {
+        SohSession session = SohSession.builder()
+                .storeId(event.storeId())
+                .sessionType("erp_triggered")
+                .status("in_progress")
+                .source("erp_triggered")
+                .zoneRegion(event.zoneRegion())
+                .startedBy(event.batchId())
+                .notes("Auto-created from ERP import batch " + event.batchId())
+                .build();
         return sohMapper.toResponse(sessionRepository.save(session));
     }
 
@@ -146,6 +166,23 @@ public class SohSessionService {
                 .overcountItems(overcount)
                 .undercountItems(undercount)
                 .build();
+    }
+
+    @Transactional(readOnly = true)
+    public List<String> getSessionEpcs(UUID sessionId) {
+        findOrThrow(sessionId); // 404 if session missing
+        return jdbcClient.sql("""
+                SELECT DISTINCT er.epc
+                FROM inventory.epc_registry er
+                JOIN soh.soh_sessions ss ON ss.id = :sessionId::uuid
+                WHERE er.store_id = ss.store_id
+                AND er.last_seen_at >= ss.started_at
+                AND (ss.completed_at IS NULL OR er.last_seen_at <= ss.completed_at)
+                AND (ss.zone_id IS NULL OR er.zone_id = ss.zone_id)
+                """)
+                .param("sessionId", sessionId.toString())
+                .query(String.class)
+                .list();
     }
 
     private SohSession findOrThrow(UUID id) {

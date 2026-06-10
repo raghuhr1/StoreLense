@@ -1,5 +1,6 @@
 package com.storelense.mobile.ui.soh
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -75,11 +76,37 @@ private fun SessionCard(session: com.storelense.mobile.data.local.entity.SohSess
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(session.sessionType ?: "Full Store", style = MaterialTheme.typography.titleMedium)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(session.sessionType ?: "Full Store", style = MaterialTheme.typography.titleMedium)
+                    if (session.source == "erp_triggered") {
+                        ErpTriggeredChip()
+                    }
+                }
                 Text(session.startedAt?.take(10) ?: "—", style = MaterialTheme.typography.bodySmall)
             }
             StatusChip(session.status)
         }
+    }
+}
+
+@Composable
+private fun ErpTriggeredChip() {
+    Surface(
+        shape  = MaterialTheme.shapes.small,
+        color  = MaterialTheme.colorScheme.primary.copy(alpha = 0f),
+        border = BorderStroke(
+            1.dp, MaterialTheme.colorScheme.primary
+        )
+    ) {
+        Text(
+            "ERP Triggered",
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            color    = MaterialTheme.colorScheme.primary,
+            style    = MaterialTheme.typography.labelSmall
+        )
     }
 }
 

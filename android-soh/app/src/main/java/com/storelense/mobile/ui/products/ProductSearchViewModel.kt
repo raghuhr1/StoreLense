@@ -3,6 +3,8 @@ package com.storelense.mobile.ui.products
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.storelense.mobile.data.local.entity.ProductEntity
+import com.storelense.mobile.data.remote.ApiService
+import com.storelense.mobile.data.remote.dto.InventorySkuDto
 import com.storelense.mobile.data.repository.AuthRepository
 import com.storelense.mobile.data.repository.ProductRepository
 import com.storelense.mobile.data.repository.Result
@@ -13,18 +15,23 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class ProductSearchState(
-    val query: String = "",
-    val results: List<ProductEntity> = emptyList(),
-    val isSearching: Boolean = false,
-    val catalogCount: Int = 0,
-    val lastSyncError: String? = null,
-    val isSyncing: Boolean = false
+    val query: String                  = "",
+    val results: List<ProductEntity>   = emptyList(),
+    val isSearching: Boolean           = false,
+    val catalogCount: Int              = 0,
+    val lastSyncError: String?         = null,
+    val isSyncing: Boolean             = false,
+    val selectedProduct: ProductEntity? = null,
+    val inventoryCounts: InventorySkuDto? = null,
+    val inventoryLoading: Boolean      = false,
+    val inventoryError: String?        = null
 )
 
 @HiltViewModel
 class ProductSearchViewModel @Inject constructor(
     private val repo: ProductRepository,
-    private val auth: AuthRepository
+    private val auth: AuthRepository,
+    private val api: ApiService
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ProductSearchState())
@@ -51,6 +58,30 @@ class ProductSearchViewModel @Inject constructor(
     fun clearQuery() {
         _state.update { it.copy(query = "", results = emptyList()) }
         queryFlow.value = ""
+    }
+
+    fun selectProduct(product: ProductEntity) {
+        val storeId = auth.storeId ?: return
+        _state.update { it.copy(
+            selectedProduct  = product,
+            inventoryCounts  = null,
+            inventoryLoading = true,
+            inventoryError   = null
+        ) }
+        viewModelScope.launch {
+            val resp = try {
+                api.getInventoryBySku(product.sku, storeId)
+            } catch (_: Exception) {
+                _state.update { it.copy(inventoryLoading = false, inventoryError = "Network error") }
+                return@launch
+            }
+            val data = resp.body()?.data
+            if (resp.isSuccessful && data != null) {
+                _state.update { it.copy(inventoryCounts = data, inventoryLoading = false) }
+            } else {
+                _state.update { it.copy(inventoryLoading = false, inventoryError = "Could not load inventory") }
+            }
+        }
     }
 
     fun triggerSync() {

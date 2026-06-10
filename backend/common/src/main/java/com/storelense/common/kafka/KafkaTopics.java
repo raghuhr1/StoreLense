@@ -36,6 +36,9 @@ public final class KafkaTopics {
     /** Expected inventory quantities from ERP → inventory-service */
     public static final String ERP_INVENTORY_EXPECTED = "erp.inventory.expected";
 
+    /** ERP import batch completed → soh-service (triggers erp_triggered session) */
+    public static final String ERP_IMPORT_COMPLETED   = "erp.import.completed";
+
     /** SOH results pushed outbound to ERP (consumed by erp-integration-service) */
     public static final String ERP_SOH_OUTBOUND      = "erp.soh.outbound";
 

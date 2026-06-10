@@ -17,6 +17,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -63,6 +64,12 @@ public class ProductController {
     @Operation(summary = "Lookup product by EPC (Redis-cached)")
     public ResponseEntity<ApiResponse<EpcLookupResponse>> lookupEpc(@PathVariable String epc) {
         return ResponseEntity.ok(ApiResponse.ok(productService.lookupEpc(epc)));
+    }
+
+    @GetMapping("/by-ean/{ean}/epcs")
+    @Operation(summary = "Get all active EPC values for products matching an EAN barcode")
+    public ResponseEntity<ApiResponse<List<String>>> getEpcsByEan(@PathVariable String ean) {
+        return ResponseEntity.ok(ApiResponse.ok(productService.getEpcsByEan(ean)));
     }
 
     @PostMapping("/{id}/epc")

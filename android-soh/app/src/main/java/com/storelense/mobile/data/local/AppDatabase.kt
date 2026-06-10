@@ -16,8 +16,13 @@ import com.storelense.mobile.data.local.entity.*
         RefillTaskEntity::class,
         RefillTaskItemEntity::class,
         ProductEntity::class,
+        StoreEntity::class,
+        TransferOutEntity::class,
+        TransferManifestEntity::class,
+        ExceptionCacheEntity::class,
+        GhostAnalysisEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -27,6 +32,10 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun inboundShipmentDao(): InboundShipmentDao
     abstract fun refillDao(): RefillDao
     abstract fun productDao(): ProductDao
+    abstract fun storeDao(): StoreDao
+    abstract fun transferDao(): TransferDao
+    abstract fun exceptionCacheDao(): ExceptionCacheDao
+    abstract fun ghostAnalysisDao(): GhostAnalysisDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -50,6 +59,75 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_products_sku ON products(sku)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS idx_products_erpCode ON products(erpCode)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS idx_products_storeId ON products(storeId)")
+            }
+        }
+
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Extend soh_sessions with ERP-triggered session fields
+                db.execSQL("ALTER TABLE soh_sessions ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'")
+                db.execSQL("ALTER TABLE soh_sessions ADD COLUMN zoneRegion TEXT")
+
+                // Store lookup cache (for Transfer Out destination dropdown)
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS stores (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        code TEXT,
+                        cachedAt INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+
+                // Offline buffer for outbound transfers
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS transfers_out (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        destStoreId TEXT NOT NULL,
+                        transferType TEXT NOT NULL,
+                        epcsText TEXT NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'PENDING',
+                        createdAt INTEGER NOT NULL DEFAULT 0,
+                        uploadedAt INTEGER
+                    )
+                """.trimIndent())
+
+                // Inbound transfer EPC manifest (for Transfer Receive matching)
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS transfer_manifest (
+                        transferId TEXT NOT NULL,
+                        epc TEXT NOT NULL,
+                        receivedAt INTEGER,
+                        PRIMARY KEY (transferId, epc)
+                    )
+                """.trimIndent())
+
+                // Exception events cache (Missing EPCs, Ghost Tags, Read Misses)
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS exception_cache (
+                        epc TEXT NOT NULL PRIMARY KEY,
+                        type TEXT NOT NULL,
+                        confidence INTEGER NOT NULL DEFAULT 0,
+                        classification TEXT,
+                        lastSeen TEXT,
+                        status TEXT NOT NULL DEFAULT 'OPEN',
+                        cachedAt INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS idx_exception_cache_type_status " +
+                    "ON exception_cache(type, status)"
+                )
+
+                // Ghost analysis detail cache
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS ghost_analysis (
+                        epc TEXT NOT NULL PRIMARY KEY,
+                        confidenceScore INTEGER NOT NULL DEFAULT 0,
+                        reasonsText TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        cachedAt INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
             }
         }
     }

@@ -8,5 +8,7 @@ public record StartSessionRequest(
         @NotNull UUID storeId,
         UUID zoneId,
         String sessionType,
-        String notes
+        String notes,
+        String source,
+        String zoneRegion
 ) {}

@@ -16,13 +16,14 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class InboundScanState(
-    val shipmentId: String  = "",
-    val expectedCount: Int  = 0,
-    val scannedCount: Int   = 0,
-    val matchedCount: Int   = 0,
-    val lastEpc: String     = "",
-    val phase: ScanPhase    = ScanPhase.Connecting,
-    val error: String?      = null
+    val shipmentId: String       = "",
+    val referenceNumber: String? = null,
+    val expectedCount: Int       = 0,
+    val scannedCount: Int        = 0,
+    val matchedCount: Int        = 0,
+    val lastEpc: String          = "",
+    val phase: ScanPhase         = ScanPhase.Connecting,
+    val error: String?           = null
 )
 
 enum class ScanPhase { Connecting, Scanning, Paused, Uploading, Done }
@@ -41,7 +42,7 @@ class InboundScanViewModel @Inject constructor(
     private val _events = MutableSharedFlow<InboundEvent>()
     val events = _events.asSharedFlow()
 
-    private val scannedSet = mutableSetOf<String>()
+    private val scannedSet  = mutableSetOf<String>()
     private val expectedSet = mutableSetOf<String>()
 
     init { load() }
@@ -50,7 +51,10 @@ class InboundScanViewModel @Inject constructor(
         when (val r = repo.getShipment(shipmentId)) {
             is Result.Success -> {
                 r.data.expectedEpcs?.let { expectedSet.addAll(it) }
-                _state.update { it.copy(expectedCount = expectedSet.size) }
+                _state.update { it.copy(
+                    expectedCount   = expectedSet.size,
+                    referenceNumber = r.data.referenceNumber
+                ) }
                 rfid.connect(); rfid.setTxPower(27); rfid.startScan()
                 _state.update { it.copy(phase = ScanPhase.Scanning) }
                 rfid.reads.collect { read ->

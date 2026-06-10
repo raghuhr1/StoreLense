@@ -13,6 +13,8 @@ public interface InventoryStateRepository extends JpaRepository<InventoryState, 
 
     List<InventoryState> findByStoreId(UUID storeId);
 
+    List<InventoryState> findByStoreIdAndProductId(UUID storeId, UUID productId);
+
     Optional<InventoryState> findByStoreIdAndProductIdAndZoneId(UUID storeId, UUID productId, UUID zoneId);
 
     @Query("SELECT i FROM InventoryState i WHERE i.storeId = :storeId AND i.accuracyPct < :threshold")

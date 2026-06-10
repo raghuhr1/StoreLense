@@ -20,6 +20,9 @@ interface EpcReadDao {
 
     @Query("DELETE FROM epc_reads WHERE sessionId = :sessionId")
     suspend fun deleteForSession(sessionId: String)
+
+    @Query("SELECT COUNT(*) FROM epc_reads WHERE uploaded = 0")
+    fun countAllPendingFlow(): Flow<Int>
 }
 
 @Dao
@@ -125,4 +128,87 @@ interface RefillDao {
 
     @Query("UPDATE refill_tasks SET status = 'completed' WHERE id = :taskId")
     suspend fun markCompleted(taskId: String)
+}
+
+// ── Stores ────────────────────────────────────────────────────────────────────
+
+@Dao
+interface StoreDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(entities: List<StoreEntity>)
+
+    @Query("SELECT * FROM stores ORDER BY name ASC")
+    fun getAll(): Flow<List<StoreEntity>>
+
+    @Query("SELECT * FROM stores ORDER BY name ASC")
+    suspend fun getAllSync(): List<StoreEntity>
+
+    @Query("SELECT COUNT(*) FROM stores")
+    suspend fun count(): Int
+
+    @Query("DELETE FROM stores")
+    suspend fun deleteAll()
+}
+
+// ── Transfers ─────────────────────────────────────────────────────────────────
+
+@Dao
+interface TransferDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(entity: TransferOutEntity)
+
+    @Query("SELECT * FROM transfers_out WHERE id = :id")
+    suspend fun getById(id: String): TransferOutEntity?
+
+    @Query("SELECT * FROM transfers_out ORDER BY createdAt DESC")
+    fun getAll(): Flow<List<TransferOutEntity>>
+
+    @Query("UPDATE transfers_out SET status = :status, uploadedAt = :uploadedAt WHERE id = :id")
+    suspend fun updateStatus(id: String, status: String, uploadedAt: Long? = null)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertManifestItems(entities: List<TransferManifestEntity>)
+
+    @Query("SELECT * FROM transfer_manifest WHERE transferId = :transferId")
+    suspend fun getManifest(transferId: String): List<TransferManifestEntity>
+
+    @Query("UPDATE transfer_manifest SET receivedAt = :receivedAt WHERE transferId = :transferId AND epc = :epc")
+    suspend fun markEpcReceived(transferId: String, epc: String, receivedAt: Long)
+
+    @Query("SELECT COUNT(*) FROM transfers_out WHERE uploadedAt IS NULL")
+    fun countPendingFlow(): Flow<Int>
+}
+
+// ── Exceptions ────────────────────────────────────────────────────────────────
+
+@Dao
+interface ExceptionCacheDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(entities: List<ExceptionCacheEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(entity: ExceptionCacheEntity)
+
+    @Query("SELECT * FROM exception_cache WHERE type = :type ORDER BY confidence DESC")
+    fun getByType(type: String): Flow<List<ExceptionCacheEntity>>
+
+    @Query("SELECT * FROM exception_cache WHERE type = :type ORDER BY confidence DESC")
+    suspend fun getByTypeSync(type: String): List<ExceptionCacheEntity>
+
+    @Query("SELECT * FROM exception_cache WHERE epc = :epc")
+    suspend fun getByEpc(epc: String): ExceptionCacheEntity?
+
+    @Query("UPDATE exception_cache SET status = :status WHERE epc = :epc")
+    suspend fun updateStatus(epc: String, status: String)
+}
+
+// ── Ghost Analysis ────────────────────────────────────────────────────────────
+
+@Dao
+interface GhostAnalysisDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(entity: GhostAnalysisEntity)
+
+    @Query("SELECT * FROM ghost_analysis WHERE epc = :epc")
+    suspend fun getByEpc(epc: String): GhostAnalysisEntity?
 }
