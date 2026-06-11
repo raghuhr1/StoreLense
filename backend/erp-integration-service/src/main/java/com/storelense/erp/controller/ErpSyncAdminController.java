@@ -6,6 +6,7 @@ import com.storelense.erp.domain.entity.ErpSyncLog;
 import com.storelense.erp.domain.repository.ErpImportBatchRepository;
 import com.storelense.erp.domain.repository.ErpSohSnapshotRepository;
 import com.storelense.erp.domain.repository.ErpSyncLogRepository;
+import com.storelense.erp.exception.CsvParseException;
 import com.storelense.erp.service.EanResolutionService;
 import com.storelense.erp.service.ErpImportService;
 import com.storelense.erp.service.InventorySyncService;
@@ -197,5 +198,11 @@ public class ErpSyncAdminController {
                 "resolved",   resolved,
                 "unresolved", unresolved
         )));
+    }
+
+    @ExceptionHandler(CsvParseException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCsvParse(CsvParseException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error("CSV_PARSE_ERROR", ex.getMessage()));
     }
 }
