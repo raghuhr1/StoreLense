@@ -25,7 +25,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.storelense.mobile.ui.theme.StoreLenseTheme
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -349,6 +351,29 @@ private fun NearbyTagRow(tag: LocatorTag, isTarget: Boolean) {
                 Icon(Icons.Default.GpsFixed, contentDescription = "Target",
                     tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
             }
+        }
+    }
+}
+
+// ── Previews ──────────────────────────────────────────────────────────────────
+
+@Preview(showBackground = true, widthDp = 360, name = "Nearby Tag – Target (HOT)")
+@Composable
+private fun NearbyTagHotPreview() {
+    StoreLenseTheme {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            NearbyTagRow(
+                tag = LocatorTag(epc = "E2003411B802011803D0A462", rssi = -48.0, proximity = ProximityLevel.HOT, product = null),
+                isTarget = true
+            )
+            NearbyTagRow(
+                tag = LocatorTag(epc = "E2003411B802011803D0A463", rssi = -68.0, proximity = ProximityLevel.MEDIUM, product = null),
+                isTarget = false
+            )
+            NearbyTagRow(
+                tag = LocatorTag(epc = "E2003411B802011803D0A464", rssi = -82.0, proximity = ProximityLevel.FAR, product = null),
+                isTarget = false
+            )
         }
     }
 }

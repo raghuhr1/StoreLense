@@ -19,8 +19,10 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.storelense.mobile.ui.theme.StoreLenseTheme
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -232,5 +234,53 @@ private fun PhaseChip(phase: ScanPhase) {
     Surface(color = color.copy(.15f), shape = MaterialTheme.shapes.medium) {
         Text(txt, Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             color = color, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+    }
+}
+
+// ── Previews ──────────────────────────────────────────────────────────────────
+
+@Preview(showBackground = true, widthDp = 360, heightDp = 280, name = "Donut Chart – 94% matched")
+@Composable
+private fun ReceiveDonutChartPreview() {
+    StoreLenseTheme {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            ReceiveDonutChart(scanned = 95, expected = 100, matched = 94)
+        }
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360, name = "Drill Row – Missing 6")
+@Composable
+private fun DrillRowMissingPreview() {
+    StoreLenseTheme {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            DrillRow(label = "Missing", count = 6,  color = Color(0xFFE53935), onClick = {})
+            DrillRow(label = "Extra",   count = 1,  color = Color(0xFFFB8C00), onClick = {})
+        }
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360, heightDp = 700, name = "Inbound Scan – Active")
+@Composable
+private fun InboundScanContentPreview() {
+    StoreLenseTheme {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            PhaseChip(ScanPhase.Scanning)
+            Spacer(Modifier.height(16.dp))
+            ReceiveDonutChart(scanned = 95, expected = 100, matched = 94)
+            Spacer(Modifier.height(20.dp))
+            DrillRow(label = "Missing", count = 6, color = Color(0xFFE53935), onClick = {})
+            Spacer(Modifier.height(8.dp))
+            DrillRow(label = "Extra",   count = 1, color = Color(0xFFFB8C00), onClick = {})
+            Spacer(Modifier.weight(1f))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = {}, modifier = Modifier.weight(1f).height(52.dp)) { Text("Pause") }
+                Button(onClick = {}, modifier = Modifier.weight(1f).height(52.dp)) { Text("Confirm Receipt", fontSize = 16.sp) }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
     }
 }

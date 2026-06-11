@@ -24,9 +24,11 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.storelense.mobile.data.local.entity.ProductEntity
 import com.storelense.mobile.data.remote.dto.InventorySkuDto
+import com.storelense.mobile.ui.theme.StoreLenseTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -469,3 +471,30 @@ private fun skuColor(sku: String): Color {
     )
     return colors[sku.hashCode().and(0x7fffffff) % colors.size]
 }
+
+// ── Previews ──────────────────────────────────────────────────────────────────
+
+@Preview(showBackground = true, widthDp = 360, heightDp = 300, name = "Empty Search Hint")
+@Composable
+private fun EmptySearchHintPreview() {
+    StoreLenseTheme { EmptySearchHint(catalogCount = 1250) }
+}
+
+@Preview(showBackground = true, widthDp = 360, heightDp = 200, name = "No Results")
+@Composable
+private fun NoResultsViewPreview() {
+    StoreLenseTheme { NoResultsView(query = "shirt blue xl") }
+}
+
+@Preview(showBackground = true, widthDp = 360, name = "Stock Badge – Good")
+@Composable
+private fun StockBadgeGoodPreview() {
+    StoreLenseTheme {
+        Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            StockBadge(onHand = 95,  expected = 100)
+            StockBadge(onHand = 60,  expected = 100)
+            StockBadge(onHand = 20,  expected = 100)
+        }
+    }
+}
+

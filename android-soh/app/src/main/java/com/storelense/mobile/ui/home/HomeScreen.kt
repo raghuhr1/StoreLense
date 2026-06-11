@@ -23,8 +23,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.storelense.mobile.ui.theme.StoreLenseTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -414,6 +416,86 @@ private fun LastSyncRow(lastSyncAt: String?, onSyncStatus: () -> Unit) {
         )
         TextButton(onClick = onSyncStatus, contentPadding = PaddingValues(horizontal = 8.dp)) {
             Text("Details", style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
+// ── Previews ──────────────────────────────────────────────────────────────────
+
+@Preview(showBackground = true, widthDp = 360, heightDp = 200, name = "KPI Card – SOH Accuracy")
+@Composable
+private fun KpiCardPreview() {
+    StoreLenseTheme {
+        KpiCard(
+            label       = "SOH Accuracy",
+            value       = "98.4%",
+            history     = listOf(92f, 94f, 96f, 97f, 98f, 98.4f),
+            accentColor = Color(0xFF1565C0)
+        )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360, heightDp = 220, name = "Nav Tile Grid")
+@Composable
+private fun NavigationTileGridPreview() {
+    StoreLenseTheme {
+        NavigationTileGrid(
+            listOf(
+                TileData(Icons.Default.BarChart,       "SOH Count",      Color(0xFFE3F2FD)) {},
+                TileData(Icons.Default.LocalShipping,  "Receive DC",     Color(0xFFE8F5E9)) {},
+                TileData(Icons.Default.MoveDown,       "Replenish",      Color(0xFFE8EAF6)) {},
+                TileData(Icons.Default.SwapHoriz,      "Transfer Out",   Color(0xFFFCE4EC)) {},
+                TileData(Icons.Default.Warning,        "Exceptions",     Color(0xFFFFF8E1)) {},
+                TileData(Icons.Default.Search,         "Product Search", Color(0xFFE3F2FD)) {},
+            )
+        )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360, heightDp = 80, name = "ERP Session Banner")
+@Composable
+private fun ErpSessionCardPreview() {
+    StoreLenseTheme {
+        ErpSessionCard(onSoh = {})
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360, heightDp = 48, name = "Last Sync Row")
+@Composable
+private fun LastSyncRowPreview() {
+    StoreLenseTheme {
+        LastSyncRow(lastSyncAt = "Today 09:41 AM", onSyncStatus = {})
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360, heightDp = 800, name = "Dashboard – Full Scroll")
+@Composable
+private fun HomeScreenContentPreview() {
+    StoreLenseTheme {
+        LazyColumn(
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            item { ErpSessionCard(onSoh = {}) }
+            item { DashboardSectionHeader("Store Health") }
+            item { KpiCard("SOH Accuracy",  "98.4%", listOf(92f, 94f, 96f, 97f, 98f, 98.4f), Color(0xFF1565C0)) }
+            item { KpiCard("Missing Items", "142",   listOf(150f, 145f, 148f, 142f),           Color(0xFFE53935)) }
+            item { KpiCard("Ghost Tags",    "23",    listOf(25f, 24f, 22f, 23f),               Color(0xFFFF6F00)) }
+            item { KpiCard("Read Misses",   "54",    listOf(60f, 58f, 55f, 54f),               Color(0xFF1565C0)) }
+            item { DashboardSectionHeader("Workflows") }
+            item {
+                NavigationTileGrid(
+                    listOf(
+                        TileData(Icons.Default.BarChart,       "SOH Count",      Color(0xFFE3F2FD)) {},
+                        TileData(Icons.Default.LocalShipping,  "Receive DC",     Color(0xFFE8F5E9)) {},
+                        TileData(Icons.Default.MoveDown,       "Replenish",      Color(0xFFE8EAF6)) {},
+                        TileData(Icons.Default.SwapHoriz,      "Transfer Out",   Color(0xFFFCE4EC)) {},
+                        TileData(Icons.Default.Warning,        "Exceptions",     Color(0xFFFFF8E1)) {},
+                        TileData(Icons.Default.Search,         "Product Search", Color(0xFFE3F2FD)) {},
+                    )
+                )
+            }
+            item { LastSyncRow(lastSyncAt = "Today 09:41 AM", onSyncStatus = {}) }
         }
     }
 }

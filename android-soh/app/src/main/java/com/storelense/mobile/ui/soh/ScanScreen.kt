@@ -16,8 +16,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.storelense.mobile.ui.theme.StoreLenseTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -196,4 +198,72 @@ private fun BigCounterRow(label: String, count: Int, color: Color) {
         Text(count.toString(), fontSize = 48.sp, fontWeight = FontWeight.Bold, color = color)
     }
     HorizontalDivider()
+}
+
+// ── Previews ──────────────────────────────────────────────────────────────────
+
+@Preview(showBackground = true, widthDp = 360, name = "Phase – Scanning")
+@Composable
+private fun PhaseIndicatorScanningPreview() {
+    StoreLenseTheme { PhaseIndicator(ScanPhase.Scanning) }
+}
+
+@Preview(showBackground = true, widthDp = 360, name = "Phase – Paused")
+@Composable
+private fun PhaseIndicatorPausedPreview() {
+    StoreLenseTheme { PhaseIndicator(ScanPhase.Paused) }
+}
+
+@Preview(showBackground = true, widthDp = 360, name = "Signal Bars – 3 of 4")
+@Composable
+private fun SignalBarsPreview() {
+    StoreLenseTheme {
+        Box(Modifier.padding(16.dp)) {
+            SignalBarsIcon(bars = 3, modifier = Modifier.size(width = 44.dp, height = 36.dp))
+        }
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360, heightDp = 700, name = "Scan Screen – Active")
+@Composable
+private fun ScanScreenContentPreview() {
+    StoreLenseTheme {
+        Column(
+            Modifier.fillMaxSize().padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            PhaseIndicator(ScanPhase.Scanning)
+            Spacer(Modifier.height(24.dp))
+            BigCounterRow("Scanned",  847, MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(8.dp))
+            BigCounterRow("Matched",  821, MaterialTheme.colorScheme.secondary)
+            Spacer(Modifier.height(8.dp))
+            BigCounterRow("Expected", 900, MaterialTheme.colorScheme.outline)
+            Spacer(Modifier.height(16.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MetricItem(icon = { Icon(Icons.Default.Speed, null, Modifier.size(16.dp)) }, value = "12.4/s", label = "Rate")
+                    VerticalDivider(modifier = Modifier.height(32.dp))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        SignalBarsIcon(bars = 3, modifier = Modifier.size(width = 22.dp, height = 18.dp))
+                        Text("Reader", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    VerticalDivider(modifier = Modifier.height(32.dp))
+                    MetricItem(icon = { Icon(Icons.Default.BatteryFull, null, Modifier.size(16.dp)) }, value = "78%", label = "Battery")
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = {}, modifier = Modifier.weight(1f).height(52.dp)) { Text("Pause") }
+                Button(onClick = {}, modifier = Modifier.weight(1f).height(52.dp)) { Text("Complete", fontSize = 16.sp) }
+            }
+        }
+    }
 }
