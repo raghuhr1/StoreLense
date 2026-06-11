@@ -7,6 +7,7 @@ import com.storelense.erp.domain.entity.ErpImportBatch;
 import com.storelense.erp.domain.entity.ErpSohSnapshot;
 import com.storelense.erp.domain.repository.ErpImportBatchRepository;
 import com.storelense.erp.domain.repository.ErpSohSnapshotRepository;
+import com.storelense.erp.domain.repository.ErpStoreMappingRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +21,7 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -38,6 +40,7 @@ public class ErpImportService {
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final ErpImportProperties           importProperties;
     private final EanResolutionService          eanResolutionService;
+    private final ErpStoreMappingRepository     storeMappingRepository;
 
     // Self-injection through Spring proxy so @Transactional on commitImport is honoured
     @Lazy @Autowired
@@ -51,10 +54,18 @@ public class ErpImportService {
 
     public ErpImportBatch processFile(Path localPath) {
         log.info("Processing local ERP import: {}", localPath);
-        ErpImportBatch batch = createBatch("FILE", localPath.toString());
+        ErpCsvParser.ParseResult parsed;
         try (InputStream is = Files.newInputStream(localPath)) {
-            List<ErpSohSnapshot> snapshots = csvParser.parse(is, batch);
-            return self.commitImport(batch, snapshots);
+            parsed = csvParser.parse(is);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+
+        UUID storeId = resolveStoreCode(parsed.storeCode());
+        ErpImportBatch batch = createBatch("FILE", localPath.toString(), storeId);
+        try {
+            parsed.snapshots().forEach(s -> s.setBatch(batch));
+            return self.commitImport(batch, parsed.snapshots());
         } catch (Exception e) {
             log.error("ERP import failed [{}]: {}", localPath, e.getMessage(), e);
             return self.markFailed(batch.getId(), e.getMessage());
@@ -67,14 +78,22 @@ public class ErpImportService {
             throw new IllegalStateException(
                     "S3 client not configured — set storelense.erp.import.s3-enabled=true");
         }
-        ErpImportBatch batch = createBatch("S3", s3Key);
         GetObjectRequest req = GetObjectRequest.builder()
                 .bucket(importProperties.s3Bucket())
                 .key(s3Key)
                 .build();
+        ErpCsvParser.ParseResult parsed;
         try (InputStream is = s3Client.getObject(req)) {
-            List<ErpSohSnapshot> snapshots = csvParser.parse(is, batch);
-            return self.commitImport(batch, snapshots);
+            parsed = csvParser.parse(is);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+
+        UUID storeId = resolveStoreCode(parsed.storeCode());
+        ErpImportBatch batch = createBatch("S3", s3Key, storeId);
+        try {
+            parsed.snapshots().forEach(s -> s.setBatch(batch));
+            return self.commitImport(batch, parsed.snapshots());
         } catch (Exception e) {
             log.error("ERP import failed [s3:{}]: {}", s3Key, e.getMessage(), e);
             return self.markFailed(batch.getId(), e.getMessage());
@@ -101,25 +120,31 @@ public class ErpImportService {
         ErpImportBatch saved = batchRepository.save(batch);
 
         publishEvent(saved, snapshots);
-        log.info("ERP import committed: batchId={} rows={} resolved={} unresolved={}",
-                saved.getId(), snapshots.size(), resolved, unresolved);
+        log.info("ERP import committed: batchId={} storeCode={} rows={} resolved={} unresolved={}",
+                saved.getId(), saved.getStoreId(), snapshots.size(), resolved, unresolved);
         return saved;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public ErpImportBatch markFailed(UUID batchId, String error) {
-        return batchRepository.findById(batchId).map(b -> {
-            b.setStatus("FAILED");
-            b.setErrorMessage(error);
-            return batchRepository.save(b);
-        }).orElseThrow();
+        ErpImportBatch b = batchRepository.findById(batchId).orElseThrow();
+        b.setStatus("FAILED");
+        b.setErrorMessage(error);
+        return batchRepository.save(b);
     }
 
     // ── Private helpers ─────────────────────────────────────────────────────
 
-    private ErpImportBatch createBatch(String sourceType, String filePath) {
+    private UUID resolveStoreCode(String storeCode) {
+        return storeMappingRepository.findByErpStoreCode(storeCode)
+                .map(m -> m.getInternalStoreId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Unknown STORE_CODE '" + storeCode + "' — add it to erp_store_mapping first"));
+    }
+
+    private ErpImportBatch createBatch(String sourceType, String filePath, UUID storeId) {
         return batchRepository.save(ErpImportBatch.builder()
-                .storeId(importProperties.storeId())
+                .storeId(storeId)
                 .sourceType(sourceType)
                 .filePath(filePath)
                 .status("PROCESSING")

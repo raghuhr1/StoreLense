@@ -1,6 +1,5 @@
 package com.storelense.erp.service;
 
-import com.storelense.erp.domain.entity.ErpImportBatch;
 import com.storelense.erp.domain.entity.ErpSohSnapshot;
 import com.storelense.erp.exception.CsvParseException;
 import org.springframework.stereotype.Component;
@@ -12,16 +11,18 @@ import java.util.*;
 @Component
 public class ErpCsvParser {
 
-    private static final String[] REQUIRED_HEADERS = {"EAN", "EXPECTED_QTY", "ZONE_REGION"};
+    private static final String[] REQUIRED_HEADERS = {"EAN", "EXPECTED_QTY", "ZONE_REGION", "STORE_CODE"};
+
+    public record ParseResult(String storeCode, List<ErpSohSnapshot> snapshots) {}
 
     /**
-     * Parses an ERP export CSV and maps every data row to an {@link ErpSohSnapshot}.
-     * The caller owns the InputStream lifecycle (open / close).
+     * Parses an ERP export CSV. STORE_CODE must be present on every row and consistent
+     * throughout the file — it is looked up in erp_store_mapping by the caller.
      *
-     * @throws CsvParseException on missing headers or malformed rows
+     * @throws CsvParseException on missing/inconsistent headers or malformed rows
      * @throws IOException       on read failures
      */
-    public List<ErpSohSnapshot> parse(InputStream is, ErpImportBatch batch) throws IOException {
+    public ParseResult parse(InputStream is) throws IOException {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
 
             String headerLine = reader.readLine();
@@ -40,12 +41,14 @@ public class ErpCsvParser {
                 }
             }
 
-            int eanCol  = idx.get("EAN");
-            int qtyCol  = idx.get("EXPECTED_QTY");
-            int zoneCol = idx.get("ZONE_REGION");
-            int minCols = Math.max(eanCol, Math.max(qtyCol, zoneCol)) + 1;
+            int eanCol       = idx.get("EAN");
+            int qtyCol       = idx.get("EXPECTED_QTY");
+            int zoneCol      = idx.get("ZONE_REGION");
+            int storeCodeCol = idx.get("STORE_CODE");
+            int minCols      = Math.max(eanCol, Math.max(qtyCol, Math.max(zoneCol, storeCodeCol))) + 1;
 
             List<ErpSohSnapshot> snapshots = new ArrayList<>();
+            String resolvedStoreCode = null;
             String line;
             int lineNum = 1;
 
@@ -74,15 +77,30 @@ public class ErpCsvParser {
 
                 String zone = cols[zoneCol].trim();
 
+                String rowStoreCode = cols[storeCodeCol].trim();
+                if (rowStoreCode.isEmpty()) {
+                    throw new CsvParseException("STORE_CODE is empty", lineNum);
+                }
+                if (resolvedStoreCode == null) {
+                    resolvedStoreCode = rowStoreCode;
+                } else if (!resolvedStoreCode.equals(rowStoreCode)) {
+                    throw new CsvParseException(
+                            "STORE_CODE must be the same on every row — found '" + rowStoreCode
+                            + "' but expected '" + resolvedStoreCode + "'", lineNum);
+                }
+
                 snapshots.add(ErpSohSnapshot.builder()
-                        .batch(batch)
                         .ean(ean)
                         .expectedQty(qty)
                         .zoneRegion(zone.isEmpty() ? null : zone)
                         .build());
             }
 
-            return snapshots;
+            if (resolvedStoreCode == null) {
+                throw new CsvParseException("CSV contains no data rows", 1);
+            }
+
+            return new ParseResult(resolvedStoreCode, snapshots);
         }
     }
 }
