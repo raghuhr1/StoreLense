@@ -78,11 +78,11 @@ def clean_brand(raw):
 def convert(input_path, dept_override, store_code, output_path):
     print(f"\n  Reading: {input_path}")
 
-    # Load — support xlsx and csv
+    # Load — support xlsx, xls (legacy) and csv
     ext = os.path.splitext(input_path)[1].lower()
     rows = []
 
-    if ext in ('.xlsx', '.xls'):
+    if ext == '.xlsx':
         wb = openpyxl.load_workbook(input_path, read_only=True, data_only=True)
         ws = wb.active
         iter_rows = ws.iter_rows(values_only=True)
@@ -92,6 +92,19 @@ def convert(input_path, dept_override, store_code, output_path):
             if any(v is not None for v in r):
                 rows.append(dict(zip(headers, r)))
         wb.close()
+    elif ext == '.xls':
+        try:
+            import xlrd
+        except ImportError:
+            print("Run: pip3 install xlrd"); sys.exit(1)
+        wb = xlrd.open_workbook(input_path)
+        ws = wb.sheet_by_index(0)
+        raw_hdr = ws.row_values(0)
+        headers = [str(h).strip() if h else f'col{i}' for i, h in enumerate(raw_hdr)]
+        for i in range(1, ws.nrows):
+            r = ws.row_values(i)
+            if any(v not in (None, '') for v in r):
+                rows.append(dict(zip(headers, r)))
     elif ext == '.csv':
         with open(input_path, newline='', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
