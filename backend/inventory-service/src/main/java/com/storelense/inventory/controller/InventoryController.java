@@ -3,6 +3,9 @@ package com.storelense.inventory.controller;
 import com.storelense.common.dto.ApiResponse;
 import com.storelense.common.security.StoreLensePrincipal;
 import com.storelense.inventory.domain.entity.InventoryState;
+import com.storelense.inventory.dto.EpcsByEanResponse;
+import com.storelense.inventory.dto.MarkEpcsSoldRequest;
+import com.storelense.inventory.dto.SkuLedgerRow;
 import com.storelense.inventory.dto.SkuInventoryResponse;
 import com.storelense.inventory.dto.UpsertExpectedQtyRequest;
 import com.storelense.inventory.service.InventoryService;
@@ -77,6 +80,49 @@ public class InventoryController {
 
         UUID effective = principal.isAdmin() ? storeId : principal.storeId();
         return ResponseEntity.ok(ApiResponse.ok(inventoryService.getSkuInventory(sku, effective)));
+    }
+
+    @GetMapping("/epc-by-ean/{ean}")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','SECURITY_GUARD')")
+    @Operation(summary = "Resolve EAN barcode → in-store EPCs",
+               description = "Used by C66 gate app: given an EAN from the customer bill, " +
+                             "returns the product name and every EPC currently in_store at that store.")
+    public ResponseEntity<ApiResponse<EpcsByEanResponse>> getEpcsByEan(
+            @PathVariable String ean,
+            @RequestParam UUID storeId,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+
+        UUID effective = principal.isAdmin() ? storeId : principal.storeId();
+        return ResponseEntity.ok(ApiResponse.ok(inventoryService.getEpcsByEan(ean, effective)));
+    }
+
+    @GetMapping("/sku-ledger")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER')")
+    @Operation(summary = "Per-SKU RFID ledger — EPC counts by status (in_store / sold / missing / damaged)")
+    public ResponseEntity<ApiResponse<List<SkuLedgerRow>>> getSkuLedger(
+            @RequestParam UUID storeId,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+
+        UUID effective = principal.isAdmin() ? storeId : principal.storeId();
+        return ResponseEntity.ok(ApiResponse.ok(inventoryService.getSkuLedger(effective)));
+    }
+
+    @PostMapping("/epc/sold")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','SECURITY_GUARD')")
+    @Operation(summary = "Mark EPCs as sold",
+               description = "Called by the C66 security gate app after matching bill QR EPCs with RFID bag scan. " +
+                             "Transitions matching EPCs from 'in_store' to 'sold' and decrements on-hand counts.")
+    public ResponseEntity<ApiResponse<Map<String, Integer>>> markEpcsSold(
+            @Valid @RequestBody MarkEpcsSoldRequest req,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+
+        UUID storeId = principal.isAdmin() ? req.storeId() : principal.storeId();
+        int marked = inventoryService.markEpcsSold(storeId, req.epcs());
+        return ResponseEntity.ok(ApiResponse.ok(Map.of(
+                "marked",   marked,
+                "total",    req.epcs().size(),
+                "notFound", req.epcs().size() - marked
+        )));
     }
 
     @PostMapping("/expected")

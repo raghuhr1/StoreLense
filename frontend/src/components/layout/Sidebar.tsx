@@ -6,7 +6,7 @@ import {
   type LucideIcon,
   LayoutDashboard, Package, RotateCw,
   ArrowLeftRight, BarChart3, Users, Store, Cpu, ScanLine, Tag, TrendingUp,
-  Truck, RefreshCw, ShoppingCart, GitCompare, PackageOpen,
+  Truck, RefreshCw, ShoppingCart, GitCompare, PackageOpen, BookOpen,
 } from 'lucide-react'
 import { useAuth }       from '@/lib/auth/AuthContext'
 import { cn }            from '@/lib/utils'
@@ -15,7 +15,8 @@ type NavItem = { href: string; label: string; icon: LucideIcon; roles: readonly 
 
 const allNavItems: NavItem[] = [
   { href: '/dashboard',   label: 'Dashboard',    icon: LayoutDashboard, roles: ['ADMIN','STORE_MANAGER','STORE_ASSOCIATE','REFILL_ASSOCIATE'] },
-  { href: '/inventory',      label: 'Inventory',      icon: Package,      roles: ['ADMIN','STORE_MANAGER'] },
+  { href: '/inventory',        label: 'Inventory',      icon: Package,      roles: ['ADMIN','STORE_MANAGER'] },
+  { href: '/inventory/ledger', label: 'RFID Ledger',    icon: BookOpen,     roles: ['ADMIN','STORE_MANAGER'] },
   { href: '/inbound',        label: 'Inbound',        icon: Truck,        roles: ['ADMIN','STORE_MANAGER','REFILL_ASSOCIATE'] },
   { href: '/replenishment',  label: 'Replenishment',  icon: RefreshCw,    roles: ['ADMIN','STORE_MANAGER','REFILL_ASSOCIATE'] },
   { href: '/cycle-count',    label: 'Cycle Count',    icon: RotateCw,     roles: ['ADMIN','STORE_MANAGER','STORE_ASSOCIATE'] },

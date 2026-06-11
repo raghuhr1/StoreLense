@@ -172,3 +172,16 @@ export interface KpiDaily {
   refillCompletionRatePct: number | null; avgRefillTimeMinutes: number | null
   totalEpcReads: number; uniqueSkusCounted: number; varianceItemsCount: number
 }
+
+
+// ─── RFID Ledger ──────────────────────────────────────────────────────────────
+export interface SkuLedgerRow {
+  productId:   string
+  inStore:     number
+  sold:        number
+  missing:     number
+  damaged:     number
+  transferred: number
+  total:       number
+  lastSeenAt:  string | null
+}

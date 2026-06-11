@@ -7,7 +7,9 @@ import com.storelense.inventory.domain.entity.EpcRegistry;
 import com.storelense.inventory.domain.entity.InventoryState;
 import com.storelense.inventory.domain.repository.EpcRegistryRepository;
 import com.storelense.inventory.domain.repository.InventoryStateRepository;
+import com.storelense.inventory.dto.EpcsByEanResponse;
 import com.storelense.inventory.dto.SkuInventoryResponse;
+import com.storelense.inventory.dto.SkuLedgerRow;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -106,6 +108,86 @@ public class InventoryService {
                                 .build()));
     }
 
+    /**
+     * Resolves an EAN barcode to the list of EPCs currently in_store at the given store.
+     * Used by the C66 security gate app to match bill line items against RFID bag reads.
+     *
+     * Lookup path: products.barcodes → products.products → inventory.epc_registry
+     */
+    @Transactional(readOnly = true)
+    public EpcsByEanResponse getEpcsByEan(String ean, UUID storeId) {
+        // Fetch sku + name for the product matching this EAN
+        record ProductInfo(String sku, String name) {}
+        var product = jdbcClient.sql("""
+                SELECT p.sku, p.name
+                FROM products.products p
+                JOIN products.barcodes b ON b.product_id = p.id
+                WHERE b.barcode_value = :ean
+                  AND b.barcode_type IN ('ean13', 'ean8', 'upc_a')
+                  AND p.is_active = true
+                LIMIT 1
+                """)
+                .param("ean", ean)
+                .query((rs, rowNum) -> new ProductInfo(rs.getString("sku"), rs.getString("name")))
+                .optional();
+
+        if (product.isEmpty()) {
+            return new EpcsByEanResponse(ean, null, "Unknown product", List.of());
+        }
+
+        // Fetch all in_store EPCs for this product at this store
+        List<String> epcs = jdbcClient.sql("""
+                SELECT er.epc
+                FROM inventory.epc_registry er
+                JOIN products.products p ON p.id = er.product_id
+                JOIN products.barcodes b ON b.product_id = p.id
+                WHERE b.barcode_value = :ean
+                  AND b.barcode_type IN ('ean13', 'ean8', 'upc_a')
+                  AND er.store_id = :storeId
+                  AND er.status = 'in_store'
+                """)
+                .param("ean", ean)
+                .param("storeId", storeId)
+                .query(String.class)
+                .list();
+
+        return new EpcsByEanResponse(ean, product.get().sku(), product.get().name(), epcs);
+    }
+
+    @Transactional(readOnly = true)
+    public List<SkuLedgerRow> getSkuLedger(UUID storeId) {
+        return jdbcClient.sql("""
+                SELECT
+                    er.product_id,
+                    SUM(CASE WHEN er.status = 'in_store'    THEN 1 ELSE 0 END)::int AS in_store,
+                    SUM(CASE WHEN er.status = 'sold'        THEN 1 ELSE 0 END)::int AS sold,
+                    SUM(CASE WHEN er.status = 'missing'     THEN 1 ELSE 0 END)::int AS missing,
+                    SUM(CASE WHEN er.status = 'damaged'     THEN 1 ELSE 0 END)::int AS damaged,
+                    SUM(CASE WHEN er.status = 'transferred' THEN 1 ELSE 0 END)::int AS transferred,
+                    COUNT(*)::int AS total,
+                    MAX(er.last_seen_at) AS last_seen_at
+                FROM inventory.epc_registry er
+                WHERE er.store_id = :storeId
+                GROUP BY er.product_id
+                ORDER BY in_store DESC
+                """)
+                .param("storeId", storeId)
+                .query((rs, rowNum) -> new SkuLedgerRow(
+                        rs.getObject("product_id", UUID.class),
+                        rs.getInt("in_store"),
+                        rs.getInt("sold"),
+                        rs.getInt("missing"),
+                        rs.getInt("damaged"),
+                        rs.getInt("transferred"),
+                        rs.getInt("total"),
+                        rs.getTimestamp("last_seen_at") != null
+                                ? rs.getTimestamp("last_seen_at").toInstant()
+                                       .atOffset(ZoneOffset.UTC).toString()
+                                : null
+                ))
+                .list();
+    }
+
     @Transactional(readOnly = true)
     public SkuInventoryResponse getSkuInventory(String sku, UUID storeId) {
         UUID productId = jdbcClient
@@ -125,6 +207,37 @@ public class InventoryService {
                 .toList();
 
         return new SkuInventoryResponse(sku, productId, storeId, total, 0, total, epcs);
+    }
+
+    /**
+     * Marks the given EPCs as 'sold' in the EPC registry (called by C66 security gate app).
+     * Also decrements quantity_on_hand in inventory_state for each matched EPC.
+     *
+     * @return number of EPCs successfully marked as sold
+     */
+    @Transactional
+    public int markEpcsSold(UUID storeId, List<String> epcs) {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+
+        // Snapshot the product+zone for each EPC before marking sold so we can decrement inventory_state
+        List<EpcRegistry> toSell = epcRegistryRepository.findByEpcInAndStoreId(epcs, storeId)
+                .stream()
+                .filter(r -> "in_store".equals(r.getStatus()))
+                .toList();
+
+        int marked = epcRegistryRepository.markSold(epcs, storeId, now);
+
+        // Decrement on-hand count per product+zone
+        toSell.forEach(reg -> inventoryStateRepository
+                .findByStoreIdAndProductIdAndZoneId(storeId, reg.getProductId(), reg.getZoneId())
+                .ifPresent(state -> {
+                    state.setQuantityOnHand(Math.max(0, state.getQuantityOnHand() - 1));
+                    state.setAccuracyPct(calcAccuracy(state.getQuantityOnHand(), state.getQuantityExpected()));
+                    inventoryStateRepository.save(state);
+                }));
+
+        log.info("Marked {} / {} EPCs as sold at store {}", marked, epcs.size(), storeId);
+        return marked;
     }
 
     private java.math.BigDecimal calcAccuracy(int onHand, int expected) {

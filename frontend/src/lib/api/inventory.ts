@@ -1,5 +1,5 @@
 import client from './client'
-import type { ApiResponse, InventoryState, EpcRegistryEntry } from '@/types'
+import type { ApiResponse, InventoryState, SkuLedgerRow } from '@/types'
 
 export const inventoryApi = {
   getState: (storeId: string) =>
@@ -12,5 +12,9 @@ export const inventoryApi = {
 
   epcSummary: (storeId: string) =>
     client.get<ApiResponse<Record<string, number>>>('/inventory/epc-summary', { params: { storeId } })
+      .then(r => r.data.data),
+
+  skuLedger: (storeId: string) =>
+    client.get<ApiResponse<SkuLedgerRow[]>>('/inventory/sku-ledger', { params: { storeId } })
       .then(r => r.data.data),
 }

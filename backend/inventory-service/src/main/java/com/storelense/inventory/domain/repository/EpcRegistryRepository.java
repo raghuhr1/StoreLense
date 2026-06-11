@@ -27,4 +27,13 @@ public interface EpcRegistryRepository extends JpaRepository<EpcRegistry, UUID> 
     void updateSighting(@Param("epc") String epc, @Param("storeId") UUID storeId,
                          @Param("status") String status, @Param("ts") OffsetDateTime ts,
                          @Param("zoneId") UUID zoneId, @Param("readerId") UUID readerId);
+
+    @Modifying
+    @Query("UPDATE EpcRegistry r SET r.status = 'sold', r.lastSeenAt = :ts " +
+           "WHERE r.epc IN :epcs AND r.storeId = :storeId AND r.status = 'in_store'")
+    int markSold(@Param("epcs") List<String> epcs,
+                 @Param("storeId") UUID storeId,
+                 @Param("ts") OffsetDateTime ts);
+
+    List<EpcRegistry> findByEpcInAndStoreId(List<String> epcs, UUID storeId);
 }
