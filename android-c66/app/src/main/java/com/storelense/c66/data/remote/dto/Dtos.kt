@@ -13,14 +13,10 @@ data class LoginRequest(val username: String, val password: String)
 data class LoginData(
     val accessToken: String,
     val refreshToken: String,
-    val user: UserDto
-)
-
-data class UserDto(
-    val id: String,
-    val username: String,
-    val roles: List<String>,
-    val storeId: String?
+    val userId:       String,
+    val username:     String,
+    val role:         String,
+    val storeId:      String?
 )
 
 // ── Gate / EAN resolution ─────────────────────────────────────────────────────
