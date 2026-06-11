@@ -27,13 +27,9 @@ data class RefreshRequest(val refreshToken: String)
 data class LoginData(
     val accessToken: String,
     val refreshToken: String,
-    val user: UserDto
-)
-
-data class UserDto(
-    val id: String,
+    val userId: String,
     val username: String,
-    val roles: List<String>,
+    val role: String,
     val storeId: String?
 )
 

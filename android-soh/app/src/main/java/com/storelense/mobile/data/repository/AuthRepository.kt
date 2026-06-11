@@ -23,10 +23,10 @@ class AuthRepository @Inject constructor(
             val data = body.data!!
             tokenManager.accessToken  = data.accessToken
             tokenManager.refreshToken = data.refreshToken
-            tokenManager.userId       = data.user.id
-            tokenManager.username     = data.user.username
-            tokenManager.role         = data.user.roles.firstOrNull()
-            tokenManager.storeId      = data.user.storeId
+            tokenManager.userId       = data.userId
+            tokenManager.username     = data.username
+            tokenManager.role         = data.role
+            tokenManager.storeId      = data.storeId
             Result.Success(Unit)
         } else {
             Result.Error(body?.message ?: "Login failed")
