@@ -7,6 +7,15 @@ export const erpImportApi = {
       '/erp/admin/import/batches', { params }
     ).then(r => r.data.data),
 
+  uploadCsv: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return client.post<ApiResponse<{ batchId: string; status: string; totalRows: number; unresolvedRows: number }>>(
+      '/erp/admin/import/upload', form,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    ).then(r => r.data.data)
+  },
+
   getBatch: (batchId: string) =>
     client.get<ApiResponse<ErpBatchDetail>>(
       `/erp/admin/import/batches/${batchId}`

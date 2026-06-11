@@ -17,11 +17,16 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Objects;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -97,6 +102,31 @@ public class ErpSyncAdminController {
     }
 
     // ── ERP import endpoints ───────────────────────────────────────────────
+
+    @PostMapping(value = "/import/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Upload an ERP SOH CSV file directly and trigger import")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> uploadImport(
+            @RequestParam("file") MultipartFile file) throws IOException {
+
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("EMPTY_FILE", "Uploaded file is empty"));
+        }
+
+        Path temp = Objects.requireNonNull(Files.createTempFile("erp-import-", ".csv"));
+        try {
+            file.transferTo(temp);
+            var batch = importService.processFile(temp);
+            return ResponseEntity.ok(ApiResponse.ok(Map.of(
+                    "batchId",        batch.getId(),
+                    "status",         batch.getStatus(),
+                    "totalRows",      batch.getTotalRows(),
+                    "unresolvedRows", batch.getUnresolvedRows()
+            )));
+        } finally {
+            Files.deleteIfExists(temp);
+        }
+    }
 
     record ImportTriggerRequest(@NotBlank String path, String type) {
         String resolvedType() { return type != null ? type.toUpperCase() : "FILE"; }
