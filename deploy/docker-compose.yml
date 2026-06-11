@@ -106,6 +106,22 @@ services:
       start_period: 60s
 
   # ═══════════════════════════════════════════════════════════════════════════
+  # DB PASSWORD SYNC  (runs every startup — keeps storelense_app in sync with .env)
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  db-init:
+    image: postgres:16-alpine
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    command: >
+      psql -h postgres -U postgres
+      -c "ALTER USER storelense_app WITH PASSWORD '${DB_PASSWORD:-changeme}';"
+    restart: "no"
+    logging: *default-logging
+
+  # ═══════════════════════════════════════════════════════════════════════════
   # MICROSERVICES
   # ═══════════════════════════════════════════════════════════════════════════
 
@@ -114,7 +130,7 @@ services:
       <<: *backend-build
       args: { SERVICE_NAME: auth-service, SERVICE_PORT: 8081 }
     depends_on:
-      postgres: { condition: service_healthy }
+      db-init:  { condition: service_completed_successfully }
       redis:    { condition: service_healthy }
     environment:
       <<: *spring-env
@@ -130,7 +146,7 @@ services:
       <<: *backend-build
       args: { SERVICE_NAME: store-service, SERVICE_PORT: 8082 }
     depends_on:
-      postgres: { condition: service_healthy }
+      db-init:  { condition: service_completed_successfully }
     environment:
       <<: *spring-env
     ports:
@@ -145,7 +161,7 @@ services:
       <<: *backend-build
       args: { SERVICE_NAME: product-service, SERVICE_PORT: 8083 }
     depends_on:
-      postgres: { condition: service_healthy }
+      db-init:  { condition: service_completed_successfully }
       redis:    { condition: service_healthy }
     environment:
       <<: *spring-env
@@ -161,7 +177,7 @@ services:
       <<: *backend-build
       args: { SERVICE_NAME: inventory-service, SERVICE_PORT: 8084 }
     depends_on:
-      postgres: { condition: service_healthy }
+      db-init:  { condition: service_completed_successfully }
       kafka:    { condition: service_healthy }
     environment:
       <<: *spring-env
@@ -177,7 +193,7 @@ services:
       <<: *backend-build
       args: { SERVICE_NAME: soh-service, SERVICE_PORT: 8085 }
     depends_on:
-      postgres: { condition: service_healthy }
+      db-init:  { condition: service_completed_successfully }
       kafka:    { condition: service_healthy }
     environment:
       <<: *spring-env
@@ -193,7 +209,7 @@ services:
       <<: *backend-build
       args: { SERVICE_NAME: refill-service, SERVICE_PORT: 8086 }
     depends_on:
-      postgres: { condition: service_healthy }
+      db-init:  { condition: service_completed_successfully }
       kafka:    { condition: service_healthy }
     environment:
       <<: *spring-env
@@ -225,7 +241,7 @@ services:
       <<: *backend-build
       args: { SERVICE_NAME: rfid-processing-service, SERVICE_PORT: 8088 }
     depends_on:
-      postgres: { condition: service_healthy }
+      db-init:  { condition: service_completed_successfully }
       kafka:    { condition: service_healthy }
       redis:    { condition: service_healthy }
     environment:
@@ -242,7 +258,7 @@ services:
       <<: *backend-build
       args: { SERVICE_NAME: reporting-service, SERVICE_PORT: 8089 }
     depends_on:
-      postgres: { condition: service_healthy }
+      db-init:  { condition: service_completed_successfully }
     environment:
       <<: *spring-env
     ports:
@@ -257,7 +273,7 @@ services:
       <<: *backend-build
       args: { SERVICE_NAME: erp-integration-service, SERVICE_PORT: 8090 }
     depends_on:
-      postgres: { condition: service_healthy }
+      db-init:  { condition: service_completed_successfully }
       kafka:    { condition: service_healthy }
     environment:
       <<: *spring-env
