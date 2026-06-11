@@ -102,10 +102,11 @@ make_user() {
   fi
 }
 
-make_user "mgr_lk001"  "Manager@LK0011!"  "Store"   "Manager"   "mgr@lk001.storelense"   "STORE_MANAGER"
-make_user "asc_lk001"  "Assoc@LK0011!"    "Store"   "Associate" "asc@lk001.storelense"   "STORE_ASSOCIATE"
-make_user "rfl_lk001"  "Refill@LK0011!"   "Refill"  "Associate" "rfl@lk001.storelense"   "REFILL_ASSOCIATE"
-make_user "asc2_lk001" "Assoc2@LK0011!"   "Store"   "Associate" "asc2@lk001.storelense"  "STORE_ASSOCIATE"
+make_user "mgr_lk001"   "Manager@LK0011!"  "Store"   "Manager"   "mgr@lk001.storelense"    "STORE_MANAGER"
+make_user "asc_lk001"   "Assoc@LK0011!"    "Store"   "Associate" "asc@lk001.storelense"    "STORE_ASSOCIATE"
+make_user "rfl_lk001"   "Refill@LK0011!"   "Refill"  "Associate" "rfl@lk001.storelense"    "REFILL_ASSOCIATE"
+make_user "asc2_lk001"  "Assoc2@LK0011!"   "Store"   "Associate" "asc2@lk001.storelense"   "STORE_ASSOCIATE"
+make_user "guard_lk001" "Guard@LK0011!"    "Gate"    "Guard"     "guard@lk001.storelense"  "SECURITY_GUARD"
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
@@ -113,9 +114,15 @@ echo -e "${BOLD}${GREEN}━━━━━━━━━━━━━━━━━━�
 echo -e "${BOLD}  Store LK001 ready!${RESET}"
 echo -e "${BOLD}  Store ID:${RESET} $STORE_ID"
 echo ""
-echo -e "  ${BOLD}Login credentials for Zebra app:${RESET}"
-echo -e "    mgr_lk001  / Manager@LK0011!   → Store Manager"
-echo -e "    asc_lk001  / Assoc@LK0011!     → Store Associate"
-echo -e "    asc2_lk001 / Assoc2@LK0011!    → Store Associate"
-echo -e "    rfl_lk001  / Refill@LK0011!    → Refill Associate"
+echo -e "  ${BOLD}Login credentials for Zebra (SOH) app:${RESET}"
+echo -e "    mgr_lk001   / Manager@LK0011!  → Store Manager"
+echo -e "    asc_lk001   / Assoc@LK0011!    → Store Associate"
+echo -e "    asc2_lk001  / Assoc2@LK0011!   → Store Associate"
+echo -e "    rfl_lk001   / Refill@LK0011!   → Refill Associate"
+echo -e ""
+echo -e "  ${BOLD}Login credentials for C66 Guard app:${RESET}"
+echo -e "    guard_lk001 / Guard@LK0011!    → Security Guard"
+echo -e ""
+echo -e "  ${BOLD}Global guard (no store):${RESET}"
+echo -e "    guard_demo  / Guard@StoreLense1 → Security Guard (after server migration)"
 echo -e "${BOLD}${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
