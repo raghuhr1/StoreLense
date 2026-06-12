@@ -17,6 +17,7 @@ import androidx.navigation.navArgument
 import com.storelense.mobile.ui.home.HomeScreen
 import com.storelense.mobile.ui.inbound.InboundListScreen
 import com.storelense.mobile.ui.inbound.InboundResultScreen
+import com.storelense.mobile.ui.inbound.legacy.InboundListScreenLegacy
 import com.storelense.mobile.ui.inbound.InboundScanScreen
 import com.storelense.mobile.ui.locator.GeigerLocatorScreen
 import com.storelense.mobile.ui.locator.ItemLocatorScreen
@@ -24,12 +25,14 @@ import com.storelense.mobile.ui.login.LoginScreen
 import com.storelense.mobile.ui.products.InventoryEpcsScreen
 import com.storelense.mobile.ui.products.ProductSearchScreen
 import com.storelense.mobile.ui.replenish.ReplenishListScreen
+import com.storelense.mobile.ui.replenish.legacy.ReplenishListScreenLegacy
 import com.storelense.mobile.ui.exceptions.ExceptionsListScreen
 import com.storelense.mobile.ui.exceptions.ExceptionsScreen
 import com.storelense.mobile.ui.exceptions.GhostAnalysisScreen
 import com.storelense.mobile.ui.exceptions.MissingEpcScreen
 import com.storelense.mobile.ui.transfer.TransferOutScreen
 import com.storelense.mobile.ui.transfer.TransferReceiveScreen
+import com.storelense.mobile.ui.UiConfig
 import com.storelense.mobile.ui.replenish.ReplenishResultScreen
 import com.storelense.mobile.ui.replenish.ReplenishTaskScreen
 import com.storelense.mobile.ui.settings.DeviceInfoScreen
@@ -157,10 +160,17 @@ fun AppNavigation() {
 
         // ── Inbound ───────────────────────────────────────────────────────
         composable(Routes.INBOUND_LIST) {
-            InboundListScreen(
-                onShipmentSelected = { id -> nav.navigate(Routes.inboundScan(id)) },
-                onBack             = { nav.popBackStack() }
-            )
+            if (UiConfig.USE_NEW_UI) {
+                InboundListScreen(
+                    onShipmentSelected = { id -> nav.navigate(Routes.inboundScan(id)) },
+                    onBack             = { nav.popBackStack() }
+                )
+            } else {
+                InboundListScreenLegacy(
+                    onShipmentSelected = { id -> nav.navigate(Routes.inboundScan(id)) },
+                    onBack             = { nav.popBackStack() }
+                )
+            }
         }
 
         composable(
@@ -192,10 +202,17 @@ fun AppNavigation() {
 
         // ── Replenish ─────────────────────────────────────────────────────
         composable(Routes.REPLENISH_LIST) {
-            ReplenishListScreen(
-                onTaskSelected = { id -> nav.navigate(Routes.replenishTask(id)) },
-                onBack         = { nav.popBackStack() }
-            )
+            if (UiConfig.USE_NEW_UI) {
+                ReplenishListScreen(
+                    onTaskSelected = { id -> nav.navigate(Routes.replenishTask(id)) },
+                    onBack         = { nav.popBackStack() }
+                )
+            } else {
+                ReplenishListScreenLegacy(
+                    onTaskSelected = { id -> nav.navigate(Routes.replenishTask(id)) },
+                    onBack         = { nav.popBackStack() }
+                )
+            }
         }
 
         composable(
