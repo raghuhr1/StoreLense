@@ -41,8 +41,9 @@ public class SohSessionService {
 
     @Transactional(readOnly = true)
     public PageResponse<SohSessionResponse> listSessions(UUID storeId, String status, Pageable pageable) {
-        var page = status != null
-                ? sessionRepository.findByStoreIdAndStatusOrderByStartedAtDesc(storeId, status, pageable)
+        var page = (status != null && !status.isBlank())
+                ? sessionRepository.findByStoreIdAndStatusInOrderByStartedAtDesc(
+                        storeId, List.of(status.split(",")), pageable)
                 : sessionRepository.findByStoreIdOrderByStartedAtDesc(storeId, pageable);
         return PageResponse.from(page.map(sohMapper::toResponse));
     }

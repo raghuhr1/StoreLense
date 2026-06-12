@@ -8,6 +8,7 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -35,6 +36,10 @@ object NetworkModule {
             }
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
+            // Keep idle connections for max 30s — shorter than server keep-alive timeout
+            // to prevent ECONNRESET when reusing a connection the server already closed.
+            .connectionPool(ConnectionPool(5, 30, TimeUnit.SECONDS))
+            .retryOnConnectionFailure(true)
             .build()
 
     @Provides @Singleton
