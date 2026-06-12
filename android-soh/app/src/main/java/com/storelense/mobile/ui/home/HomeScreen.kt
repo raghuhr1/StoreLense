@@ -1,6 +1,9 @@
 package com.storelense.mobile.ui.home
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -9,13 +12,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -23,10 +23,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.storelense.mobile.ui.theme.StoreLenseTheme
+import com.storelense.mobile.ui.theme.CardDark
+import com.storelense.mobile.ui.theme.DarkNavy
+import com.storelense.mobile.ui.theme.GreenGlow
+
+// ── Bottom nav tab enum shared by Home + Workflows ────────────────────────────
+enum class BottomNavTab { HOME, SCAN, LOCATE, TASKS, MORE }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,460 +46,412 @@ fun HomeScreen(
     onExceptions: () -> Unit,
     onSyncStatus: () -> Unit,
     onSettings: () -> Unit,
+    onWorkflows: () -> Unit,
     onLogout: () -> Unit,
     vm: DashboardViewModel = hiltViewModel()
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
 
+    val healthPct = state.sohAccuracy.coerceIn(0f, 100f)
+    val healthLabel = when {
+        healthPct >= 95 -> "Excellent"
+        healthPct >= 85 -> "Good"
+        healthPct >= 70 -> "Fair"
+        else -> "Poor"
+    }
+
     Scaffold(
+        containerColor = DarkNavy,
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkNavy),
                 navigationIcon = {
-                    IconButton(onClick = { /* reserved for nav drawer */ }) {
-                        Icon(Icons.Default.Menu, contentDescription = "Menu")
+                    IconButton(onClick = {}) {
+                        Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White)
                     }
                 },
                 title = {
-                    Column {
-                        Text("StoreLense", fontWeight = FontWeight.Bold)
-                        state.storeName?.let {
-                            Text(it, fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
+                    Text("StoreLense", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 20.sp)
                 },
                 actions = {
-                    if (state.isLoading) {
-                        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                        }
-                    } else {
-                        IconButton(onClick = vm::refresh) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-                        }
+                    IconButton(onClick = {}) {
+                        Icon(Icons.Default.Notifications, contentDescription = "Notifications", tint = Color.White)
                     }
-                    IconButton(onClick = onSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+                }
+            )
+        },
+        bottomBar = {
+            StoreLenseBottomNav(
+                selectedTab = BottomNavTab.HOME,
+                onHome      = {},
+                onScan      = onSoh,
+                onLocate    = onItemLocator,
+                onTasks     = onWorkflows,
+                onMore      = onSettings
             )
         }
     ) { padding ->
         LazyColumn(
-            contentPadding = PaddingValues(
-                top    = padding.calculateTopPadding() + 8.dp,
-                bottom = padding.calculateBottomPadding() + 24.dp,
-                start  = 16.dp,
-                end    = 16.dp
-            ),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .background(DarkNavy)
+                .padding(padding),
+            contentPadding = PaddingValues(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
-            // ERP cycle count banner
-            if (state.activeErpSession) {
-                item {
-                    ErpSessionCard(onSoh = onSoh)
+            // ── Store subtitle bar ──────────────────────────────────────────
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text  = "${state.storeName ?: "Store #042"} · Floor 2",
+                        color = Color.White.copy(alpha = 0.6f),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(Modifier.weight(1f))
+                    if (state.lastSyncAt != null) {
+                        Surface(
+                            color = GreenGlow.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Box(Modifier.size(6.dp).background(GreenGlow, CircleShape))
+                                Text(
+                                    "Synced ${state.lastSyncAt}",
+                                    color = GreenGlow,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
-            // Error banner
+            // ── Store Health card ───────────────────────────────────────────
+            item {
+                DarkCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        HomeSectionLabel("STORE HEALTH")
+                        Spacer(Modifier.height(16.dp))
+
+                        HealthRing(percentage = healthPct, label = healthLabel)
+
+                        Spacer(Modifier.height(20.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            MiniStat("SOH Accuracy", "${state.sohAccuracy.toInt()}%", "+2.1%", true)
+                            Box(Modifier.width(1.dp).height(44.dp).background(Color.White.copy(0.1f)))
+                            MiniStat("Missing Items", "${state.missingItems}", "+3", false)
+                            Box(Modifier.width(1.dp).height(44.dp).background(Color.White.copy(0.1f)))
+                            MiniStat("Ghost Tags", "${state.ghostTags}", "+2", false)
+                        }
+                    }
+                }
+            }
+
+            // ── Error banner ────────────────────────────────────────────────
             if (state.error != null) {
                 item {
-                    Card(colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer
-                    )) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF4A1010)),
+                        shape  = RoundedCornerShape(12.dp)
+                    ) {
                         Text(
                             state.error!!,
                             modifier = Modifier.padding(12.dp),
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            style = MaterialTheme.typography.bodySmall
+                            color    = Color(0xFFFF8A80),
+                            style    = MaterialTheme.typography.bodySmall
                         )
                     }
                 }
             }
 
-            // ── KPI Cards ─────────────────────────────────────────────────
-            item { DashboardSectionHeader("Store Health") }
+            // ── Actions Requiring Attention ─────────────────────────────────
+            item {
+                DarkCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            HomeSectionLabel("ACTIONS REQUIRING ATTENTION")
+                            Spacer(Modifier.weight(1f))
+                            Text(
+                                "View all",
+                                color    = GreenGlow,
+                                style    = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.clickable(onClick = onExceptions)
+                            )
+                        }
+                        Spacer(Modifier.height(14.dp))
 
-            item {
-                KpiCard(
-                    label       = "SOH Accuracy",
-                    value       = "${state.sohAccuracy.toInt()}%",
-                    history     = state.accuracyHistory,
-                    accentColor = MaterialTheme.colorScheme.primary
-                )
-            }
-            item {
-                KpiCard(
-                    label       = "Missing Items",
-                    value       = "${state.missingItems}",
-                    history     = state.missingHistory.map { it.toFloat() },
-                    accentColor = Color(0xFFE53935)
-                )
-            }
-            item {
-                KpiCard(
-                    label       = "Ghost Tags",
-                    value       = "${state.ghostTags}",
-                    history     = state.ghostHistory.map { it.toFloat() },
-                    accentColor = Color(0xFFFF6F00)
-                )
-            }
-            item {
-                KpiCard(
-                    label       = "Read Misses",
-                    value       = "${state.readMisses}",
-                    history     = state.readMissHistory.map { it.toFloat() },
-                    accentColor = Color(0xFF1565C0)
-                )
-            }
-
-            // ── Navigation tile grid ───────────────────────────────────────
-            item { DashboardSectionHeader("Workflows") }
-
-            item {
-                NavigationTileGrid(
-                    listOf(
-                        TileData(Icons.Default.BarChart,
-                            "SOH Count",     MaterialTheme.colorScheme.primaryContainer,   onSoh),
-                        TileData(Icons.Default.LocalShipping,
-                            "Receive DC",    MaterialTheme.colorScheme.secondaryContainer, onInbound),
-                        TileData(Icons.Default.MoveDown,
-                            "Replenish",     MaterialTheme.colorScheme.tertiaryContainer,  onReplenish),
-                        TileData(Icons.Default.SwapHoriz,
-                            "Transfer Out",  Color(0xFFFCE4EC),                            onTransferOut),
-                        TileData(Icons.Default.Warning,
-                            "Exceptions",    Color(0xFFFFF8E1),                            onExceptions),
-                        TileData(Icons.Default.Search,
-                            "Product Search",Color(0xFFE3F2FD),                            onProductSearch),
-                    )
-                )
+                        ActionRow(
+                            icon     = Icons.Default.ErrorOutline,
+                            color    = Color(0xFFE53935),
+                            title    = "${state.missingItems} Missing Items",
+                            subtitle = "Potential loss ₹${state.missingItems * 2500}",
+                            onClick  = onExceptions
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        ActionRow(
+                            icon     = Icons.Default.MoveDown,
+                            color    = Color(0xFFE65100),
+                            title    = "5 Replenishments",
+                            subtitle = "Refill now",
+                            onClick  = onReplenish
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        ActionRow(
+                            icon     = Icons.Default.SwapHoriz,
+                            color    = Color(0xFF1565C0),
+                            title    = "1 Transfer Pending",
+                            subtitle = "Awaiting dispatch",
+                            onClick  = onTransferOut
+                        )
+                    }
+                }
             }
 
-            // ── Last sync footer ───────────────────────────────────────────
+            // ── Today's Activity ────────────────────────────────────────────
             item {
-                LastSyncRow(lastSyncAt = state.lastSyncAt, onSyncStatus = onSyncStatus)
+                DarkCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        HomeSectionLabel("TODAY'S ACTIVITY")
+                        Spacer(Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            ActivityStat(Icons.Default.QrCodeScanner, "15,423", "Scanned EPCs")
+                            ActivityStat(Icons.Default.LocalShipping,  "1,250",  "Received")
+                            ActivityStat(Icons.Default.SwapHoriz,      "240",    "Transferred")
+                        }
+                    }
+                }
             }
         }
     }
 }
 
-// ── Internal composables ──────────────────────────────────────────────────────
-
-private data class TileData(
-    val icon: ImageVector,
-    val label: String,
-    val color: Color,
-    val onClick: () -> Unit
-)
+// ── Bottom Navigation Bar ─────────────────────────────────────────────────────
 
 @Composable
-private fun DashboardSectionHeader(title: String) {
+fun StoreLenseBottomNav(
+    selectedTab: BottomNavTab,
+    onHome:   () -> Unit,
+    onScan:   () -> Unit,
+    onLocate: () -> Unit,
+    onTasks:  () -> Unit,
+    onMore:   () -> Unit,
+) {
+    val navColors = NavigationBarItemDefaults.colors(
+        selectedIconColor   = GreenGlow,
+        selectedTextColor   = GreenGlow,
+        unselectedIconColor = Color.White.copy(0.45f),
+        unselectedTextColor = Color.White.copy(0.45f),
+        indicatorColor      = GreenGlow.copy(0.12f)
+    )
+    NavigationBar(containerColor = Color(0xFF162032)) {
+        NavigationBarItem(
+            selected = selectedTab == BottomNavTab.HOME,
+            onClick  = onHome,
+            icon     = { Icon(Icons.Default.Home, "Home") },
+            label    = { Text("Home", fontSize = 10.sp) },
+            colors   = navColors
+        )
+        NavigationBarItem(
+            selected = selectedTab == BottomNavTab.SCAN,
+            onClick  = onScan,
+            icon     = { Icon(Icons.Default.QrCodeScanner, "Scan") },
+            label    = { Text("Scan", fontSize = 10.sp) },
+            colors   = navColors
+        )
+        NavigationBarItem(
+            selected = selectedTab == BottomNavTab.LOCATE,
+            onClick  = onLocate,
+            icon     = { Icon(Icons.Default.MyLocation, "Locate") },
+            label    = { Text("Locate", fontSize = 10.sp) },
+            colors   = navColors
+        )
+        NavigationBarItem(
+            selected = selectedTab == BottomNavTab.TASKS,
+            onClick  = onTasks,
+            icon     = { Icon(Icons.Default.CheckBox, "Tasks") },
+            label    = { Text("Tasks", fontSize = 10.sp) },
+            colors   = navColors
+        )
+        NavigationBarItem(
+            selected = selectedTab == BottomNavTab.MORE,
+            onClick  = onMore,
+            icon     = { Icon(Icons.Default.GridView, "More") },
+            label    = { Text("More", fontSize = 10.sp) },
+            colors   = navColors
+        )
+    }
+}
+
+// ── Shared dark-card wrapper ──────────────────────────────────────────────────
+
+@Composable
+fun DarkCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Card(
+        modifier  = modifier.fillMaxWidth(),
+        colors    = CardDefaults.cardColors(containerColor = CardDark),
+        shape     = RoundedCornerShape(20.dp),
+        elevation = CardDefaults.cardElevation(0.dp),
+        content   = content
+    )
+}
+
+// ── Sub-composables ───────────────────────────────────────────────────────────
+
+@Composable
+private fun HomeSectionLabel(text: String) {
     Text(
-        text = title,
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(top = 4.dp)
+        text,
+        style = MaterialTheme.typography.labelSmall.copy(
+            letterSpacing = 1.sp,
+            fontWeight    = FontWeight.SemiBold
+        ),
+        color = Color.White.copy(alpha = 0.45f)
     )
 }
 
 @Composable
-private fun KpiCard(
-    label: String,
-    value: String,
-    history: List<Float>,
-    accentColor: Color,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    value,
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = accentColor
-                )
-                Text(label,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium)
-                Text(
-                    "7-day trend",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            Sparkline(
-                values    = history,
-                lineColor = accentColor,
-                modifier  = Modifier.width(96.dp).height(48.dp)
+private fun HealthRing(percentage: Float, label: String) {
+    val animPct by animateFloatAsState(
+        targetValue   = (percentage / 100f).coerceIn(0f, 1f),
+        animationSpec = tween(1000, easing = FastOutSlowInEasing),
+        label         = "healthRing"
+    )
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(150.dp)) {
+        Canvas(modifier = Modifier.size(150.dp)) {
+            val strokeW = 14.dp.toPx()
+            drawArc(
+                color      = Color.White.copy(alpha = 0.07f),
+                startAngle = -90f, sweepAngle = 360f, useCenter = false,
+                style      = Stroke(strokeW, cap = StrokeCap.Round)
+            )
+            drawArc(
+                color      = GreenGlow,
+                startAngle = -90f,
+                sweepAngle = animPct * 360f,
+                useCenter  = false,
+                style      = Stroke(strokeW, cap = StrokeCap.Round)
             )
         }
-    }
-}
-
-@Composable
-private fun Sparkline(
-    values: List<Float>,
-    lineColor: Color,
-    modifier: Modifier = Modifier
-) {
-    if (values.size < 2) {
-        Box(modifier, contentAlignment = Alignment.Center) {
-            Text("—", color = lineColor.copy(alpha = 0.4f), fontSize = 20.sp)
-        }
-        return
-    }
-    Canvas(modifier = modifier) {
-        val minVal = values.min()
-        val maxVal = values.max()
-        val range  = (maxVal - minVal).coerceAtLeast(0.001f)
-        val stepX  = size.width / (values.size - 1)
-
-        val pts = values.mapIndexed { i, v ->
-            Offset(
-                x = i * stepX,
-                y = size.height * (1f - (v - minVal) / range)
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                Icons.Default.MonitorHeart,
+                contentDescription = null,
+                tint     = GreenGlow,
+                modifier = Modifier.size(26.dp)
             )
-        }
-
-        // Filled area under the line
-        val fill = Path().apply {
-            moveTo(pts.first().x, size.height)
-            pts.forEach { lineTo(it.x, it.y) }
-            lineTo(pts.last().x, size.height)
-            close()
-        }
-        drawPath(fill, lineColor.copy(alpha = 0.12f))
-
-        // Stroke line
-        val line = Path().apply {
-            moveTo(pts.first().x, pts.first().y)
-            pts.drop(1).forEach { lineTo(it.x, it.y) }
-        }
-        drawPath(line, lineColor, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
-    }
-}
-
-@Composable
-private fun NavigationTileGrid(tiles: List<TileData>) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        tiles.chunked(2).forEach { row ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                row.forEach { tile ->
-                    NavTile(
-                        icon     = tile.icon,
-                        label    = tile.label,
-                        color    = tile.color,
-                        onClick  = tile.onClick,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                if (row.size == 1) Spacer(Modifier.weight(1f))
-            }
-        }
-    }
-}
-
-@Composable
-private fun NavTile(
-    icon: ImageVector,
-    label: String,
-    color: Color,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        onClick = onClick,
-        modifier = modifier.aspectRatio(1.4f),
-        colors = CardDefaults.cardColors(containerColor = color),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(12.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(icon, contentDescription = label, modifier = Modifier.size(28.dp))
-            Spacer(Modifier.height(6.dp))
+            Text(
+                "${percentage.toInt()}%",
+                style      = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold,
+                color      = Color.White
+            )
             Text(
                 label,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center,
-                lineHeight = 15.sp
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ErpSessionCard(onSoh: () -> Unit) {
-    Card(
-        onClick  = onSoh,
-        modifier = Modifier.fillMaxWidth(),
-        shape    = RoundedCornerShape(12.dp),
-        colors   = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Row(
-            modifier              = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment     = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = Color(0xFF1565C0).copy(alpha = 0.12f),
-                modifier = Modifier.size(44.dp)
-            ) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Default.DateRange,
-                        contentDescription = null,
-                        tint     = Color(0xFF1565C0),
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "Daily Cycle Count Ready",
-                    style      = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color      = Color(0xFF0D47A1)
-                )
-                Text(
-                    "ERP-triggered cycle count is available for today",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF1565C0)
-                )
-            }
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowForwardIos,
-                contentDescription = null,
-                tint     = Color(0xFF1565C0),
-                modifier = Modifier.size(16.dp)
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(0.55f)
             )
         }
     }
 }
 
 @Composable
-private fun LastSyncRow(lastSyncAt: String?, onSyncStatus: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            Icons.Default.Sync,
-            contentDescription = null,
-            modifier = Modifier.size(14.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.width(4.dp))
+private fun MiniStat(label: String, value: String, change: String, changePositive: Boolean) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
-            text = if (lastSyncAt != null) "Last sync: $lastSyncAt" else "Not yet synced",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f)
+            value,
+            style      = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color      = Color.White
         )
-        TextButton(onClick = onSyncStatus, contentPadding = PaddingValues(horizontal = 8.dp)) {
-            Text("Details", style = MaterialTheme.typography.labelSmall)
-        }
-    }
-}
-
-// ── Previews ──────────────────────────────────────────────────────────────────
-
-@Preview(showBackground = true, widthDp = 360, heightDp = 200, name = "KPI Card – SOH Accuracy")
-@Composable
-private fun KpiCardPreview() {
-    StoreLenseTheme {
-        KpiCard(
-            label       = "SOH Accuracy",
-            value       = "98.4%",
-            history     = listOf(92f, 94f, 96f, 97f, 98f, 98.4f),
-            accentColor = Color(0xFF1565C0)
+        Text(
+            label,
+            style   = MaterialTheme.typography.labelSmall,
+            color   = Color.White.copy(0.5f),
+            textAlign = TextAlign.Center,
+            lineHeight = 14.sp
+        )
+        Text(
+            change,
+            style      = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color      = if (changePositive) GreenGlow else Color(0xFFFF5252)
         )
     }
 }
 
-@Preview(showBackground = true, widthDp = 360, heightDp = 220, name = "Nav Tile Grid")
 @Composable
-private fun NavigationTileGridPreview() {
-    StoreLenseTheme {
-        NavigationTileGrid(
-            listOf(
-                TileData(Icons.Default.BarChart,       "SOH Count",      Color(0xFFE3F2FD)) {},
-                TileData(Icons.Default.LocalShipping,  "Receive DC",     Color(0xFFE8F5E9)) {},
-                TileData(Icons.Default.MoveDown,       "Replenish",      Color(0xFFE8EAF6)) {},
-                TileData(Icons.Default.SwapHoriz,      "Transfer Out",   Color(0xFFFCE4EC)) {},
-                TileData(Icons.Default.Warning,        "Exceptions",     Color(0xFFFFF8E1)) {},
-                TileData(Icons.Default.Search,         "Product Search", Color(0xFFE3F2FD)) {},
-            )
-        )
-    }
-}
-
-@Preview(showBackground = true, widthDp = 360, heightDp = 80, name = "ERP Session Banner")
-@Composable
-private fun ErpSessionCardPreview() {
-    StoreLenseTheme {
-        ErpSessionCard(onSoh = {})
-    }
-}
-
-@Preview(showBackground = true, widthDp = 360, heightDp = 48, name = "Last Sync Row")
-@Composable
-private fun LastSyncRowPreview() {
-    StoreLenseTheme {
-        LastSyncRow(lastSyncAt = "Today 09:41 AM", onSyncStatus = {})
-    }
-}
-
-@Preview(showBackground = true, widthDp = 360, heightDp = 800, name = "Dashboard – Full Scroll")
-@Composable
-private fun HomeScreenContentPreview() {
-    StoreLenseTheme {
-        LazyColumn(
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+private fun ActionRow(
+    icon: ImageVector,
+    color: Color,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(color.copy(0.08f), RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            Modifier
+                .size(38.dp)
+                .background(color.copy(0.18f), CircleShape),
+            contentAlignment = Alignment.Center
         ) {
-            item { ErpSessionCard(onSoh = {}) }
-            item { DashboardSectionHeader("Store Health") }
-            item { KpiCard("SOH Accuracy",  "98.4%", listOf(92f, 94f, 96f, 97f, 98f, 98.4f), Color(0xFF1565C0)) }
-            item { KpiCard("Missing Items", "142",   listOf(150f, 145f, 148f, 142f),           Color(0xFFE53935)) }
-            item { KpiCard("Ghost Tags",    "23",    listOf(25f, 24f, 22f, 23f),               Color(0xFFFF6F00)) }
-            item { KpiCard("Read Misses",   "54",    listOf(60f, 58f, 55f, 54f),               Color(0xFF1565C0)) }
-            item { DashboardSectionHeader("Workflows") }
-            item {
-                NavigationTileGrid(
-                    listOf(
-                        TileData(Icons.Default.BarChart,       "SOH Count",      Color(0xFFE3F2FD)) {},
-                        TileData(Icons.Default.LocalShipping,  "Receive DC",     Color(0xFFE8F5E9)) {},
-                        TileData(Icons.Default.MoveDown,       "Replenish",      Color(0xFFE8EAF6)) {},
-                        TileData(Icons.Default.SwapHoriz,      "Transfer Out",   Color(0xFFFCE4EC)) {},
-                        TileData(Icons.Default.Warning,        "Exceptions",     Color(0xFFFFF8E1)) {},
-                        TileData(Icons.Default.Search,         "Product Search", Color(0xFFE3F2FD)) {},
-                    )
-                )
-            }
-            item { LastSyncRow(lastSyncAt = "Today 09:41 AM", onSyncStatus = {}) }
+            Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
         }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title,    style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = Color.White)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall,  color = Color.White.copy(0.5f))
+        }
+        Icon(
+            Icons.AutoMirrored.Filled.ArrowForwardIos, null,
+            tint     = Color.White.copy(0.3f),
+            modifier = Modifier.size(14.dp)
+        )
+    }
+}
+
+@Composable
+private fun ActivityStat(icon: ImageVector, value: String, label: String) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Icon(icon, null, tint = GreenGlow.copy(0.7f), modifier = Modifier.size(22.dp))
+        Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+        Text(label, style = MaterialTheme.typography.labelSmall,  color = Color.White.copy(0.5f), textAlign = TextAlign.Center)
     }
 }

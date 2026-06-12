@@ -1,28 +1,23 @@
 package com.storelense.mobile.ui.inbound
 
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.storelense.mobile.ui.theme.StoreLenseTheme
+import com.storelense.mobile.ui.theme.GreenComplete
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -43,181 +38,235 @@ fun InboundScanScreen(
         }
     }
 
+    val received = state.scannedCount
+    val expected = state.expectedCount
+    val missing  = maxOf(0, expected - state.matchedCount)
+    val accuracy = if (expected > 0) (state.matchedCount.toFloat() / expected * 100f) else 0f
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Column {
-                        Text("Receive Shipment")
+                        Text("Receive DC", color = Color.White, fontWeight = FontWeight.SemiBold)
                         state.referenceNumber?.let {
-                            Text(
-                                "ASN: $it",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Text("ASN #$it", color = Color.White.copy(0.75f), fontSize = 12.sp)
                         }
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) }
-                }
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            PhaseChip(state.phase)
-            Spacer(Modifier.height(16.dp))
-
-            // ── Donut chart ────────────────────────────────────────────────
-            ReceiveDonutChart(
-                scanned  = state.scannedCount,
-                expected = state.expectedCount,
-                matched  = state.matchedCount
-            )
-            Spacer(Modifier.height(20.dp))
-
-            // ── Missing / Extra drill rows ─────────────────────────────────
-            val missing = maxOf(0, state.expectedCount - state.matchedCount)
-            val extra   = maxOf(0, state.scannedCount  - state.matchedCount)
-
-            DrillRow(label = "Missing", count = missing, color = Color(0xFFE53935), onClick = onMissing)
-            Spacer(Modifier.height(8.dp))
-            DrillRow(label = "Extra",   count = extra,   color = Color(0xFFFB8C00), onClick = onExtra)
-
-            state.error?.let {
-                Spacer(Modifier.height(8.dp))
-                Text(it, color = MaterialTheme.colorScheme.error)
-            }
-
-            Spacer(Modifier.weight(1f))
-
-            if (state.phase == ScanPhase.Uploading) {
-                CircularProgressIndicator()
-                Text("Sending to server…", Modifier.padding(top = 8.dp))
-            } else {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    if (state.phase == ScanPhase.Scanning || state.phase == ScanPhase.Paused) {
-                        OutlinedButton(
-                            onClick  = vm::togglePause,
-                            modifier = Modifier.weight(1f).height(52.dp)
-                        ) {
-                            Text(if (state.phase == ScanPhase.Paused) "Resume" else "Pause")
-                        }
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
                     }
+                },
+                actions = {
+                    IconButton(onClick = {}) {
+                        Icon(Icons.Default.MoreVert, null, tint = Color.White)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = GreenComplete)
+            )
+        },
+        bottomBar = {
+            if (state.phase != ScanPhase.Uploading && state.phase != ScanPhase.Done) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(Color.White)
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
                     Button(
                         onClick  = vm::confirmReceipt,
-                        modifier = Modifier.weight(1f).height(52.dp),
-                        enabled  = state.scannedCount > 0 && state.phase != ScanPhase.Uploading
-                    ) { Text("Confirm Receipt", fontSize = 16.sp) }
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        shape    = RoundedCornerShape(26.dp),
+                        colors   = ButtonDefaults.buttonColors(containerColor = GreenComplete),
+                        enabled  = received > 0 && state.phase != ScanPhase.Uploading
+                    ) {
+                        Icon(Icons.Default.CheckCircle, null, Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("COMPLETE RECEIVING", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    }
+                }
+            }
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier        = Modifier.fillMaxSize().background(Color(0xFFF8F9FA)).padding(padding),
+            contentPadding  = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // ── ASN header card ─────────────────────────────────────────────
+            item {
+                Card(
+                    modifier  = Modifier.fillMaxWidth(),
+                    shape     = RoundedCornerShape(16.dp),
+                    elevation = CardDefaults.cardElevation(2.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                state.referenceNumber?.let { "ASN #$it" } ?: "ASN #${shipmentId.take(8)}",
+                                style      = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                "Shipment receipt",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        PhaseChip(state.phase)
+                    }
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
+            // ── 4 stat cards ────────────────────────────────────────────────
+            item {
+                Row(
+                    modifier              = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    InboundStatCard("Expected", "$expected", Color(0xFF1565C0), Modifier.weight(1f))
+                    InboundStatCard("Received", "$received", GreenComplete,    Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier              = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    InboundStatCard(
+                        "Missing", "$missing",
+                        if (missing > 0) Color(0xFFE53935) else GreenComplete,
+                        Modifier.weight(1f)
+                    )
+                    InboundStatCard(
+                        "Accuracy", "${accuracy.roundToInt()}%",
+                        if (accuracy >= 95f) GreenComplete else Color(0xFFE65100),
+                        Modifier.weight(1f)
+                    )
+                }
+            }
+
+            // ── Scan progress bar ───────────────────────────────────────────
+            item {
+                Card(
+                    modifier  = Modifier.fillMaxWidth(),
+                    shape     = RoundedCornerShape(16.dp),
+                    elevation = CardDefaults.cardElevation(2.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("SCAN PROGRESS",
+                            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "$received / $expected",
+                                style      = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                modifier   = Modifier.weight(1f)
+                            )
+                            Text(
+                                "${accuracy.roundToInt()}%",
+                                style      = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color      = GreenComplete
+                            )
+                        }
+                        LinearProgressIndicator(
+                            progress  = { if (expected > 0) received.toFloat() / expected else 0f },
+                            modifier  = Modifier.fillMaxWidth().height(8.dp),
+                            color     = GreenComplete,
+                            trackColor = GreenComplete.copy(0.12f)
+                        )
+                    }
+                }
+            }
+
+            // ── Recent scans placeholder ────────────────────────────────────
+            item {
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Recent Scans", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.weight(1f))
+                    Text("View all", color = GreenComplete, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium)
+                }
+            }
+
+            if (received == 0) {
+                item {
+                    Box(
+                        Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "No scans yet — start scanning to receive items",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            // ── Error / Uploading state ─────────────────────────────────────
+            state.error?.let {
+                item {
+                    Snackbar(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    ) { Text(it, color = MaterialTheme.colorScheme.onErrorContainer) }
+                }
+            }
+
+            if (state.phase == ScanPhase.Uploading) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = GreenComplete)
+                        Text("Sending to server…", style = MaterialTheme.typography.bodySmall, color = GreenComplete)
+                    }
+                }
+            }
+
+            // ── Pause / Resume controls ─────────────────────────────────────
+            if (state.phase == ScanPhase.Scanning || state.phase == ScanPhase.Paused) {
+                item {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedButton(
+                            onClick  = vm::togglePause,
+                            modifier = Modifier.weight(1f),
+                            shape    = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(if (state.phase == ScanPhase.Paused) "Resume Scan" else "Pause Scan")
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
-@Composable
-private fun ReceiveDonutChart(scanned: Int, expected: Int, matched: Int) {
-    val scannedFrac = if (expected > 0) scanned.toFloat() / expected else 0f
-    val matchedFrac = if (expected > 0) matched.toFloat() / expected else 0f
-
-    val animScanned by animateFloatAsState(
-        targetValue    = scannedFrac.coerceIn(0f, 1f),
-        animationSpec  = tween(800, easing = FastOutSlowInEasing),
-        label          = "scanned"
-    )
-    val animMatched by animateFloatAsState(
-        targetValue    = matchedFrac.coerceIn(0f, 1f),
-        animationSpec  = tween(800, easing = FastOutSlowInEasing),
-        label          = "matched"
-    )
-
-    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(220.dp)) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val strokeW      = 28.dp.toPx()
-            val scannedSweep = animScanned * 360f
-            val matchedSweep = animMatched * 360f
-            val extraSweep   = (scannedSweep - matchedSweep).coerceAtLeast(0f)
-
-            // Background track
-            drawArc(
-                color      = Color.Gray.copy(alpha = 0.12f),
-                startAngle = -90f, sweepAngle = 360f, useCenter = false,
-                style      = Stroke(strokeW, cap = StrokeCap.Butt)
-            )
-            // Extra (not matched) — orange
-            if (extraSweep > 0f) {
-                drawArc(
-                    color      = Color(0xFFFB8C00),
-                    startAngle = -90f + matchedSweep, sweepAngle = extraSweep, useCenter = false,
-                    style      = Stroke(strokeW, cap = StrokeCap.Butt)
-                )
-            }
-            // Matched — green (drawn on top)
-            if (matchedSweep > 0.5f) {
-                drawArc(
-                    color      = Color(0xFF4CAF50),
-                    startAngle = -90f, sweepAngle = matchedSweep, useCenter = false,
-                    style      = Stroke(strokeW, cap = StrokeCap.Butt)
-                )
-            }
-        }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                "$scanned",
-                style      = MaterialTheme.typography.displaySmall,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                "of $expected",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                "${(animScanned * 100).roundToInt()}%",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-    }
-}
+// ── Sub-composables ───────────────────────────────────────────────────────────
 
 @Composable
-private fun DrillRow(label: String, count: Int, color: Color, onClick: () -> Unit) {
+private fun InboundStatCard(label: String, value: String, valueColor: Color, modifier: Modifier = Modifier) {
     Card(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        colors   = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.06f))
+        modifier  = modifier,
+        shape     = RoundedCornerShape(14.dp),
+        elevation = CardDefaults.cardElevation(2.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier              = Modifier.padding(vertical = 16.dp, horizontal = 12.dp),
+            horizontalAlignment   = Alignment.CenterHorizontally,
+            verticalArrangement   = Arrangement.spacedBy(4.dp)
         ) {
-            Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(color))
-            Spacer(Modifier.width(12.dp))
-            Text(
-                label,
-                modifier   = Modifier.weight(1f),
-                style      = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-                color      = color
-            )
-            Text(
-                count.toString(),
-                style      = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color      = color
-            )
-            Spacer(Modifier.width(4.dp))
-            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = color)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = valueColor)
         }
     }
 }
@@ -226,61 +275,18 @@ private fun DrillRow(label: String, count: Int, color: Color, onClick: () -> Uni
 private fun PhaseChip(phase: ScanPhase) {
     val (txt, color) = when (phase) {
         ScanPhase.Connecting -> "Connecting…" to Color(0xFFFF9800)
-        ScanPhase.Scanning   -> "● SCANNING"  to Color(0xFF4CAF50)
-        ScanPhase.Paused     -> "⏸ PAUSED"    to Color(0xFFFF9800)
-        ScanPhase.Uploading  -> "Uploading…"  to MaterialTheme.colorScheme.primary
-        ScanPhase.Done       -> "Done ✓"      to Color(0xFF4CAF50)
+        ScanPhase.Scanning   -> "In Progress" to GreenComplete
+        ScanPhase.Paused     -> "Paused"      to Color(0xFFFF9800)
+        ScanPhase.Uploading  -> "Uploading…"  to Color(0xFF1565C0)
+        ScanPhase.Done       -> "Complete ✓"  to GreenComplete
     }
-    Surface(color = color.copy(.15f), shape = MaterialTheme.shapes.medium) {
-        Text(txt, Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-            color = color, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-    }
-}
-
-// ── Previews ──────────────────────────────────────────────────────────────────
-
-@Preview(showBackground = true, widthDp = 360, heightDp = 280, name = "Donut Chart – 94% matched")
-@Composable
-private fun ReceiveDonutChartPreview() {
-    StoreLenseTheme {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-            ReceiveDonutChart(scanned = 95, expected = 100, matched = 94)
-        }
-    }
-}
-
-@Preview(showBackground = true, widthDp = 360, name = "Drill Row – Missing 6")
-@Composable
-private fun DrillRowMissingPreview() {
-    StoreLenseTheme {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            DrillRow(label = "Missing", count = 6,  color = Color(0xFFE53935), onClick = {})
-            DrillRow(label = "Extra",   count = 1,  color = Color(0xFFFB8C00), onClick = {})
-        }
-    }
-}
-
-@Preview(showBackground = true, widthDp = 360, heightDp = 700, name = "Inbound Scan – Active")
-@Composable
-private fun InboundScanContentPreview() {
-    StoreLenseTheme {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            PhaseChip(ScanPhase.Scanning)
-            Spacer(Modifier.height(16.dp))
-            ReceiveDonutChart(scanned = 95, expected = 100, matched = 94)
-            Spacer(Modifier.height(20.dp))
-            DrillRow(label = "Missing", count = 6, color = Color(0xFFE53935), onClick = {})
-            Spacer(Modifier.height(8.dp))
-            DrillRow(label = "Extra",   count = 1, color = Color(0xFFFB8C00), onClick = {})
-            Spacer(Modifier.weight(1f))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onClick = {}, modifier = Modifier.weight(1f).height(52.dp)) { Text("Pause") }
-                Button(onClick = {}, modifier = Modifier.weight(1f).height(52.dp)) { Text("Confirm Receipt", fontSize = 16.sp) }
-            }
-            Spacer(Modifier.height(8.dp))
-        }
+    Surface(color = color.copy(0.12f), shape = MaterialTheme.shapes.small) {
+        Text(
+            txt,
+            Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            color      = color,
+            fontWeight = FontWeight.Bold,
+            fontSize   = 12.sp
+        )
     }
 }

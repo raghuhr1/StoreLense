@@ -15,6 +15,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.storelense.mobile.ui.home.HomeScreen
+import com.storelense.mobile.ui.home.WorkflowsScreen
 import com.storelense.mobile.ui.inbound.InboundListScreen
 import com.storelense.mobile.ui.inbound.InboundResultScreen
 import com.storelense.mobile.ui.inbound.legacy.InboundListScreenLegacy
@@ -48,6 +49,7 @@ import com.storelense.mobile.ui.sync.SyncStatusScreen
 object Routes {
     const val LOGIN            = "login"
     const val HOME             = "home"
+    const val WORKFLOWS        = "workflows"
     const val SOH_LIST         = "soh_list"
     const val SOH_SCAN         = "soh_scan/{sessionId}"
     const val SOH_RESULT       = "soh_result/{sessionId}"
@@ -110,22 +112,39 @@ fun AppNavigation() {
 
         composable(Routes.HOME) {
             HomeScreen(
-                onSoh             = { nav.navigate(Routes.SOH_LIST) },
-                onInbound         = { nav.navigate(Routes.INBOUND_LIST) },
-                onReplenish       = { nav.navigate(Routes.REPLENISH_LIST) },
-                onTransferOut     = { nav.navigate(Routes.TRANSFER_OUT) },
-                onProductSearch   = { nav.navigate(Routes.PRODUCT_SEARCH) },
-                onItemLocator     = { nav.navigate(Routes.ITEM_LOCATOR) },
-                onSpotCount       = { nav.navigate(Routes.SPOT_COUNT) },
-                onGeigerLocate    = { nav.navigate(Routes.geigerLocate("")) },
-                onExceptions      = { nav.navigate(Routes.EXCEPTIONS) },
-                onSyncStatus      = { nav.navigate(Routes.SYNC_STATUS) },
-                onSettings        = { nav.navigate(Routes.SETTINGS) },
-                onLogout          = {
+                onSoh           = { nav.navigate(Routes.SOH_LIST) },
+                onInbound       = { nav.navigate(Routes.INBOUND_LIST) },
+                onReplenish     = { nav.navigate(Routes.REPLENISH_LIST) },
+                onTransferOut   = { nav.navigate(Routes.TRANSFER_OUT) },
+                onProductSearch = { nav.navigate(Routes.PRODUCT_SEARCH) },
+                onItemLocator   = { nav.navigate(Routes.ITEM_LOCATOR) },
+                onSpotCount     = { nav.navigate(Routes.SPOT_COUNT) },
+                onGeigerLocate  = { nav.navigate(Routes.geigerLocate("")) },
+                onExceptions    = { nav.navigate(Routes.EXCEPTIONS) },
+                onSyncStatus    = { nav.navigate(Routes.SYNC_STATUS) },
+                onSettings      = { nav.navigate(Routes.SETTINGS) },
+                onWorkflows     = { nav.navigate(Routes.WORKFLOWS) },
+                onLogout        = {
                     nav.navigate(Routes.LOGIN) {
                         popUpTo(Routes.HOME) { inclusive = true }
                     }
                 }
+            )
+        }
+
+        // ── Workflows / Tasks hub ─────────────────────────────────────────
+        composable(Routes.WORKFLOWS) {
+            WorkflowsScreen(
+                onSoh           = { nav.navigate(Routes.SOH_LIST) },
+                onInbound       = { nav.navigate(Routes.INBOUND_LIST) },
+                onReplenish     = { nav.navigate(Routes.REPLENISH_LIST) },
+                onTransferOut   = { nav.navigate(Routes.TRANSFER_OUT) },
+                onExceptions    = { nav.navigate(Routes.EXCEPTIONS) },
+                onProductSearch = { nav.navigate(Routes.PRODUCT_SEARCH) },
+                onHome          = { nav.navigate(Routes.HOME) { popUpTo(Routes.HOME) { inclusive = true } } },
+                onScan          = { nav.navigate(Routes.SOH_LIST) },
+                onLocate        = { nav.navigate(Routes.ITEM_LOCATOR) },
+                onSettings      = { nav.navigate(Routes.SETTINGS) }
             )
         }
 
@@ -142,9 +161,9 @@ fun AppNavigation() {
             arguments = listOf(navArgument("sessionId") { type = NavType.StringType })
         ) {
             ScanScreen(
-                sessionId = it.arguments!!.getString("sessionId")!!,
+                sessionId  = it.arguments!!.getString("sessionId")!!,
                 onComplete = { id -> nav.navigate(Routes.sohResult(id)) { popUpTo(Routes.SOH_LIST) } },
-                onBack    = { nav.popBackStack() }
+                onBack     = { nav.popBackStack() }
             )
         }
 
@@ -246,8 +265,8 @@ fun AppNavigation() {
 
         composable(Routes.ITEM_LOCATOR) {
             ItemLocatorScreen(
-                onBack          = { nav.popBackStack() },
-                onGeigerLocate  = { epc -> nav.navigate(Routes.geigerLocate(epc)) }
+                onBack         = { nav.popBackStack() },
+                onGeigerLocate = { epc -> nav.navigate(Routes.geigerLocate(epc)) }
             )
         }
 
@@ -256,9 +275,9 @@ fun AppNavigation() {
             arguments = listOf(navArgument("epc") { type = NavType.StringType })
         ) {
             ItemLocatorScreen(
-                initialEpc      = it.arguments!!.getString("epc") ?: "",
-                onBack          = { nav.popBackStack() },
-                onGeigerLocate  = { epc -> nav.navigate(Routes.geigerLocate(epc)) }
+                initialEpc     = it.arguments!!.getString("epc") ?: "",
+                onBack         = { nav.popBackStack() },
+                onGeigerLocate = { epc -> nav.navigate(Routes.geigerLocate(epc)) }
             )
         }
 

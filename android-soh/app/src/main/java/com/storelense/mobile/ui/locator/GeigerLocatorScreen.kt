@@ -1,29 +1,31 @@
 package com.storelense.mobile.ui.locator
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class)
+private val RadarGreen  = Color(0xFF00E676)
+private val DarkBg      = Color(0xFF0A0F1A)
+private val RadarRing   = Color(0xFF00E676)
+
 @Composable
 fun GeigerLocatorScreen(
     targetEpc: String,
@@ -34,129 +36,193 @@ fun GeigerLocatorScreen(
 
     val rssi       = state.currentRssi
     val hasData    = state.rssiHistory.isNotEmpty()
-    val rssiColor  = rssiToColor(rssi, hasData)
+    val proximity  = state.proximityLabel
     val activeDots = rssiToDots(rssi, !hasData)
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Geiger Mode", fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = { vm.stop(); onBack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                }
-            )
-        }
-    ) { padding ->
+    val statusText  = rssiToStatusText(rssi, hasData)
+    val statusColor = rssiToColor(rssi, hasData)
+    val distance    = rssiToDistance(rssi, hasData)
+    val instruction = rssiToInstruction(rssi, hasData)
+
+    // Pulse animation for the radar rings
+    val pulse by rememberInfiniteTransition(label = "radar").animateFloat(
+        initialValue  = 0f,
+        targetValue   = 1f,
+        animationSpec = infiniteRepeatable(tween(1800, easing = LinearEasing)),
+        label         = "pulse"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(DarkBg)
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 24.dp),
+                .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(12.dp))
-
-            // ── EPC chip ───────────────────────────────────────────────────
-            Surface(
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                shape = CircleShape
+            // ── Top bar ─────────────────────────────────────────────────────
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(Icons.Default.Nfc, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Text(
-                        "…${state.targetEpc.takeLast(12)}",
-                        style = MaterialTheme.typography.labelLarge
+                IconButton(onClick = { vm.stop(); onBack() }) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                }
+                Text(
+                    "Locate Mode",
+                    style      = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color      = Color.White,
+                    modifier   = Modifier.weight(1f),
+                    textAlign  = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                IconButton(onClick = {}) {
+                    Icon(Icons.Default.Tune, contentDescription = "Settings", tint = Color.White.copy(0.6f))
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            // ── Status text ─────────────────────────────────────────────────
+            Text(
+                statusText,
+                style      = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold,
+                color      = statusColor,
+                fontSize   = 34.sp
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                distance,
+                style      = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color      = Color.White
+            )
+
+            Spacer(Modifier.height(28.dp))
+
+            // ── Radar canvas ────────────────────────────────────────────────
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier         = Modifier.size(240.dp)
+            ) {
+                Canvas(modifier = Modifier.size(240.dp)) {
+                    val center  = center
+                    val maxR    = size.minDimension / 2f
+                    val alpha   = if (hasData) (activeDots / 8f).coerceIn(0.2f, 1f) else 0.2f
+
+                    // Pulsing outer ring
+                    val pulseR = maxR * (0.6f + pulse * 0.4f)
+                    drawCircle(
+                        color  = RadarRing.copy(alpha = (1f - pulse) * 0.25f * alpha),
+                        radius = pulseR,
+                        center = center,
+                        style  = Stroke(2.dp.toPx())
+                    )
+
+                    // Static rings
+                    for (ring in listOf(0.35f, 0.55f, 0.75f, 0.95f)) {
+                        drawCircle(
+                            color  = RadarRing.copy(alpha = 0.15f * alpha),
+                            radius = maxR * ring,
+                            center = center,
+                            style  = Stroke(1.5.dp.toPx())
+                        )
+                    }
+
+                    // Filled center circle (intensity based on RSSI)
+                    val innerR = maxR * 0.28f
+                    drawCircle(
+                        color  = RadarGreen.copy(alpha = 0.2f * alpha),
+                        radius = innerR,
+                        center = center
+                    )
+                    drawCircle(
+                        color  = RadarGreen.copy(alpha = 0.4f * alpha),
+                        radius = innerR * 0.65f,
+                        center = center
+                    )
+                    drawCircle(
+                        color  = RadarGreen,
+                        radius = innerR * 0.32f,
+                        center = center
+                    )
+
+                    // Up-arrow indicator
+                    val arrowH  = innerR * 0.9f
+                    val arrowW  = innerR * 0.5f
+                    val arrowTip = center.copy(y = center.y - arrowH * 0.6f)
+                    val path    = Path().apply {
+                        moveTo(arrowTip.x, arrowTip.y)
+                        lineTo(arrowTip.x - arrowW / 2, center.y + arrowH * 0.3f)
+                        lineTo(arrowTip.x, center.y + arrowH * 0.05f)
+                        lineTo(arrowTip.x + arrowW / 2, center.y + arrowH * 0.3f)
+                        close()
+                    }
+                    drawPath(path, Color.White)
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            // ── Instruction ─────────────────────────────────────────────────
+            Text(
+                instruction.first,
+                style      = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color      = Color.White
+            )
+            Text(
+                instruction.second,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(0.5f)
+            )
+
+            Spacer(Modifier.weight(1f))
+
+            // ── Signal bar meter ────────────────────────────────────────────
+            Row(
+                verticalAlignment      = Alignment.Bottom,
+                horizontalArrangement  = Arrangement.spacedBy(5.dp)
+            ) {
+                val totalBars = 8
+                for (i in 1..totalBars) {
+                    val barH    = (12 + i * 5).dp
+                    val isActive = i <= activeDots
+                    Box(
+                        modifier = Modifier
+                            .width(14.dp)
+                            .height(barH)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(
+                                if (isActive) RadarGreen else Color.White.copy(0.12f)
+                            )
                     )
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(24.dp))
 
-            // ── Large RSSI ─────────────────────────────────────────────────
-            Text(
-                text       = if (hasData) "${rssi.roundToInt()} dBm" else "— dBm",
-                fontSize   = 64.sp,
-                fontWeight = FontWeight.Bold,
-                color      = rssiColor
-            )
-            Text(
-                text       = state.proximityLabel,
-                style      = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
-                color      = rssiColor
-            )
-
-            Spacer(Modifier.height(20.dp))
-
-            // ── RSSI history bar chart ─────────────────────────────────────
-            Card(modifier = Modifier.fillMaxWidth()) {
-                RssiBarChart(
-                    history  = state.rssiHistory,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(120.dp)
-                        .padding(12.dp)
-                )
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            // ── Beep rate dot row ──────────────────────────────────────────
+            // ── Sound / Vibrate toggles ─────────────────────────────────────
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                modifier              = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                Text(
-                    "BEEP RATE",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                BeepDots(activeDots = activeDots)
-            }
-
-            Spacer(Modifier.height(28.dp))
-
-            // ── Speaker + Vibrate toggle controls ──────────────────────────
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ToggleIconButton(
+                RadarToggle(
                     icon    = if (state.speakerEnabled) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
                     label   = "Sound",
                     active  = state.speakerEnabled,
                     onClick = vm::toggleSpeaker
                 )
-                Spacer(Modifier.width(48.dp))
-                ToggleIconButton(
+                RadarToggle(
                     icon    = Icons.Default.Vibration,
                     label   = "Vibrate",
                     active  = state.vibrateEnabled,
                     onClick = vm::toggleVibrate
                 )
-            }
-
-            Spacer(Modifier.weight(1f))
-
-            // ── STOP button ────────────────────────────────────────────────
-            Button(
-                onClick  = { vm.stop(); onBack() },
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                colors   = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error,
-                    contentColor   = MaterialTheme.colorScheme.onError
-                )
-            ) {
-                Icon(Icons.Default.Stop, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("STOP", fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
 
             Spacer(Modifier.height(16.dp))
@@ -167,109 +233,69 @@ fun GeigerLocatorScreen(
 // ── Private composables ────────────────────────────────────────────────────────
 
 @Composable
-private fun RssiBarChart(history: List<Double>, modifier: Modifier = Modifier) {
-    val maxBars = 20
-    Canvas(modifier = modifier) {
-        if (size.isEmpty()) return@Canvas
-        val totalBars = maxBars
-        val gapRatio  = 0.12f
-        val barWidth  = size.width / (totalBars + gapRatio * (totalBars - 1))
-        val gap       = barWidth * gapRatio
-        val startSlot = totalBars - history.size
-
-        // Empty placeholder slots
-        for (i in 0 until startSlot) {
-            val left = i * (barWidth + gap)
-            drawRect(
-                color   = Color.Gray.copy(alpha = 0.12f),
-                topLeft = Offset(left, 0f),
-                size    = Size(barWidth, size.height)
-            )
-        }
-
-        // Data bars — rightmost = latest
-        history.forEachIndexed { i, rssi ->
-            val slot    = startSlot + i
-            val pct     = ((rssi + 100) / 60.0).coerceIn(0.0, 1.0).toFloat()
-            val barH    = size.height * pct
-            val left    = slot * (barWidth + gap)
-            val color   = rssiToColorRaw(rssi)
-            drawRect(
-                color   = color,
-                topLeft = Offset(left, size.height - barH),
-                size    = Size(barWidth, barH)
-            )
-        }
-    }
-}
-
-@Composable
-private fun BeepDots(activeDots: Int, modifier: Modifier = Modifier) {
-    val total = 8
-    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-        for (i in 1..total) {
-            Box(
-                modifier = Modifier
-                    .size(11.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (i <= activeDots) Color(0xFF4CAF50)
-                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
-                    )
-            )
-        }
-    }
-}
-
-@Composable
-private fun ToggleIconButton(
-    icon: ImageVector,
+private fun RadarToggle(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     active: Boolean,
     onClick: () -> Unit
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
         IconButton(
             onClick  = onClick,
             modifier = Modifier
                 .size(56.dp)
                 .clip(CircleShape)
-                .background(
-                    if (active) MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.surfaceVariant
-                )
+                .background(if (active) RadarGreen.copy(0.18f) else Color.White.copy(0.08f))
         ) {
             Icon(
-                imageVector    = icon,
+                imageVector = icon,
                 contentDescription = label,
-                modifier       = Modifier.size(26.dp),
-                tint           = if (active) MaterialTheme.colorScheme.primary
-                                 else MaterialTheme.colorScheme.onSurfaceVariant
+                tint        = if (active) RadarGreen else Color.White.copy(0.5f),
+                modifier    = Modifier.size(26.dp)
             )
         }
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(0.5f))
     }
 }
 
-// ── Private helpers ────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 private fun rssiToColor(rssi: Double, hasData: Boolean): Color = when {
     !hasData    -> Color.Gray
-    rssi >= -50 -> Color(0xFF4CAF50)   // green
-    rssi >= -65 -> Color(0xFFFDD835)   // yellow
-    rssi >= -75 -> Color(0xFFFB8C00)   // orange
-    else        -> Color(0xFFE53935)   // red
-}
-
-private fun rssiToColorRaw(rssi: Double): Color = when {
-    rssi >= -50 -> Color(0xFF4CAF50)
+    rssi >= -50 -> RadarGreen
     rssi >= -65 -> Color(0xFFFDD835)
     rssi >= -75 -> Color(0xFFFB8C00)
-    else        -> Color(0xFFE53935)
+    else        -> Color(0xFF90CAF9)
+}
+
+private fun rssiToStatusText(rssi: Double, hasData: Boolean): String = when {
+    !hasData    -> "Searching…"
+    rssi >= -50 -> "VERY HOT 🔥"
+    rssi >= -60 -> "HOTTER 🔥"
+    rssi >= -70 -> "WARM ♨"
+    rssi >= -80 -> "GETTING CLOSER"
+    else        -> "COLDER ❄️"
+}
+
+private fun rssiToDistance(rssi: Double, hasData: Boolean): String = when {
+    !hasData    -> "— m away"
+    rssi >= -50 -> "< 0.5 m away"
+    rssi >= -60 -> "≈ 1 m away"
+    rssi >= -65 -> "≈ 2 m away"
+    rssi >= -70 -> "≈ 3 m away"
+    rssi >= -80 -> "≈ 5 m away"
+    else        -> "> 8 m away"
+}
+
+private fun rssiToInstruction(rssi: Double, hasData: Boolean): Pair<String, String> = when {
+    !hasData    -> "Scanning…"        to "Point device at the area to scan"
+    rssi >= -55 -> "Almost there!"    to "Item is very close"
+    rssi >= -65 -> "Move forward"     to "Signal getting stronger"
+    rssi >= -75 -> "Keep going"       to "Signal is improving"
+    else        -> "Turn around"      to "Signal getting weaker"
 }
 
 private fun rssiToDots(rssi: Double, noData: Boolean): Int = when {

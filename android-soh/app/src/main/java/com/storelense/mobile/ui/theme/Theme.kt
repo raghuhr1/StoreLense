@@ -12,11 +12,12 @@ val Secondary = Color(0xFF00897B)   // teal
 val Error     = Color(0xFFC62828)   // red
 
 // ── V2 workflow accent colors ─────────────────────────────────────────────────
-val GreenComplete  = Color(0xFF2E7D32)   // Receive DC / completion actions
-val AmberReplenish = Color(0xFFE65100)   // Replenish / urgency
-val BlueAudit      = Color(0xFF1565C0)   // Store Audit (same as Primary)
-val AmberWarning   = Color(0xFFF57C00)   // Warning badges
-val RedCritical    = Color(0xFFC62828)   // Critical badges / missing items
+val GreenComplete   = Color(0xFF2E7D32)   // Receive DC / completion actions
+val AmberReplenish  = Color(0xFFE65100)   // Replenish / urgency
+val IndigoTransfer  = Color(0xFF3F51B5)   // Transfer Out
+val BlueAudit       = Color(0xFF1565C0)   // Store Audit (same as Primary)
+val AmberWarning    = Color(0xFFF57C00)   // Warning badges
+val RedCritical     = Color(0xFFC62828)   // Critical badges / missing items
 
 // ── Surface / background tokens ───────────────────────────────────────────────
 val DarkNavy       = Color(0xFF0D1A2E)   // Home dashboard dark background
