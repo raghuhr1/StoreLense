@@ -34,6 +34,7 @@ spring:
       acks: all
       properties:
         enable.idempotence: true
+        spring.json.add.type.headers: "true"
     consumer:
       group-id: erp-integration-service
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
