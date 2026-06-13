@@ -6,7 +6,7 @@ import { type ColumnDef }     from '@tanstack/react-table'
 import { useForm }            from 'react-hook-form'
 import { zodResolver }        from '@hookform/resolvers/zod'
 import { z }                  from 'zod'
-import { Plus }               from 'lucide-react'
+import { Plus, Pencil }       from 'lucide-react'
 import Link                   from 'next/link'
 import Header                 from '@/components/layout/Header'
 import DataTable              from '@/components/ui/DataTable'
@@ -22,21 +22,22 @@ const TIMEZONES = [
 ]
 
 const schema = z.object({
-  storeCode:    z.string().min(1, 'Required').max(20),
-  name:         z.string().min(1, 'Required'),
-  addressLine1: z.string().optional(),
-  city:         z.string().optional(),
+  storeCode:     z.string().min(1, 'Required').max(20),
+  name:          z.string().min(1, 'Required'),
+  addressLine1:  z.string().optional(),
+  city:          z.string().optional(),
   stateProvince: z.string().optional(),
-  postalCode:   z.string().optional(),
-  countryCode:  z.string().length(2, 'Must be 2-letter country code'),
-  timezone:     z.string().min(1, 'Required'),
-  erpStoreCode: z.string().optional(),
+  postalCode:    z.string().optional(),
+  countryCode:   z.string().length(2, 'Must be 2-letter country code'),
+  timezone:      z.string().min(1, 'Required'),
+  erpStoreCode:  z.string().optional(),
 })
 type FormValues = z.infer<typeof schema>
 
 export default function StoresPage() {
   const qc = useQueryClient()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen]       = useState(false)
+  const [editing, setEditing] = useState<Store | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['stores'],
@@ -48,10 +49,32 @@ export default function StoresPage() {
     onSuccess:  () => { qc.invalidateQueries({ queryKey: ['stores'] }); setOpen(false); reset() },
   })
 
+  const updateMut = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: FormValues }) => storesApi.update(id, body),
+    onSuccess:  () => { qc.invalidateQueries({ queryKey: ['stores'] }); setEditing(null); reset() },
+  })
+
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { countryCode: 'AU', timezone: 'UTC' },
+    defaultValues: { countryCode: 'IN', timezone: 'Asia/Kolkata' },
   })
+
+  const openEdit = (s: Store) => {
+    setEditing(s)
+    reset({
+      storeCode:     s.storeCode,
+      name:          s.name,
+      addressLine1:  s.addressLine1 ?? '',
+      city:          s.city ?? '',
+      stateProvince: s.stateProvince ?? '',
+      postalCode:    s.postalCode ?? '',
+      countryCode:   s.countryCode ?? 'IN',
+      timezone:      s.timezone ?? 'Asia/Kolkata',
+      erpStoreCode:  s.erpStoreCode ?? '',
+    })
+  }
+
+  const closeForm = () => { setOpen(false); setEditing(null); reset(); createMut.reset(); updateMut.reset() }
 
   const columns = useMemo<ColumnDef<Store, unknown>[]>(() => [
     {
@@ -68,10 +91,96 @@ export default function StoresPage() {
     { accessorKey: 'stateProvince', header: 'State' },
     { accessorKey: 'countryCode',   header: 'Country' },
     { accessorKey: 'timezone',      header: 'Timezone' },
-    { accessorKey: 'active',        header: 'Status',  cell: i => statusBadge(i.getValue<boolean>() ? 'active' : 'inactive') },
+    { accessorKey: 'active',        header: 'Status',   cell: i => statusBadge(i.getValue<boolean>() ? 'active' : 'inactive') },
     { accessorKey: 'erpStoreCode',  header: 'ERP Code', cell: i => i.getValue<string | null>() ?? '—' },
-    { accessorKey: 'createdAt',     header: 'Created', cell: i => fmt(i.getValue<string>()) },
+    { accessorKey: 'createdAt',     header: 'Created',  cell: i => fmt(i.getValue<string>()) },
+    {
+      id: 'actions',
+      header: '',
+      cell: ({ row }) => (
+        <button
+          onClick={() => openEdit(row.original)}
+          className="p-1.5 text-gray-400 hover:text-brand-600 hover:bg-gray-100 rounded transition-colors"
+          title="Edit store"
+        >
+          <Pencil size={15} />
+        </button>
+      ),
+    },
   ], [])
+
+  const isOpen = open || !!editing
+  const isEdit = !!editing
+
+  const StoreForm = () => (
+    <form onSubmit={handleSubmit(v => isEdit ? updateMut.mutate({ id: editing!.id, body: v }) : createMut.mutate(v))} className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Store Code *</label>
+          <input {...register('storeCode')} className="input-field disabled:bg-gray-50 disabled:text-gray-500" placeholder="STORE01" disabled={isEdit} />
+          {errors.storeCode && <p className="text-xs text-red-500 mt-0.5">{errors.storeCode.message}</p>}
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">ERP Code</label>
+          <input {...register('erpStoreCode')} className="input-field" placeholder="Optional" />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">Store Name *</label>
+        <input {...register('name')} className="input-field" placeholder="e.g. Mumbai Linking Road" />
+        {errors.name && <p className="text-xs text-red-500 mt-0.5">{errors.name.message}</p>}
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">Address</label>
+        <input {...register('addressLine1')} className="input-field" placeholder="Street address" />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">City</label>
+          <input {...register('city')} className="input-field" placeholder="Mumbai" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">State / Province</label>
+          <input {...register('stateProvince')} className="input-field" placeholder="Maharashtra" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Country Code *</label>
+          <input {...register('countryCode')} className="input-field" placeholder="IN" maxLength={2} />
+          {errors.countryCode && <p className="text-xs text-red-500 mt-0.5">{errors.countryCode.message}</p>}
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Postal Code</label>
+          <input {...register('postalCode')} className="input-field" placeholder="400050" />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">Timezone *</label>
+        <select {...register('timezone')} className="input-field">
+          {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
+        </select>
+      </div>
+
+      {(createMut.isError || updateMut.isError) && (
+        <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded px-3 py-2">
+          Failed to {isEdit ? 'update' : 'create'} store. Check your input and try again.
+        </p>
+      )}
+
+      <div className="flex gap-3 justify-end pt-2">
+        <button type="button" onClick={closeForm} className="btn-secondary">Cancel</button>
+        <button type="submit" disabled={createMut.isPending || updateMut.isPending} className="btn-primary">
+          {(createMut.isPending || updateMut.isPending) ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Store'}
+        </button>
+      </div>
+    </form>
+  )
 
   return (
     <>
@@ -79,7 +188,7 @@ export default function StoresPage() {
       <div className="p-6 space-y-4">
 
         <div className="flex justify-end">
-          <button onClick={() => setOpen(true)} className="btn-primary">
+          <button onClick={() => { reset({ countryCode: 'IN', timezone: 'Asia/Kolkata' }); setOpen(true) }} className="btn-primary">
             <Plus size={16} /> Add Store
           </button>
         </div>
@@ -94,80 +203,11 @@ export default function StoresPage() {
           />
         </div>
 
-        {open && (
+        {isOpen && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
             <div className="bg-white rounded-2xl p-6 w-[520px] shadow-xl max-h-[90vh] overflow-y-auto">
-              <h3 className="font-semibold text-gray-900 mb-4">Add Store</h3>
-              <form onSubmit={handleSubmit(v => createMut.mutate(v))} className="space-y-3">
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Store Code *</label>
-                    <input {...register('storeCode')} className="input-field" placeholder="STORE01" />
-                    {errors.storeCode && <p className="text-xs text-red-500 mt-0.5">{errors.storeCode.message}</p>}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">ERP Code</label>
-                    <input {...register('erpStoreCode')} className="input-field" placeholder="Optional" />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Store Name *</label>
-                  <input {...register('name')} className="input-field" placeholder="e.g. Sydney CBD" />
-                  {errors.name && <p className="text-xs text-red-500 mt-0.5">{errors.name.message}</p>}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Address</label>
-                  <input {...register('addressLine1')} className="input-field" placeholder="Street address" />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">City</label>
-                    <input {...register('city')} className="input-field" placeholder="Sydney" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">State / Province</label>
-                    <input {...register('stateProvince')} className="input-field" placeholder="NSW" />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Country Code *</label>
-                    <input {...register('countryCode')} className="input-field" placeholder="AU" maxLength={2} />
-                    {errors.countryCode && <p className="text-xs text-red-500 mt-0.5">{errors.countryCode.message}</p>}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Postal Code</label>
-                    <input {...register('postalCode')} className="input-field" placeholder="2000" />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Timezone *</label>
-                  <select {...register('timezone')} className="input-field">
-                    {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
-                  </select>
-                </div>
-
-                {createMut.isError && (
-                  <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded px-3 py-2">
-                    Failed to create store. Check your input and try again.
-                  </p>
-                )}
-
-                <div className="flex gap-3 justify-end pt-2">
-                  <button type="button" onClick={() => { setOpen(false); reset(); createMut.reset() }} className="btn-secondary">
-                    Cancel
-                  </button>
-                  <button type="submit" disabled={createMut.isPending} className="btn-primary">
-                    {createMut.isPending ? 'Creating…' : 'Create Store'}
-                  </button>
-                </div>
-              </form>
+              <h3 className="font-semibold text-gray-900 mb-4">{isEdit ? 'Edit Store' : 'Add Store'}</h3>
+              <StoreForm />
             </div>
           </div>
         )}
