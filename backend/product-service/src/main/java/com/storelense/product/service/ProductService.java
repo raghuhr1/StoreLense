@@ -3,8 +3,10 @@ package com.storelense.product.service;
 import com.storelense.common.dto.PageResponse;
 import com.storelense.common.exception.BusinessException;
 import com.storelense.common.exception.ResourceNotFoundException;
+import com.storelense.product.domain.entity.Barcode;
 import com.storelense.product.domain.entity.EpcTag;
 import com.storelense.product.domain.entity.Product;
+import com.storelense.product.domain.repository.BarcodeRepository;
 import com.storelense.product.domain.repository.EpcTagRepository;
 import com.storelense.product.domain.repository.ProductRepository;
 import com.storelense.product.dto.*;
@@ -29,6 +31,7 @@ public class ProductService {
 
     private final ProductRepository    productRepository;
     private final EpcTagRepository     epcTagRepository;
+    private final BarcodeRepository    barcodeRepository;
     private final ProductMapper        productMapper;
     private final StringRedisTemplate  redis;
 
@@ -67,7 +70,17 @@ public class ProductService {
     public ProductResponse updateProduct(UUID id, UpdateProductRequest req) {
         Product product = findOrThrow(id);
         productMapper.updateEntity(req, product);
-        return productMapper.toResponse(productRepository.save(product));
+        productRepository.save(product);
+
+        if (req.ean() != null && !req.ean().isBlank()) {
+            Barcode barcode = barcodeRepository
+                    .findByProduct_IdAndBarcodeType(id, "EAN")
+                    .orElseGet(() -> Barcode.builder().product(product).barcodeType("EAN").primary(true).build());
+            barcode.setBarcodeValue(req.ean().trim());
+            barcodeRepository.save(barcode);
+        }
+
+        return productMapper.toResponse(productRepository.findById(id).orElseThrow());
     }
 
     @Transactional(readOnly = true)

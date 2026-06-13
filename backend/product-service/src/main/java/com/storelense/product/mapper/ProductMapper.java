@@ -8,6 +8,11 @@ import org.mapstruct.*;
 
 @Mapper(componentModel = "spring")
 public interface ProductMapper {
+
+    @Mapping(target = "primaryEan", expression = "java(product.getBarcodes().stream()" +
+            ".filter(b -> \"EAN\".equals(b.getBarcodeType()))" +
+            ".map(com.storelense.product.domain.entity.Barcode::getBarcodeValue)" +
+            ".findFirst().orElse(null))")
     ProductResponse toResponse(Product product);
 
     @Mapping(target = "id", ignore = true)

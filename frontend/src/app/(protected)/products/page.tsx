@@ -22,6 +22,7 @@ const schema = z.object({
   categoryId:    z.string().optional(),
   unitOfMeasure: z.string().min(1, 'Required'),
   rfidEnabled:   z.boolean(),
+  ean:           z.string().optional(),
 })
 type FormValues = z.infer<typeof schema>
 
@@ -63,6 +64,7 @@ export default function ProductsPage() {
       brand:         p.brand ?? '',
       unitOfMeasure: p.unitOfMeasure,
       rfidEnabled:   p.rfidEnabled,
+      ean:           p.primaryEan ?? '',
     })
   }
 
@@ -101,6 +103,7 @@ export default function ProductsPage() {
         </span>
       ),
     },
+    { accessorKey: 'primaryEan', header: 'EAN',    cell: i => <span className="font-mono text-xs">{i.getValue<string | null>() ?? '—'}</span> },
     { accessorKey: 'active',    header: 'Status',  cell: i => statusBadge(i.getValue<boolean>() ? 'active' : 'inactive') },
     { accessorKey: 'createdAt', header: 'Created', cell: i => fmt(i.getValue<string>()) },
     {
@@ -154,6 +157,12 @@ export default function ProductsPage() {
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1">Brand</label>
         <input {...register('brand')} className="input-field" placeholder="e.g. Nike" />
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">EAN / Barcode</label>
+        <input {...register('ean')} className="input-field font-mono" placeholder="e.g. 8901230000971" />
+        <p className="text-xs text-gray-400 mt-0.5">Used for ERP matching — 13-digit EAN barcode</p>
       </div>
 
       <div>

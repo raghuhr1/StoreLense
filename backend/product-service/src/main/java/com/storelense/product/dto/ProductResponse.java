@@ -8,5 +8,6 @@ public record ProductResponse(
         UUID categoryId, String brand, String supplierCode,
         String erpProductCode, String unitOfMeasure,
         Integer weightGrams, boolean rfidEnabled, boolean active,
+        String primaryEan,
         OffsetDateTime erpSyncedAt, OffsetDateTime createdAt
 ) {}

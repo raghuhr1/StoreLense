@@ -6,5 +6,6 @@ public record UpdateProductRequest(
         String name, String description, UUID categoryId,
         String brand, String supplierCode, String erpProductCode,
         String unitOfMeasure, Integer weightGrams,
-        Boolean rfidEnabled, Boolean active
+        Boolean rfidEnabled, Boolean active,
+        String ean
 ) {}
