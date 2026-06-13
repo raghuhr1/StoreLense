@@ -23,7 +23,7 @@ export interface PageResponse<T> {
 // ─── Stores ───────────────────────────────────────────────────────────────────
 export interface Store {
   id: string; storeCode: string; name: string; addressLine1: string | null
-  city: string | null; stateProvince: string | null; countryCode: string
+  city: string | null; stateProvince: string | null; postalCode: string | null; countryCode: string
   timezone: string; active: boolean; erpStoreCode: string | null; createdAt: string
 }
 
