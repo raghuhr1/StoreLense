@@ -1,5 +1,6 @@
 package com.storelense.mobile.ui.inbound
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -34,8 +35,34 @@ fun InboundScanScreen(
 
     LaunchedEffect(Unit) {
         vm.events.collect { e ->
-            if (e is InboundEvent.Complete) onComplete(e.received, e.expected, e.shortage)
+            when (e) {
+                is InboundEvent.Complete -> onComplete(e.received, e.expected, e.shortage)
+                is InboundEvent.Exit     -> onBack()
+            }
         }
+    }
+
+    // Fix #1: Intercept Android system back gesture / button
+    BackHandler { vm.requestExit() }
+
+    // Fix #1: Exit confirmation dialog
+    if (state.showExitDialog) {
+        AlertDialog(
+            onDismissRequest = vm::dismissExit,
+            title = { Text("Leave receiving?") },
+            text  = {
+                Text(
+                    "You have ${state.scannedCount} scanned items not yet confirmed. " +
+                    "Your progress is saved — come back to complete receiving when ready."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = vm::confirmExit) { Text("Leave") }
+            },
+            dismissButton = {
+                TextButton(onClick = vm::dismissExit) { Text("Keep Scanning") }
+            }
+        )
     }
 
     val received = state.scannedCount
@@ -55,7 +82,8 @@ fun InboundScanScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    // Fix #1: route back arrow through requestExit guard
+                    IconButton(onClick = vm::requestExit) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
                     }
                 },
@@ -119,6 +147,24 @@ fun InboundScanScreen(
                             )
                         }
                         PhaseChip(state.phase)
+                    }
+                }
+            }
+
+            // Fix #3: Restored EPCs banner
+            if (state.restoredCount > 0) {
+                item {
+                    Surface(
+                        color    = MaterialTheme.colorScheme.primaryContainer,
+                        shape    = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            "Restored ${state.restoredCount} EPCs from previous session",
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                            style    = MaterialTheme.typography.bodySmall,
+                            color    = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
                     }
                 }
             }

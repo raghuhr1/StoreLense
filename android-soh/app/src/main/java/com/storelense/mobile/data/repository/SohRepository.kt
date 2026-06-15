@@ -76,6 +76,9 @@ class SohRepository @Inject constructor(
 
     fun epcCountFlow(sessionId: String): Flow<Int> = epcReadDao.countFlow(sessionId)
 
+    suspend fun getPendingEpcs(sessionId: String): List<String> =
+        epcReadDao.getPending(sessionId).map { it.epc }
+
     suspend fun uploadBatch(sessionId: String, storeId: String): Result<Unit> = try {
         val pending = epcReadDao.getPending(sessionId)
         if (pending.isEmpty()) return Result.Success(Unit)

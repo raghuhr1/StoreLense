@@ -8,10 +8,13 @@ import android.os.BatteryManager
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.ExistingWorkPolicy
+import androidx.work.WorkManager
 import com.storelense.mobile.data.repository.AuthRepository
 import com.storelense.mobile.data.repository.Result
 import com.storelense.mobile.data.repository.SohRepository
 import com.storelense.mobile.rfid.RfidReader
+import com.storelense.mobile.work.SohUploadWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -25,17 +28,21 @@ import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 data class ScanState(
-    val sessionId: String         = "",
-    val expectedCount: Int        = 0,
-    val scannedCount: Int         = 0,
-    val matchedCount: Int         = 0,
-    val lastEpc: String           = "",
-    val lastEpcTime: String?      = null,
-    val phase: ScanPhase          = ScanPhase.Connecting,
-    val readRate: Float           = 0f,
-    val readerSignalBars: Int     = 0,   // 0 = unknown, 1–4
-    val batteryPct: Int           = 0,
-    val error: String?            = null
+    val sessionId: String        = "",
+    val expectedCount: Int       = 0,
+    val scannedCount: Int        = 0,
+    val matchedCount: Int        = 0,
+    val lastEpc: String          = "",
+    val lastEpcTime: String?     = null,
+    val phase: ScanPhase         = ScanPhase.Connecting,
+    val readRate: Float          = 0f,
+    val readerSignalBars: Int    = 0,   // 0 = unknown, 1–4
+    val batteryPct: Int          = 0,
+    val error: String?           = null,
+    // Fix #1 — exit guard
+    val showExitDialog: Boolean  = false,
+    // Fix #3 — resume restore
+    val restoredCount: Int       = 0
 )
 
 enum class ScanPhase { Connecting, Scanning, Paused, Uploading, Done }
@@ -46,7 +53,8 @@ class ScanViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val soh: SohRepository,
     private val auth: AuthRepository,
-    private val rfid: RfidReader
+    private val rfid: RfidReader,
+    private val workManager: WorkManager          // Fix #2 / #7
 ) : ViewModel() {
 
     private val sessionId: String = savedState["sessionId"] ?: ""
@@ -77,7 +85,6 @@ class ScanViewModel @Inject constructor(
     }
 
     init {
-        // registerReceiver returns the last sticky Battery intent; feed it to get initial value
         val sticky = context.registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         sticky?.let { batteryReceiver.onReceive(context, it) }
         initSession()
@@ -89,6 +96,22 @@ class ScanViewModel @Inject constructor(
             is Result.Success -> {
                 r.data.expectedEpcs?.let { expectedSet.addAll(it) }
                 _state.update { it.copy(expectedCount = expectedSet.size) }
+
+                // Fix #3: Restore any EPCs buffered locally from a previous interrupted run.
+                // Room DB keeps them with uploaded=false until the server confirms receipt.
+                val restored = soh.getPendingEpcs(sessionId)
+                if (restored.isNotEmpty()) {
+                    scannedSet.addAll(restored)
+                    val restoredMatches = restored.count { it in expectedSet }
+                    _state.update {
+                        it.copy(
+                            scannedCount  = scannedSet.size,
+                            matchedCount  = restoredMatches,
+                            restoredCount = restored.size
+                        )
+                    }
+                }
+
                 rfid.connect()
                 rfid.setTxPower(27)
                 rfid.startScan()
@@ -104,12 +127,10 @@ class ScanViewModel @Inject constructor(
             val now    = System.currentTimeMillis()
             val cutoff = now - 2_000L
 
-            // Rate: count ALL reads in the 2s window
             readTimestamps.addLast(now)
             while (readTimestamps.firstOrNull()?.let { it < cutoff } == true) readTimestamps.removeFirst()
             val rate = readTimestamps.size / 2.0f
 
-            // Signal bars: mean RSSI of last 10 reads
             val bars = read.rssi?.let { rssi ->
                 if (rssiWindow.size >= 10) rssiWindow.removeFirst()
                 rssiWindow.addLast(rssi)
@@ -135,7 +156,6 @@ class ScanViewModel @Inject constructor(
                     )
                 }
             } else {
-                // Still update metrics for duplicate reads
                 _state.update { it.copy(readRate = rate, readerSignalBars = bars) }
             }
         }
@@ -149,25 +169,82 @@ class ScanViewModel @Inject constructor(
         }
     }
 
+    // ── Fix #1: Exit guard ────────────────────────────────────────────────────
+
+    fun requestExit() {
+        val s = _state.value
+        if (s.scannedCount > 0 && s.phase != ScanPhase.Done) {
+            _state.update { it.copy(showExitDialog = true) }
+        } else {
+            viewModelScope.launch { _events.emit(ScanEvent.Exit) }
+        }
+    }
+
+    fun dismissExit() {
+        _state.update { it.copy(showExitDialog = false) }
+    }
+
+    fun confirmExit() {
+        _state.update { it.copy(showExitDialog = false) }
+        enqueueUploadWorker(policy = ExistingWorkPolicy.KEEP)
+        viewModelScope.launch { _events.emit(ScanEvent.Exit) }
+    }
+
+    // ── Fix #2 / #7: Complete with worker safety net ──────────────────────────
+
     fun complete() = viewModelScope.launch {
         rfid.stopScan()
         rfid.disconnect()
         _state.update { it.copy(phase = ScanPhase.Uploading) }
+
         when (val up = soh.uploadBatch(sessionId, storeId)) {
-            is Result.Error -> { _state.update { it.copy(error = "Upload failed: ${up.message}") }; return@launch }
+            is Result.Error -> {
+                // Fix #7: Upload failed — queue a background retry instead of silently dropping data.
+                enqueueUploadWorker(policy = ExistingWorkPolicy.REPLACE)
+                _state.update {
+                    it.copy(
+                        phase = ScanPhase.Paused,
+                        error = "Upload failed — data saved locally and will retry when connected"
+                    )
+                }
+                return@launch
+            }
             else -> {}
         }
+
         when (val done = soh.completeSession(sessionId)) {
-            is Result.Success -> { _state.update { it.copy(phase = ScanPhase.Done) }; _events.emit(ScanEvent.Complete(sessionId)) }
-            is Result.Error   -> _state.update { it.copy(phase = ScanPhase.Paused, error = done.message) }
+            is Result.Success -> {
+                // Upload succeeded via complete() — cancel any queued background worker.
+                workManager.cancelUniqueWork("soh_upload_$sessionId")
+                _state.update { it.copy(phase = ScanPhase.Done) }
+                _events.emit(ScanEvent.Complete(sessionId))
+            }
+            is Result.Error -> _state.update { it.copy(phase = ScanPhase.Paused, error = done.message) }
         }
     }
+
+    // ── Fix #2: Enqueue on ViewModel destruction if data is unsaved ───────────
 
     override fun onCleared() {
         super.onCleared()
         try { context.unregisterReceiver(batteryReceiver) } catch (_: Exception) {}
+        if (scannedSet.isNotEmpty() && _state.value.phase != ScanPhase.Done) {
+            enqueueUploadWorker(policy = ExistingWorkPolicy.KEEP)
+        }
         viewModelScope.launch { rfid.disconnect() }
+    }
+
+    private fun enqueueUploadWorker(policy: ExistingWorkPolicy) {
+        if (scannedSet.isEmpty()) return
+        workManager.enqueueUniqueWork(
+            "soh_upload_$sessionId",
+            policy,
+            SohUploadWorker.build(sessionId)
+        )
     }
 }
 
-sealed interface ScanEvent { data class Complete(val sessionId: String) : ScanEvent }
+sealed interface ScanEvent {
+    data class Complete(val sessionId: String) : ScanEvent
+    object Exit : ScanEvent
+}

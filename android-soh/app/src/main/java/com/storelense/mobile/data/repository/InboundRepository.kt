@@ -60,6 +60,9 @@ class InboundRepository @Inject constructor(
 
     fun epcCountFlow(shipmentId: String): Flow<Int> = readDao.countFlow(shipmentId)
 
+    suspend fun getPendingEpcs(shipmentId: String): List<String> =
+        readDao.getPending(shipmentId).map { it.epc }
+
     suspend fun receiveShipment(shipmentId: String): Result<InboundResultDto> = try {
         val pending = readDao.getPending(shipmentId)
         val resp = api.receiveShipment(

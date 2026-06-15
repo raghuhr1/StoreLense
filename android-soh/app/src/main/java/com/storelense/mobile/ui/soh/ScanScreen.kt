@@ -1,5 +1,6 @@
 package com.storelense.mobile.ui.soh
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -31,15 +32,49 @@ fun ScanScreen(
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
 
+    // Collect navigation events from the ViewModel
     LaunchedEffect(Unit) {
-        vm.events.collect { if (it is ScanEvent.Complete) onComplete(it.sessionId) }
+        vm.events.collect { event ->
+            when (event) {
+                is ScanEvent.Complete -> onComplete(event.sessionId)
+                is ScanEvent.Exit     -> onBack()
+            }
+        }
+    }
+
+    // Fix #1: Intercept Android system back gesture / button
+    BackHandler { vm.requestExit() }
+
+    // Fix #1: Exit confirmation dialog
+    if (state.showExitDialog) {
+        AlertDialog(
+            onDismissRequest = vm::dismissExit,
+            title   = { Text("Leave scan?") },
+            text    = {
+                Text(
+                    "You have ${state.scannedCount} scanned EPCs not yet uploaded to the server. " +
+                    "They will be queued and uploaded automatically when you reconnect."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = vm::confirmExit) { Text("Leave & Queue Upload") }
+            },
+            dismissButton = {
+                TextButton(onClick = vm::dismissExit) { Text("Keep Scanning") }
+            }
+        )
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("SOH Scan") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } }
+                // Fix #1: route back arrow through requestExit instead of onBack directly
+                navigationIcon = {
+                    IconButton(onClick = vm::requestExit) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
+                    }
+                }
             )
         }
     ) { padding ->
@@ -48,7 +83,24 @@ fun ScanScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             PhaseIndicator(state.phase)
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(16.dp))
+
+            // Fix #3: Restored EPCs banner shown when re-entering an interrupted session
+            if (state.restoredCount > 0) {
+                Surface(
+                    color  = MaterialTheme.colorScheme.primaryContainer,
+                    shape  = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        "Restored ${state.restoredCount} EPCs from previous session",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+            }
 
             BigCounterRow("Scanned",  state.scannedCount,  MaterialTheme.colorScheme.primary)
             Spacer(Modifier.height(8.dp))
@@ -93,7 +145,6 @@ fun ScanScreen(
             }
             Spacer(Modifier.height(8.dp))
 
-            // Last EPC + timestamp
             if (state.lastEpc.isNotBlank()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Last: …${state.lastEpc}", style = MaterialTheme.typography.bodyMedium,
@@ -107,7 +158,8 @@ fun ScanScreen(
 
             state.error?.let {
                 Spacer(Modifier.height(8.dp))
-                Text(it, color = MaterialTheme.colorScheme.error)
+                Text(it, color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall)
             }
 
             Spacer(Modifier.weight(1f))
@@ -154,19 +206,19 @@ private fun MetricItem(icon: @Composable () -> Unit, value: String, label: Strin
 
 @Composable
 private fun SignalBarsIcon(bars: Int, modifier: Modifier = Modifier) {
-    val activeColor  = Color(0xFF4CAF50)
+    val activeColor   = Color(0xFF4CAF50)
     val inactiveColor = Color.Gray.copy(alpha = 0.3f)
     Canvas(modifier = modifier) {
         if (size.isEmpty()) return@Canvas
-        val totalBars  = 4
-        val gap        = size.width * 0.1f
-        val barWidth   = (size.width - gap * (totalBars - 1)) / totalBars
+        val totalBars = 4
+        val gap       = size.width * 0.1f
+        val barWidth  = (size.width - gap * (totalBars - 1)) / totalBars
         for (i in 0 until totalBars) {
             val barH = size.height * (i + 1) / totalBars.toFloat()
             drawRect(
-                color     = if (i < bars) activeColor else inactiveColor,
-                topLeft   = Offset(x = i * (barWidth + gap), y = size.height - barH),
-                size      = Size(barWidth, barH)
+                color   = if (i < bars) activeColor else inactiveColor,
+                topLeft = Offset(x = i * (barWidth + gap), y = size.height - barH),
+                size    = Size(barWidth, barH)
             )
         }
     }
@@ -220,50 +272,6 @@ private fun SignalBarsPreview() {
     StoreLenseTheme {
         Box(Modifier.padding(16.dp)) {
             SignalBarsIcon(bars = 3, modifier = Modifier.size(width = 44.dp, height = 36.dp))
-        }
-    }
-}
-
-@Preview(showBackground = true, widthDp = 360, heightDp = 700, name = "Scan Screen – Active")
-@Composable
-private fun ScanScreenContentPreview() {
-    StoreLenseTheme {
-        Column(
-            Modifier.fillMaxSize().padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            PhaseIndicator(ScanPhase.Scanning)
-            Spacer(Modifier.height(24.dp))
-            BigCounterRow("Scanned",  847, MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(8.dp))
-            BigCounterRow("Matched",  821, MaterialTheme.colorScheme.secondary)
-            Spacer(Modifier.height(8.dp))
-            BigCounterRow("Expected", 900, MaterialTheme.colorScheme.outline)
-            Spacer(Modifier.height(16.dp))
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    MetricItem(icon = { Icon(Icons.Default.Speed, null, Modifier.size(16.dp)) }, value = "12.4/s", label = "Rate")
-                    VerticalDivider(modifier = Modifier.height(32.dp))
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        SignalBarsIcon(bars = 3, modifier = Modifier.size(width = 22.dp, height = 18.dp))
-                        Text("Reader", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    VerticalDivider(modifier = Modifier.height(32.dp))
-                    MetricItem(icon = { Icon(Icons.Default.BatteryFull, null, Modifier.size(16.dp)) }, value = "78%", label = "Battery")
-                }
-            }
-            Spacer(Modifier.weight(1f))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onClick = {}, modifier = Modifier.weight(1f).height(52.dp)) { Text("Pause") }
-                Button(onClick = {}, modifier = Modifier.weight(1f).height(52.dp)) { Text("Complete", fontSize = 16.sp) }
-            }
         }
     }
 }
