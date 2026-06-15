@@ -66,6 +66,12 @@ public class ProductController {
         return ResponseEntity.ok(ApiResponse.ok(productService.lookupEpc(epc)));
     }
 
+    @GetMapping("/by-ean/{ean}/exists")
+    @Operation(summary = "Check if any product has a barcode with the given EAN value")
+    public ResponseEntity<ApiResponse<Boolean>> existsByEan(@PathVariable String ean) {
+        return ResponseEntity.ok(ApiResponse.ok(productService.existsByEan(ean)));
+    }
+
     @GetMapping("/by-ean/{ean}/epcs")
     @Operation(summary = "Get all active EPC values for products matching an EAN barcode")
     public ResponseEntity<ApiResponse<List<String>>> getEpcsByEan(@PathVariable String ean) {

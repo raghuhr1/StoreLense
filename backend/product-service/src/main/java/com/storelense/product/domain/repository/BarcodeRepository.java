@@ -8,4 +8,5 @@ import java.util.UUID;
 
 public interface BarcodeRepository extends JpaRepository<Barcode, UUID> {
     Optional<Barcode> findByProduct_IdAndBarcodeType(UUID productId, String barcodeType);
+    boolean existsByBarcodeValue(String barcodeValue);
 }

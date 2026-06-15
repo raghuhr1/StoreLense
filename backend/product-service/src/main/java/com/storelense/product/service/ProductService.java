@@ -123,6 +123,11 @@ public class ProductService {
     }
 
     @Transactional(readOnly = true)
+    public boolean existsByEan(String ean) {
+        return barcodeRepository.existsByBarcodeValue(ean);
+    }
+
+    @Transactional(readOnly = true)
     public List<String> getEpcsByEan(String ean) {
         return epcTagRepository.findActiveByBarcodeValue(ean)
                 .stream()

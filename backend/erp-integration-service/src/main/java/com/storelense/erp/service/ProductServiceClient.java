@@ -20,6 +20,23 @@ public class ProductServiceClient {
     }
 
     /**
+     * Returns true if any product in the catalog has a barcode matching this EAN.
+     * Returns false on any error (safe: caller marks snapshot UNRESOLVED).
+     */
+    public boolean existsByEan(String ean) {
+        try {
+            ApiResponse<Boolean> response = productRestClient.get()
+                    .uri("/api/products/by-ean/{ean}/exists", ean)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<>() {});
+            return response != null && Boolean.TRUE.equals(response.getData());
+        } catch (Exception e) {
+            log.warn("Product-service EAN existence check failed for EAN {}: {}", ean, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Returns all active EPC hex strings associated with the given EAN barcode.
      * Returns an empty list on any error so that callers can mark the snapshot UNRESOLVED.
      */

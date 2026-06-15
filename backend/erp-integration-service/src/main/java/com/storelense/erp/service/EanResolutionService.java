@@ -42,13 +42,17 @@ public class EanResolutionService {
         int resolved = 0, unresolved = 0;
         for (ErpSohSnapshot snapshot : raw) {
             try {
-                List<String> epcs = productServiceClient.getEpcsByEan(snapshot.getEan());
-                if (epcs.isEmpty()) {
+                if (productServiceClient.existsByEan(snapshot.getEan())) {
+                    snapshot.setResolutionStatus("RESOLVED");
+                    // Pre-link any already-encoded EPC tags for reconciliation
+                    List<String> epcs = productServiceClient.getEpcsByEan(snapshot.getEan());
+                    if (!epcs.isEmpty()) {
+                        linkEpcs(snapshot, epcs);
+                    }
+                    resolved++;
+                } else {
                     snapshot.setResolutionStatus("UNRESOLVED");
                     unresolved++;
-                } else {
-                    boolean ok = resolveSnapshot(snapshot, epcs);
-                    if (ok) resolved++; else unresolved++;
                 }
                 snapshotRepository.save(snapshot);
             } catch (Exception e) {
@@ -62,7 +66,7 @@ public class EanResolutionService {
         log.info("EAN resolution complete for batch {}: resolved={} unresolved={}", batchId, resolved, unresolved);
     }
 
-    private boolean resolveSnapshot(ErpSohSnapshot snapshot, List<String> epcs) {
+    private void linkEpcs(ErpSohSnapshot snapshot, List<String> epcs) {
         List<ErpSohSnapshotEpc> matches = epcs.stream()
                 .filter(epc -> snapshot.getEan().equals(Sgtin96Decoder.decode(epc)))
                 .map(epc -> ErpSohSnapshotEpc.builder()
@@ -74,11 +78,6 @@ public class EanResolutionService {
 
         if (!matches.isEmpty()) {
             epcRepository.saveAll(matches);
-            snapshot.setResolutionStatus("RESOLVED");
-            return true;
         }
-        // Product has EPC tags but none decode to this EAN via SGTIN-96
-        snapshot.setResolutionStatus("UNRESOLVED");
-        return false;
     }
 }
