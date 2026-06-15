@@ -7,7 +7,8 @@ import com.google.gson.annotations.SerializedName
 data class ApiResponse<T>(
     val success: Boolean = false,
     val data: T? = null,
-    val message: String? = null
+    val message: String? = null,
+    val code: String? = null      // maps to backend ApiResponse.code (e.g. "ZONE_TAKEN")
 )
 
 data class PagedData<T>(
@@ -238,4 +239,32 @@ data class InventorySkuDto(
     val inBackroom: Int = 0,
     val total: Int = 0,
     val epcs: List<String> = emptyList()
+)
+
+// ── Phase 5: Session Participants ─────────────────────────────────────────────
+
+data class JoinSessionRequest(
+    val deviceId: String,
+    val zoneRegion: String? = null
+)
+
+data class ParticipantDto(
+    val id: String,
+    val deviceId: String,
+    val zoneRegion: String?,
+    val status: String,
+    val joinedAt: String?,
+    val completedAt: String?
+)
+
+data class MarkDoneDto(
+    val status: String,
+    val isLastActive: Boolean,
+    val activeCount: Int
+)
+
+data class ParticipantsListDto(
+    val participants: List<ParticipantDto> = emptyList(),
+    val activeCount: Int = 0,
+    val doneCount: Int = 0
 )

@@ -79,8 +79,42 @@ class SohRepository @Inject constructor(
     suspend fun getPendingEpcs(sessionId: String): List<String> =
         epcReadDao.getPending(sessionId).map { it.epc }
 
-    // Fix #13: Stub — returns 1 (only this device) until Phase 5 adds the session-participants endpoint.
-    suspend fun getActiveDevices(sessionId: String): Int = 1
+    // Phase 5: live participant count from server (replaces the Phase 4 stub).
+    suspend fun getActiveDevices(sessionId: String): Int =
+        getParticipants(sessionId).let { r -> if (r is Result.Success) r.data.activeCount else 1 }
+
+    suspend fun joinSession(sessionId: String, deviceId: String, zoneRegion: String?): Result<ParticipantDto> = try {
+        val resp = api.joinSohSession(sessionId, JoinSessionRequest(deviceId, zoneRegion))
+        val body = resp.body()
+        when {
+            resp.isSuccessful && body?.success == true && body.data != null -> Result.Success(body.data)
+            else -> Result.Error(body?.code ?: body?.message ?: "Failed to join session")
+        }
+    } catch (e: Exception) {
+        Result.Error(e.message ?: "Network error")
+    }
+
+    suspend fun markMyZoneDone(sessionId: String, deviceId: String): Result<MarkDoneDto> = try {
+        val resp = api.markParticipantDone(sessionId, deviceId)
+        val body = resp.body()
+        when {
+            resp.isSuccessful && body?.success == true && body.data != null -> Result.Success(body.data)
+            else -> Result.Error(body?.message ?: "Failed to mark zone done")
+        }
+    } catch (e: Exception) {
+        Result.Error(e.message ?: "Network error")
+    }
+
+    suspend fun getParticipants(sessionId: String): Result<ParticipantsListDto> = try {
+        val resp = api.getSohParticipants(sessionId)
+        val body = resp.body()
+        when {
+            resp.isSuccessful && body?.success == true && body.data != null -> Result.Success(body.data)
+            else -> Result.Error(body?.message ?: "Failed to get participants")
+        }
+    } catch (e: Exception) {
+        Result.Error(e.message ?: "Network error")
+    }
 
     suspend fun uploadBatch(sessionId: String, storeId: String): Result<Unit> = try {
         val pending = epcReadDao.getPending(sessionId)

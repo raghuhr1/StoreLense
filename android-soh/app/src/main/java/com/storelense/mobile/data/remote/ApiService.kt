@@ -39,6 +39,25 @@ interface ApiService {
     @POST("api/soh/sessions/{id}/complete")
     suspend fun completeSohSession(@Path("id") id: String): Response<ApiResponse<SohSessionDto>>
 
+    // ── Phase 5: Session Participants ─────────────────────────────────────────────
+
+    @POST("api/soh/sessions/{id}/participants")
+    suspend fun joinSohSession(
+        @Path("id") id: String,
+        @Body req: JoinSessionRequest
+    ): Response<ApiResponse<ParticipantDto>>
+
+    @POST("api/soh/sessions/{id}/participants/{deviceId}/done")
+    suspend fun markParticipantDone(
+        @Path("id")       id: String,
+        @Path("deviceId") deviceId: String
+    ): Response<ApiResponse<MarkDoneDto>>
+
+    @GET("api/soh/sessions/{id}/participants")
+    suspend fun getSohParticipants(
+        @Path("id") id: String
+    ): Response<ApiResponse<ParticipantsListDto>>
+
     // ── Inbound ───────────────────────────────────────────────────────────────
     // NOTE: /api/inbound/* endpoints require backend implementation in inventory-service
 

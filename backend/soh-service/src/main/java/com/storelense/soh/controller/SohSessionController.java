@@ -4,6 +4,7 @@ import com.storelense.common.dto.ApiResponse;
 import com.storelense.common.dto.PageResponse;
 import com.storelense.common.security.StoreLensePrincipal;
 import com.storelense.soh.dto.*;
+import com.storelense.soh.service.SessionParticipantService;
 import com.storelense.soh.service.SohSessionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -26,7 +27,8 @@ import java.util.UUID;
 @Tag(name = "SOH Sessions", description = "Stock on Hand count session management")
 public class SohSessionController {
 
-    private final SohSessionService sessionService;
+    private final SohSessionService        sessionService;
+    private final SessionParticipantService participantService;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE')")
@@ -61,8 +63,43 @@ public class SohSessionController {
     @PostMapping("/{id}/complete")
     @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE')")
     @Operation(summary = "Complete a SOH session and generate result")
-    public ResponseEntity<ApiResponse<SohResultResponse>> complete(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<?>> complete(@PathVariable UUID id) {
+        long waiting = participantService.countActive(id);
+        if (waiting > 0) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.error("WAITING_FOR_DEVICES",
+                            "Waiting for " + waiting + " device(s) to finish their zone scan"));
+        }
         return ResponseEntity.ok(ApiResponse.ok("Session completed", sessionService.completeSession(id)));
+    }
+
+    // ── Phase 5: Session Participants ─────────────────────────────────────────
+
+    @PostMapping("/{id}/participants")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE')")
+    @Operation(summary = "Register a device as a session participant, optionally claiming a zone")
+    public ResponseEntity<ApiResponse<ParticipantResponse>> join(
+            @PathVariable UUID id,
+            @Valid @RequestBody JoinSessionRequest req,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok(participantService.join(id, req, principal.userId())));
+    }
+
+    @PostMapping("/{id}/participants/{deviceId}/done")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE')")
+    @Operation(summary = "Mark a device's zone scan as complete; returns isLastActive flag")
+    public ResponseEntity<ApiResponse<MarkDoneResponse>> markDone(
+            @PathVariable UUID id,
+            @PathVariable String deviceId) {
+        return ResponseEntity.ok(ApiResponse.ok(participantService.markDone(id, deviceId)));
+    }
+
+    @GetMapping("/{id}/participants")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE')")
+    @Operation(summary = "List all session participants with active/done counts")
+    public ResponseEntity<ApiResponse<ParticipantsListResponse>> participants(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(participantService.list(id)));
     }
 
     @GetMapping("/{id}/epcs")

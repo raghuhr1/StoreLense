@@ -94,7 +94,7 @@ fun ScanScreen(
         )
     }
 
-    // Fix #13: Confirm before completing when other devices are still scanning
+    // Fix #13: (superseded by Phase 5 zone-done flow — kept for safety, will not normally show)
     if (state.showOtherDevicesActiveDialog) {
         AlertDialog(
             onDismissRequest = vm::dismissOtherDevicesDialog,
@@ -110,6 +110,39 @@ fun ScanScreen(
             },
             dismissButton = {
                 TextButton(onClick = vm::dismissOtherDevicesDialog) { Text("Wait for Others") }
+            }
+        )
+    }
+
+    // Phase 5: Zone conflict — another device already claimed our zone; join without a zone claim
+    if (state.showZonePickerDialog) {
+        AlertDialog(
+            onDismissRequest = vm::joinWithoutZone,
+            title = { Text("Zone already taken") },
+            text  = {
+                Text(
+                    "Zone '${state.takenZone}' is already claimed by another device. " +
+                    "You will join as 'Full Store' (no specific zone). " +
+                    "Your scans will still be counted."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = vm::joinWithoutZone) { Text("Join as Full Store") }
+            }
+        )
+    }
+
+    // Phase 5: This device is the last active participant — offer to finalise the session
+    if (state.showLastDeviceDialog) {
+        AlertDialog(
+            onDismissRequest = vm::dismissLastDeviceDialog,
+            title = { Text("You're the last one counting") },
+            text  = { Text("All other devices have finished their zones. Complete the full session now?") },
+            confirmButton = {
+                TextButton(onClick = vm::completeAsLastDevice) { Text("Complete Session") }
+            },
+            dismissButton = {
+                TextButton(onClick = vm::dismissLastDeviceDialog) { Text("Keep Scanning") }
             }
         )
     }
@@ -274,13 +307,17 @@ fun ScanScreen(
                         }
                     }
                     Button(
-                        onClick  = vm::complete,
+                        onClick  = vm::markZoneDone,
                         modifier = Modifier.weight(1f).height(52.dp),
                         enabled  = state.scannedCount > 0
+                                && !state.isZoneDone
                                 && state.phase != ScanPhase.Uploading
                                 && state.phase != ScanPhase.Done
                     ) {
-                        Text("Complete", fontSize = 16.sp)
+                        Text(
+                            if (state.isZoneDone) "Waiting…" else "Mark Zone Done",
+                            fontSize = 16.sp
+                        )
                     }
                 }
             }

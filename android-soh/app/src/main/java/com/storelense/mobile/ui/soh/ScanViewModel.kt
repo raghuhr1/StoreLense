@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
+import android.provider.Settings
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -30,8 +31,9 @@ import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 // Coverage thresholds — tweak without touching logic
-private const val SOH_COVERAGE_THRESHOLD = 0.70f   // Fix #4: warn below 70 % matched
-private const val OVERCOUNT_THRESHOLD    = 1.15f   // Fix #11: warn above 115 % expected
+private const val SOH_COVERAGE_THRESHOLD  = 0.70f   // Fix #4: warn below 70 % matched
+private const val OVERCOUNT_THRESHOLD     = 1.15f   // Fix #11: warn above 115 % expected
+private const val PARTICIPANTS_POLL_MS    = 30_000L // Phase 5: poll participant count every 30 s
 
 data class ScanState(
     val sessionId: String             = "",
@@ -55,8 +57,13 @@ data class ScanState(
     val zoneRegion: String?               = null,
     val isErpTriggered: Boolean           = false,
     // Fix #13 — multi-device visibility
-    val activeDeviceCount: Int            = 0,
-    val showOtherDevicesActiveDialog: Boolean = false
+    val activeDeviceCount: Int               = 0,
+    val showOtherDevicesActiveDialog: Boolean = false,
+    // Phase 5 — zone-done / multi-persona
+    val showZonePickerDialog: Boolean        = false,
+    val takenZone: String?                   = null,
+    val isZoneDone: Boolean                  = false,
+    val showLastDeviceDialog: Boolean        = false
 )
 
 enum class ScanPhase { Connecting, Scanning, Paused, Uploading, Done }
@@ -80,10 +87,16 @@ class ScanViewModel @Inject constructor(
     private val _events = MutableSharedFlow<ScanEvent>()
     val events = _events.asSharedFlow()
 
+    // Phase 5: stable hardware ID — same value sent in X-Device-Id header by NetworkModule
+    private val deviceId: String by lazy {
+        Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+    }
+
     private val scannedSet  = mutableSetOf<String>()
     private val expectedSet = mutableSetOf<String>()
-    private var overcountWarned = false   // Fix #11 — fire the alert only once per session
-    private var reconnectJob: Job? = null // Fix #8 — auto-reconnect after reader drop
+    private var overcountWarned    = false  // Fix #11 — fire the alert only once per session
+    private var reconnectJob: Job? = null   // Fix #8 — auto-reconnect after reader drop
+    private var pollJob: Job?      = null   // Phase 5 — participant count polling
 
     // 2-second sliding window of read timestamps (ALL reads, not just unique)
     private val readTimestamps = ArrayDeque<Long>()
@@ -134,9 +147,21 @@ class ScanViewModel @Inject constructor(
                     }
                 }
 
-                // Fix #13: Check how many devices are scanning — stub returns 1 until Phase 5 backend lands
+                // Phase 5: register as a participant; get zone count; start live poll
+                when (val j = soh.joinSession(sessionId, deviceId, _state.value.zoneRegion)) {
+                    is Result.Error -> if (j.message.startsWith("ZONE_TAKEN")) {
+                        _state.update {
+                            it.copy(
+                                showZonePickerDialog = true,
+                                takenZone = _state.value.zoneRegion
+                            )
+                        }
+                    }
+                    else -> {}
+                }
                 val devices = soh.getActiveDevices(sessionId)
                 _state.update { it.copy(activeDeviceCount = devices) }
+                startParticipantPolling()
 
                 rfid.connect()
                 rfid.setTxPower(27)
@@ -253,19 +278,16 @@ class ScanViewModel @Inject constructor(
 
     // ── Fix #4 + #7: Complete — coverage guard then upload ───────────────────
 
-    fun complete() = viewModelScope.launch {
+    // Phase 5: renamed from complete() — marks this device's zone as done, then
+    // lets the last-active device drive the final completeSession() call.
+    fun markZoneDone() = viewModelScope.launch {
         val s = _state.value
-        // Fix #4: Skip threshold when expectedCount == 0 (no ERP session)
+        // Fix #4: Still warn on low coverage before committing the zone scan
         if (s.expectedCount > 0 && s.matchedCount < s.expectedCount * SOH_COVERAGE_THRESHOLD) {
             _state.update { it.copy(showLowCoverageDialog = true) }
             return@launch
         }
-        // Fix #13: Warn when other devices are still actively scanning this session
-        if (s.activeDeviceCount > 1) {
-            _state.update { it.copy(showOtherDevicesActiveDialog = true) }
-            return@launch
-        }
-        doComplete()
+        doMarkZoneDone()
     }
 
     fun dismissLowCoverage() {
@@ -274,17 +296,58 @@ class ScanViewModel @Inject constructor(
 
     fun completeAnyway() = viewModelScope.launch {
         _state.update { it.copy(showLowCoverageDialog = false) }
+        doMarkZoneDone()   // Phase 5: go through zone-done flow even after bypassing coverage
+    }
+
+    // Phase 5: stop scan, mark this device's zone as done on the server.
+    // If we're the last active device, surface the final-complete dialog.
+    private suspend fun doMarkZoneDone() {
+        rfid.stopScan()
+        _state.update { it.copy(phase = ScanPhase.Paused) }
+        when (val r = soh.markMyZoneDone(sessionId, deviceId)) {
+            is Result.Success -> {
+                pollJob?.cancel()   // no need to poll once we're done
+                _state.update { it.copy(isZoneDone = true, activeDeviceCount = r.data.activeCount) }
+                if (r.data.isLastActive) {
+                    _state.update { it.copy(showLastDeviceDialog = true) }
+                } else {
+                    _state.update {
+                        it.copy(error = "Zone scan marked done — waiting for ${r.data.activeCount} other device(s)")
+                    }
+                }
+            }
+            is Result.Error -> {
+                // Mark-done failed; resume scanning so data is not lost
+                rfid.startScan()
+                _state.update { it.copy(phase = ScanPhase.Scanning, error = "Could not mark done: ${r.message}") }
+            }
+        }
+    }
+
+    // Phase 5: shown when this is the last active device after marking done
+    fun dismissLastDeviceDialog() {
+        _state.update { it.copy(showLastDeviceDialog = false) }
+    }
+
+    fun completeAsLastDevice() = viewModelScope.launch {
+        _state.update { it.copy(showLastDeviceDialog = false) }
         doComplete()
     }
 
-    // Fix #13: User acknowledges other devices are still scanning — complete anyway
+    // Phase 5: zone conflict on join — re-join without claiming a specific zone
+    fun joinWithoutZone() = viewModelScope.launch {
+        _state.update { it.copy(showZonePickerDialog = false, takenZone = null) }
+        soh.joinSession(sessionId, deviceId, null)   // fire-and-forget; non-fatal if still fails
+    }
+
+    // Fix #13: kept for backward compat; superseded by zone-done flow in Phase 5
     fun dismissOtherDevicesDialog() {
         _state.update { it.copy(showOtherDevicesActiveDialog = false) }
     }
 
     fun completeWithOtherDevicesActive() = viewModelScope.launch {
         _state.update { it.copy(showOtherDevicesActiveDialog = false) }
-        doComplete()
+        doMarkZoneDone()
     }
 
     private suspend fun doComplete() {
@@ -326,12 +389,27 @@ class ScanViewModel @Inject constructor(
         }
     }
 
+    // Phase 5: poll participant count every 30 s to keep the active-device badge current
+    private fun startParticipantPolling() {
+        pollJob?.cancel()
+        pollJob = viewModelScope.launch {
+            while (true) {
+                delay(PARTICIPANTS_POLL_MS)
+                when (val r = soh.getParticipants(sessionId)) {
+                    is Result.Success -> _state.update { it.copy(activeDeviceCount = r.data.activeCount) }
+                    else -> {}
+                }
+            }
+        }
+    }
+
     // ── Fix #2: Enqueue on ViewModel destruction if data is unsaved ───────────
 
     override fun onCleared() {
         super.onCleared()
         try { context.unregisterReceiver(batteryReceiver) } catch (_: Exception) {}
         reconnectJob?.cancel()
+        pollJob?.cancel()
         if (scannedSet.isNotEmpty() && _state.value.phase != ScanPhase.Done) {
             enqueueUploadWorker(policy = ExistingWorkPolicy.KEEP)
         }
