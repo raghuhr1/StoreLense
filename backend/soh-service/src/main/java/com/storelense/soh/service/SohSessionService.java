@@ -50,7 +50,39 @@ public class SohSessionService {
 
     @Transactional(readOnly = true)
     public SohSessionResponse getSession(UUID sessionId) {
-        return sohMapper.toResponse(findOrThrow(sessionId));
+        SohSession session = findOrThrow(sessionId);
+        SohSessionResponse base = sohMapper.toResponse(session);
+        List<String> expectedEpcs = fetchExpectedEpcs(session);
+        return new SohSessionResponse(
+                base.id(), base.storeId(), base.zoneId(),
+                base.sessionType(), base.status(),
+                base.startedBy(), base.startedAt(),
+                base.completedAt(),
+                base.totalEpcReads(), base.uniqueEpcCount(),
+                base.notes(), base.source(), base.zoneRegion(),
+                expectedEpcs
+        );
+    }
+
+    private List<String> fetchExpectedEpcs(SohSession session) {
+        if (!"erp_triggered".equals(session.getSource()) || session.getStartedBy() == null) {
+            return List.of();
+        }
+        try {
+            return jdbcClient.sql("""
+                    SELECT e.epc
+                    FROM erp.erp_soh_snapshot_epcs e
+                    JOIN erp.erp_soh_snapshot s ON s.id = e.snapshot_id
+                    WHERE s.batch_id = :batchId::uuid
+                    LIMIT 10000
+                    """)
+                    .param("batchId", session.getStartedBy().toString())
+                    .query(String.class)
+                    .list();
+        } catch (Exception ex) {
+            log.warn("Could not fetch expected EPCs for session {}: {}", session.getId(), ex.getMessage());
+            return List.of();
+        }
     }
 
     @Transactional

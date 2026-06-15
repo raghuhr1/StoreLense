@@ -10,5 +10,10 @@ public record DashboardSummaryResponse(
         Integer       ghostTags,
         List<Integer> ghostHistory,
         Integer       readMisses,
-        List<Integer> readMissHistory
+        List<Integer> readMissHistory,
+        // Today's activity counters (per-store)
+        Integer       scannedEpcsToday,
+        Integer       receivedShipmentsToday,
+        Integer       transferredEpcsToday,
+        Integer       pendingReplenishments
 ) {}

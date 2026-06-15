@@ -49,7 +49,7 @@ data class SohSessionDto(
     val storeId: String,
     val status: String,
     val sessionType: String?,
-    val expectedEpcs: List<String>?,
+    val expectedEpcs: List<String>? = null,
     val result: SohResultDto?,
     val startedAt: String?,
     val completedAt: String?,
@@ -164,7 +164,11 @@ data class DashboardSummaryDto(
     val ghostTags: Int = 0,
     val ghostHistory: List<Int> = emptyList(),
     val readMisses: Int = 0,
-    val readMissHistory: List<Int> = emptyList()
+    val readMissHistory: List<Int> = emptyList(),
+    val scannedEpcsToday: Int = 0,
+    val receivedShipmentsToday: Int = 0,
+    val transferredEpcsToday: Int = 0,
+    val pendingReplenishments: Int = 0
 )
 
 // ── Stores ────────────────────────────────────────────────────────────────────

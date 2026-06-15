@@ -23,6 +23,10 @@ data class DashboardState(
     val ghostHistory: List<Int> = emptyList(),
     val readMisses: Int = 0,
     val readMissHistory: List<Int> = emptyList(),
+    val scannedEpcsToday: Int = 0,
+    val receivedShipmentsToday: Int = 0,
+    val transferredEpcsToday: Int = 0,
+    val pendingReplenishments: Int = 0,
     val lastSyncAt: String? = null,
     val isLoading: Boolean = false,
     val activeErpSession: Boolean = false,
@@ -65,16 +69,20 @@ class DashboardViewModel @Inject constructor(
                 if (resp.isSuccessful && body?.success == true) {
                     val d = body.data!!
                     _state.update { it.copy(
-                        sohAccuracy     = d.sohAccuracy,
-                        accuracyHistory = d.accuracyHistory,
-                        missingItems    = d.missingItems,
-                        missingHistory  = d.missingHistory,
-                        ghostTags       = d.ghostTags,
-                        ghostHistory    = d.ghostHistory,
-                        readMisses      = d.readMisses,
-                        readMissHistory = d.readMissHistory,
-                        lastSyncAt      = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")),
-                        isLoading       = false
+                        sohAccuracy              = d.sohAccuracy,
+                        accuracyHistory          = d.accuracyHistory,
+                        missingItems             = d.missingItems,
+                        missingHistory           = d.missingHistory,
+                        ghostTags                = d.ghostTags,
+                        ghostHistory             = d.ghostHistory,
+                        readMisses               = d.readMisses,
+                        readMissHistory          = d.readMissHistory,
+                        scannedEpcsToday         = d.scannedEpcsToday,
+                        receivedShipmentsToday   = d.receivedShipmentsToday,
+                        transferredEpcsToday     = d.transferredEpcsToday,
+                        pendingReplenishments    = d.pendingReplenishments,
+                        lastSyncAt               = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")),
+                        isLoading                = false
                     ) }
                 } else {
                     _state.update { it.copy(isLoading = false, error = body?.message ?: "Failed to load dashboard") }

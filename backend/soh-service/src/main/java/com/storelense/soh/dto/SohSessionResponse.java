@@ -1,6 +1,7 @@
 package com.storelense.soh.dto;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public record SohSessionResponse(
@@ -9,5 +10,6 @@ public record SohSessionResponse(
         UUID startedBy, OffsetDateTime startedAt,
         OffsetDateTime completedAt,
         int totalEpcReads, int uniqueEpcCount,
-        String notes, String source, String zoneRegion
+        String notes, String source, String zoneRegion,
+        List<String> expectedEpcs
 ) {}

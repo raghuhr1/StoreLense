@@ -95,7 +95,11 @@ public class KpiAggregationService {
                 sohAccuracy,       accuracyHistory,
                 fetchOpenCount(storeId, "MISSING_EPC"), missingHistory,
                 fetchOpenCount(storeId, "GHOST_TAG"),   ghostHistory,
-                fetchOpenCount(storeId, "READ_MISS"),   readMissHistory
+                fetchOpenCount(storeId, "READ_MISS"),   readMissHistory,
+                fetchScannedEpcsToday(storeId),
+                fetchReceivedShipmentsToday(storeId),
+                fetchTransferredEpcsToday(storeId),
+                fetchPendingReplenishments(storeId)
         );
     }
 
@@ -135,6 +139,64 @@ public class KpiAggregationService {
                         """)
                         .param("storeId", storeId.toString())
                         .param("type", type)
+                        .query(Integer.class)
+                        .single(),
+                0);
+    }
+
+    private int fetchScannedEpcsToday(UUID storeId) {
+        return Objects.requireNonNullElse(
+                jdbcClient.sql("""
+                        SELECT COUNT(DISTINCT epc)::int
+                        FROM rfid.rfid_reads
+                        WHERE store_id = :storeId::uuid
+                          AND read_at >= CURRENT_DATE
+                        """)
+                        .param("storeId", storeId.toString())
+                        .query(Integer.class)
+                        .single(),
+                0);
+    }
+
+    private int fetchReceivedShipmentsToday(UUID storeId) {
+        return Objects.requireNonNullElse(
+                jdbcClient.sql("""
+                        SELECT COUNT(*)::int
+                        FROM inventory.inbound_shipments
+                        WHERE store_id = :storeId::uuid
+                          AND status = 'received'
+                          AND received_at >= CURRENT_DATE
+                        """)
+                        .param("storeId", storeId.toString())
+                        .query(Integer.class)
+                        .single(),
+                0);
+    }
+
+    private int fetchTransferredEpcsToday(UUID storeId) {
+        return Objects.requireNonNullElse(
+                jdbcClient.sql("""
+                        SELECT COALESCE(SUM(jsonb_array_length(epcs)), 0)::int
+                        FROM soh.transfers
+                        WHERE source_store_id = :storeId::uuid
+                          AND created_at >= CURRENT_DATE
+                          AND status != 'CANCELLED'
+                        """)
+                        .param("storeId", storeId.toString())
+                        .query(Integer.class)
+                        .single(),
+                0);
+    }
+
+    private int fetchPendingReplenishments(UUID storeId) {
+        return Objects.requireNonNullElse(
+                jdbcClient.sql("""
+                        SELECT COUNT(*)::int
+                        FROM refill.refill_tasks
+                        WHERE store_id = :storeId::uuid
+                          AND status IN ('pending', 'assigned', 'in_progress')
+                        """)
+                        .param("storeId", storeId.toString())
                         .query(Integer.class)
                         .single(),
                 0);

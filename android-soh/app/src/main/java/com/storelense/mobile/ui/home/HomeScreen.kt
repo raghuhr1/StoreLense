@@ -216,7 +216,7 @@ fun HomeScreen(
                         ActionRow(
                             icon     = Icons.Default.MoveDown,
                             color    = Color(0xFFE65100),
-                            title    = "5 Replenishments",
+                            title    = "${state.pendingReplenishments} Replenishment${if (state.pendingReplenishments != 1) "s" else ""}",
                             subtitle = "Refill now",
                             onClick  = onReplenish
                         )
@@ -242,9 +242,9 @@ fun HomeScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceEvenly
                         ) {
-                            ActivityStat(Icons.Default.QrCodeScanner, "15,423", "Scanned EPCs")
-                            ActivityStat(Icons.Default.LocalShipping,  "1,250",  "Received")
-                            ActivityStat(Icons.Default.SwapHoriz,      "240",    "Transferred")
+                            ActivityStat(Icons.Default.QrCodeScanner, "%,d".format(state.scannedEpcsToday),       "Scanned EPCs")
+                            ActivityStat(Icons.Default.LocalShipping,  "%,d".format(state.receivedShipmentsToday), "DC Receipts")
+                            ActivityStat(Icons.Default.SwapHoriz,      "%,d".format(state.transferredEpcsToday),   "Transferred")
                         }
                     }
                 }
