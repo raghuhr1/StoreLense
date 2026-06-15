@@ -50,7 +50,13 @@ data class ScanState(
     // Fix #3 — resume restore
     val restoredCount: Int            = 0,
     // Fix #4 — low-coverage guard
-    val showLowCoverageDialog: Boolean = false
+    val showLowCoverageDialog: Boolean    = false,
+    // Fix #10 — zone + ERP source visible in TopAppBar
+    val zoneRegion: String?               = null,
+    val isErpTriggered: Boolean           = false,
+    // Fix #13 — multi-device visibility
+    val activeDeviceCount: Int            = 0,
+    val showOtherDevicesActiveDialog: Boolean = false
 )
 
 enum class ScanPhase { Connecting, Scanning, Paused, Uploading, Done }
@@ -105,7 +111,13 @@ class ScanViewModel @Inject constructor(
         when (val r = soh.getSession(sessionId)) {
             is Result.Success -> {
                 r.data.expectedEpcs?.let { expectedSet.addAll(it) }
-                _state.update { it.copy(expectedCount = expectedSet.size) }
+                _state.update {
+                    it.copy(
+                        expectedCount  = expectedSet.size,
+                        zoneRegion     = r.data.zoneRegion,                        // Fix #10
+                        isErpTriggered = r.data.source == "erp_triggered"          // Fix #10
+                    )
+                }
 
                 // Fix #3: Restore any EPCs buffered locally from a previous interrupted run.
                 // Room DB keeps them with uploaded=false until the server confirms receipt.
@@ -121,6 +133,10 @@ class ScanViewModel @Inject constructor(
                         )
                     }
                 }
+
+                // Fix #13: Check how many devices are scanning — stub returns 1 until Phase 5 backend lands
+                val devices = soh.getActiveDevices(sessionId)
+                _state.update { it.copy(activeDeviceCount = devices) }
 
                 rfid.connect()
                 rfid.setTxPower(27)
@@ -244,6 +260,11 @@ class ScanViewModel @Inject constructor(
             _state.update { it.copy(showLowCoverageDialog = true) }
             return@launch
         }
+        // Fix #13: Warn when other devices are still actively scanning this session
+        if (s.activeDeviceCount > 1) {
+            _state.update { it.copy(showOtherDevicesActiveDialog = true) }
+            return@launch
+        }
         doComplete()
     }
 
@@ -253,6 +274,16 @@ class ScanViewModel @Inject constructor(
 
     fun completeAnyway() = viewModelScope.launch {
         _state.update { it.copy(showLowCoverageDialog = false) }
+        doComplete()
+    }
+
+    // Fix #13: User acknowledges other devices are still scanning — complete anyway
+    fun dismissOtherDevicesDialog() {
+        _state.update { it.copy(showOtherDevicesActiveDialog = false) }
+    }
+
+    fun completeWithOtherDevicesActive() = viewModelScope.launch {
+        _state.update { it.copy(showOtherDevicesActiveDialog = false) }
         doComplete()
     }
 

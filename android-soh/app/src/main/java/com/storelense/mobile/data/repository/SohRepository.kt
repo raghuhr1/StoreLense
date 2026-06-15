@@ -79,6 +79,9 @@ class SohRepository @Inject constructor(
     suspend fun getPendingEpcs(sessionId: String): List<String> =
         epcReadDao.getPending(sessionId).map { it.epc }
 
+    // Fix #13: Stub — returns 1 (only this device) until Phase 5 adds the session-participants endpoint.
+    suspend fun getActiveDevices(sessionId: String): Int = 1
+
     suspend fun uploadBatch(sessionId: String, storeId: String): Result<Unit> = try {
         val pending = epcReadDao.getPending(sessionId)
         if (pending.isEmpty()) return Result.Success(Unit)

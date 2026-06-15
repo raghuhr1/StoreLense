@@ -94,11 +94,60 @@ fun ScanScreen(
         )
     }
 
+    // Fix #13: Confirm before completing when other devices are still scanning
+    if (state.showOtherDevicesActiveDialog) {
+        AlertDialog(
+            onDismissRequest = vm::dismissOtherDevicesDialog,
+            title = { Text("Other devices active") },
+            text  = {
+                Text(
+                    "${state.activeDeviceCount - 1} other device(s) are still scanning this session. " +
+                    "Completing now will finalise the count without their scans. Continue?"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = vm::completeWithOtherDevicesActive) { Text("Complete Now") }
+            },
+            dismissButton = {
+                TextButton(onClick = vm::dismissOtherDevicesDialog) { Text("Wait for Others") }
+            }
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("SOH Scan") },
+                title = {
+                    // Fix #10: show zone + ERP badge under the screen title
+                    Column {
+                        Text("SOH Scan")
+                        Row(
+                            verticalAlignment     = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                "Zone: ${state.zoneRegion ?: "Full Store"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (state.isErpTriggered) {
+                                Surface(
+                                    color = Color(0xFFFFF3E0),
+                                    shape = MaterialTheme.shapes.extraSmall
+                                ) {
+                                    Text(
+                                        "ERP",
+                                        Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        color      = Color(0xFFE65100),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize   = 10.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
                 // Fix #1: route back arrow through requestExit instead of onBack directly
                 navigationIcon = {
                     IconButton(onClick = vm::requestExit) {
@@ -127,6 +176,23 @@ fun ScanScreen(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+
+            // Fix #13: Multi-device banner — only visible when another device is in the same session
+            if (state.activeDeviceCount > 1) {
+                Surface(
+                    color    = Color(0xFFFFF3E0),
+                    shape    = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        "👥 ${state.activeDeviceCount} devices scanning this session",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        style    = MaterialTheme.typography.bodySmall,
+                        color    = Color(0xFFE65100)
                     )
                 }
                 Spacer(Modifier.height(8.dp))

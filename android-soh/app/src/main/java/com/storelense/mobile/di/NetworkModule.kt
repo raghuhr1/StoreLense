@@ -1,5 +1,7 @@
 package com.storelense.mobile.di
 
+import android.content.Context
+import android.provider.Settings
 import com.google.gson.Gson
 import com.storelense.mobile.BuildConfig
 import com.storelense.mobile.data.remote.ApiService
@@ -7,6 +9,7 @@ import com.storelense.mobile.data.remote.AuthInterceptor
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
@@ -24,9 +27,22 @@ object NetworkModule {
     fun provideGson(): Gson = Gson()
 
     @Provides @Singleton
-    fun provideOkHttp(authInterceptor: AuthInterceptor): OkHttpClient =
-        OkHttpClient.Builder()
+    fun provideOkHttp(
+        authInterceptor: AuthInterceptor,
+        @ApplicationContext context: Context
+    ): OkHttpClient {
+        val deviceId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+        return OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
+            // Fix #13: Tag every request with the device ID so the server can correlate
+            // which physical HH sent each batch upload (used by Phase 5 multi-device dedup).
+            .addInterceptor { chain ->
+                chain.proceed(
+                    chain.request().newBuilder()
+                        .header("X-Device-Id", deviceId)
+                        .build()
+                )
+            }
             .apply {
                 if (BuildConfig.DEBUG) {
                     addInterceptor(
@@ -41,6 +57,7 @@ object NetworkModule {
             .connectionPool(ConnectionPool(5, 30, TimeUnit.SECONDS))
             .retryOnConnectionFailure(true)
             .build()
+    }
 
     @Provides @Singleton
     fun provideRetrofit(client: OkHttpClient, gson: Gson): Retrofit =

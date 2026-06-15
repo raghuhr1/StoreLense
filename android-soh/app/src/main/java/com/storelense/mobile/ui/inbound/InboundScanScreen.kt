@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -253,16 +254,12 @@ fun InboundScanScreen(
                 }
             }
 
-            // ── Recent scans placeholder ────────────────────────────────────
+            // ── Recent scans ─────────────────────────────────────────────────
             item {
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Recent Scans", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.weight(1f))
-                    Text("View all", color = GreenComplete, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium)
-                }
+                Text("Recent Scans", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             }
 
-            if (received == 0) {
+            if (state.recentScans.isEmpty()) {
                 item {
                     Box(
                         Modifier.fillMaxWidth().padding(vertical = 24.dp),
@@ -274,6 +271,10 @@ fun InboundScanScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                }
+            } else {
+                items(state.recentScans) { epc ->
+                    RecentScanRow(epc)
                 }
             }
 
@@ -325,6 +326,27 @@ fun InboundScanScreen(
 }
 
 // ── Sub-composables ───────────────────────────────────────────────────────────
+
+@Composable
+private fun RecentScanRow(epc: String) {
+    Row(
+        modifier              = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment     = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Icon(Icons.Default.Nfc, null, Modifier.size(16.dp), tint = GreenComplete)
+        Text(
+            "···${epc.takeLast(8)}",
+            style    = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            "just now",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
 
 @Composable
 private fun InboundStatCard(label: String, value: String, valueColor: Color, modifier: Modifier = Modifier) {
