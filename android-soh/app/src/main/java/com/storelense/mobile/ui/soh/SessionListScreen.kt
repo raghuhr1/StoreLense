@@ -31,6 +31,26 @@ fun SessionListScreen(
         }
     }
 
+    // Fix #6: Duplicate session dialog
+    if (state.showDuplicateDialog) {
+        AlertDialog(
+            onDismissRequest = vm::dismissDuplicateDialog,
+            title = { Text("Active session exists") },
+            text  = {
+                Text(
+                    "There is already an active count session in progress. " +
+                    "Opening it now avoids creating a duplicate count."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = vm::openExistingSession) { Text("Open Existing") }
+            },
+            dismissButton = {
+                TextButton(onClick = vm::forceCreateNew) { Text("Create New Anyway") }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -39,8 +59,15 @@ fun SessionListScreen(
                 actions = { IconButton(onClick = { vm.refresh() }) { Icon(Icons.Default.Refresh, null) } }
             )
         },
+        // Fix #6: Disable FAB while loading to prevent rapid double-tap spawning two sessions
         floatingActionButton = {
-            FloatingActionButton(onClick = { vm.createNew() }) {
+            FloatingActionButton(
+                onClick  = { if (!state.isLoading) vm.createNew() },
+                containerColor = if (state.isLoading)
+                    MaterialTheme.colorScheme.surfaceVariant
+                else
+                    MaterialTheme.colorScheme.primaryContainer
+            ) {
                 Icon(Icons.Default.Add, "New session")
             }
         }

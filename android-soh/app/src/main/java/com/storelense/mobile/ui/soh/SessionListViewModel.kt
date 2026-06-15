@@ -18,9 +18,12 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class SessionListState(
-    val sessions: List<SohSessionEntity> = emptyList(),
-    val isLoading: Boolean               = false,
-    val error: String?                   = null
+    val sessions: List<SohSessionEntity>  = emptyList(),
+    val isLoading: Boolean                = false,
+    val error: String?                    = null,
+    // Fix #6 — duplicate guard
+    val showDuplicateDialog: Boolean      = false,
+    val existingActiveSessionId: String?  = null
 ) {
     val hasActiveErpSession: Boolean get() =
         sessions.any { it.source == "erp_triggered" && it.status == "in_progress" }
@@ -64,7 +67,35 @@ class SessionListViewModel @Inject constructor(
         _state.value = _state.value.copy(isLoading = false)
     }
 
+    // Fix #6: Guard against creating a duplicate session when one is already in-progress.
     fun createNew() = viewModelScope.launch {
+        val existing = _state.value.sessions.firstOrNull { it.status == "in_progress" }
+        if (existing != null) {
+            _state.value = _state.value.copy(
+                showDuplicateDialog     = true,
+                existingActiveSessionId = existing.id
+            )
+            return@launch
+        }
+        doCreate()
+    }
+
+    fun dismissDuplicateDialog() {
+        _state.value = _state.value.copy(showDuplicateDialog = false, existingActiveSessionId = null)
+    }
+
+    fun openExistingSession() {
+        val id = _state.value.existingActiveSessionId ?: return
+        _state.value = _state.value.copy(showDuplicateDialog = false, existingActiveSessionId = null)
+        viewModelScope.launch { _events.emit(SessionEvent.Navigate(id)) }
+    }
+
+    fun forceCreateNew() = viewModelScope.launch {
+        _state.value = _state.value.copy(showDuplicateDialog = false, existingActiveSessionId = null)
+        doCreate()
+    }
+
+    private suspend fun doCreate() {
         _state.value = _state.value.copy(isLoading = true)
         when (val r = soh.createSession(storeId)) {
             is Result.Success -> _events.emit(SessionEvent.Navigate(r.data.id))

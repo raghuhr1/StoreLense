@@ -31,13 +31,20 @@ fun ScanScreen(
     vm: ScanViewModel = hiltViewModel()
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    // Collect navigation events from the ViewModel
+    // Collect navigation + one-shot events from the ViewModel
     LaunchedEffect(Unit) {
         vm.events.collect { event ->
             when (event) {
                 is ScanEvent.Complete -> onComplete(event.sessionId)
                 is ScanEvent.Exit     -> onBack()
+                // Fix #11: Overcount — show a persistent snackbar (user must dismiss)
+                is ScanEvent.Overcount -> snackbarHostState.showSnackbar(
+                    message  = "Scanned more items than expected — check you're in the correct zone",
+                    duration = SnackbarDuration.Indefinite,
+                    actionLabel = "OK"
+                )
             }
         }
     }
@@ -65,7 +72,30 @@ fun ScanScreen(
         )
     }
 
+    // Fix #4: Low-coverage warning before completing
+    if (state.showLowCoverageDialog) {
+        val pct = if (state.expectedCount > 0)
+            (state.matchedCount * 100 / state.expectedCount) else 0
+        AlertDialog(
+            onDismissRequest = vm::dismissLowCoverage,
+            title   = { Text("Low coverage") },
+            text    = {
+                Text(
+                    "Only $pct% of expected items were found. " +
+                    "Are you sure this count is complete?"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = vm::completeAnyway) { Text("Complete Anyway") }
+            },
+            dismissButton = {
+                TextButton(onClick = vm::dismissLowCoverage) { Text("Keep Scanning") }
+            }
+        )
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("SOH Scan") },

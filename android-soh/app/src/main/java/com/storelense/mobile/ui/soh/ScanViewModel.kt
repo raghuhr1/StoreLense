@@ -27,22 +27,28 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
+// Coverage thresholds — tweak without touching logic
+private const val SOH_COVERAGE_THRESHOLD = 0.70f   // Fix #4: warn below 70 % matched
+private const val OVERCOUNT_THRESHOLD    = 1.15f   // Fix #11: warn above 115 % expected
+
 data class ScanState(
-    val sessionId: String        = "",
-    val expectedCount: Int       = 0,
-    val scannedCount: Int        = 0,
-    val matchedCount: Int        = 0,
-    val lastEpc: String          = "",
-    val lastEpcTime: String?     = null,
-    val phase: ScanPhase         = ScanPhase.Connecting,
-    val readRate: Float          = 0f,
-    val readerSignalBars: Int    = 0,   // 0 = unknown, 1–4
-    val batteryPct: Int          = 0,
-    val error: String?           = null,
+    val sessionId: String             = "",
+    val expectedCount: Int            = 0,
+    val scannedCount: Int             = 0,
+    val matchedCount: Int             = 0,
+    val lastEpc: String               = "",
+    val lastEpcTime: String?          = null,
+    val phase: ScanPhase              = ScanPhase.Connecting,
+    val readRate: Float               = 0f,
+    val readerSignalBars: Int         = 0,   // 0 = unknown, 1–4
+    val batteryPct: Int               = 0,
+    val error: String?                = null,
     // Fix #1 — exit guard
-    val showExitDialog: Boolean  = false,
+    val showExitDialog: Boolean       = false,
     // Fix #3 — resume restore
-    val restoredCount: Int       = 0
+    val restoredCount: Int            = 0,
+    // Fix #4 — low-coverage guard
+    val showLowCoverageDialog: Boolean = false
 )
 
 enum class ScanPhase { Connecting, Scanning, Paused, Uploading, Done }
@@ -68,6 +74,7 @@ class ScanViewModel @Inject constructor(
 
     private val scannedSet  = mutableSetOf<String>()
     private val expectedSet = mutableSetOf<String>()
+    private var overcountWarned = false   // Fix #11 — fire the alert only once per session
 
     // 2-second sliding window of read timestamps (ALL reads, not just unique)
     private val readTimestamps = ArrayDeque<Long>()
@@ -155,6 +162,12 @@ class ScanViewModel @Inject constructor(
                         readerSignalBars = bars
                     )
                 }
+                // Fix #11: One-shot overcount alert — fires when scanned > 115 % of expected
+                val exp = _state.value.expectedCount
+                if (!overcountWarned && exp > 0 && scannedSet.size > (exp * OVERCOUNT_THRESHOLD).toInt()) {
+                    overcountWarned = true
+                    _events.emit(ScanEvent.Overcount)
+                }
             } else {
                 _state.update { it.copy(readRate = rate, readerSignalBars = bars) }
             }
@@ -190,9 +203,28 @@ class ScanViewModel @Inject constructor(
         viewModelScope.launch { _events.emit(ScanEvent.Exit) }
     }
 
-    // ── Fix #2 / #7: Complete with worker safety net ──────────────────────────
+    // ── Fix #4 + #7: Complete — coverage guard then upload ───────────────────
 
     fun complete() = viewModelScope.launch {
+        val s = _state.value
+        // Fix #4: Skip threshold when expectedCount == 0 (no ERP session)
+        if (s.expectedCount > 0 && s.matchedCount < s.expectedCount * SOH_COVERAGE_THRESHOLD) {
+            _state.update { it.copy(showLowCoverageDialog = true) }
+            return@launch
+        }
+        doComplete()
+    }
+
+    fun dismissLowCoverage() {
+        _state.update { it.copy(showLowCoverageDialog = false) }
+    }
+
+    fun completeAnyway() = viewModelScope.launch {
+        _state.update { it.copy(showLowCoverageDialog = false) }
+        doComplete()
+    }
+
+    private suspend fun doComplete() {
         rfid.stopScan()
         rfid.disconnect()
         _state.update { it.copy(phase = ScanPhase.Uploading) }
@@ -207,14 +239,13 @@ class ScanViewModel @Inject constructor(
                         error = "Upload failed — data saved locally and will retry when connected"
                     )
                 }
-                return@launch
+                return
             }
             else -> {}
         }
 
         when (val done = soh.completeSession(sessionId)) {
             is Result.Success -> {
-                // Upload succeeded via complete() — cancel any queued background worker.
                 workManager.cancelUniqueWork("soh_upload_$sessionId")
                 _state.update { it.copy(phase = ScanPhase.Done) }
                 _events.emit(ScanEvent.Complete(sessionId))
@@ -247,4 +278,5 @@ class ScanViewModel @Inject constructor(
 sealed interface ScanEvent {
     data class Complete(val sessionId: String) : ScanEvent
     object Exit : ScanEvent
+    object Overcount : ScanEvent   // Fix #11
 }

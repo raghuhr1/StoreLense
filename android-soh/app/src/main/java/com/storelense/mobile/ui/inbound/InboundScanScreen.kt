@@ -70,6 +70,26 @@ fun InboundScanScreen(
     val missing  = maxOf(0, expected - state.matchedCount)
     val accuracy = if (expected > 0) (state.matchedCount.toFloat() / expected * 100f) else 0f
 
+    // Fix #5: Shortage warning before confirming receipt
+    if (state.showShortageDialog) {
+        AlertDialog(
+            onDismissRequest = vm::dismissShortageDialog,
+            title = { Text("Shortage detected") },
+            text  = {
+                Text(
+                    "Accuracy is ${accuracy.toInt()}% — $missing items were not scanned. " +
+                    "Confirming will record a partial receipt. Continue?"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = vm::confirmReceiptAnyway) { Text("Confirm Partial Receipt") }
+            },
+            dismissButton = {
+                TextButton(onClick = vm::dismissShortageDialog) { Text("Keep Scanning") }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(

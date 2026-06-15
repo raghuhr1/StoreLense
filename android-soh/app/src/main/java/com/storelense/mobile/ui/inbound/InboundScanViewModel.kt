@@ -18,19 +18,24 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+// Inbound accuracy bar is higher than SOH — shortage on a DC delivery needs explicit sign-off
+private const val INBOUND_ACCURACY_THRESHOLD = 0.95f   // Fix #5: warn below 95 % matched
+
 data class InboundScanState(
-    val shipmentId: String       = "",
-    val referenceNumber: String? = null,
-    val expectedCount: Int       = 0,
-    val scannedCount: Int        = 0,
-    val matchedCount: Int        = 0,
-    val lastEpc: String          = "",
-    val phase: ScanPhase         = ScanPhase.Connecting,
-    val error: String?           = null,
+    val shipmentId: String          = "",
+    val referenceNumber: String?    = null,
+    val expectedCount: Int          = 0,
+    val scannedCount: Int           = 0,
+    val matchedCount: Int           = 0,
+    val lastEpc: String             = "",
+    val phase: ScanPhase            = ScanPhase.Connecting,
+    val error: String?              = null,
     // Fix #1 — exit guard
-    val showExitDialog: Boolean  = false,
+    val showExitDialog: Boolean     = false,
     // Fix #3 — resume restore
-    val restoredCount: Int       = 0
+    val restoredCount: Int          = 0,
+    // Fix #5 — shortage guard
+    val showShortageDialog: Boolean = false
 )
 
 enum class ScanPhase { Connecting, Scanning, Paused, Uploading, Done }
@@ -142,15 +147,36 @@ class InboundScanViewModel @Inject constructor(
         viewModelScope.launch { _events.emit(InboundEvent.Exit) }
     }
 
-    // ── Fix #7: Confirm receipt with worker safety net ────────────────────────
+    // ── Fix #5 + #7: Confirm receipt — shortage guard then upload ────────────
 
     fun confirmReceipt() = viewModelScope.launch {
+        val s = _state.value
+        // Fix #5: Warn when accuracy is below threshold (skip if expectedCount == 0)
+        if (s.expectedCount > 0) {
+            val accuracy = s.matchedCount.toFloat() / s.expectedCount
+            if (accuracy < INBOUND_ACCURACY_THRESHOLD) {
+                _state.update { it.copy(showShortageDialog = true) }
+                return@launch
+            }
+        }
+        doReceipt()
+    }
+
+    fun dismissShortageDialog() {
+        _state.update { it.copy(showShortageDialog = false) }
+    }
+
+    fun confirmReceiptAnyway() = viewModelScope.launch {
+        _state.update { it.copy(showShortageDialog = false) }
+        doReceipt()
+    }
+
+    private suspend fun doReceipt() {
         rfid.stopScan()
         rfid.disconnect()
         _state.update { it.copy(phase = ScanPhase.Uploading) }
         when (val r = repo.receiveShipment(shipmentId)) {
             is Result.Success -> {
-                // Cancel any queued retry worker — we just succeeded.
                 workManager.cancelUniqueWork("inbound_upload_$shipmentId")
                 _state.update { it.copy(phase = ScanPhase.Done) }
                 _events.emit(InboundEvent.Complete(r.data.receivedCount, r.data.expectedCount, r.data.shortageCount))
