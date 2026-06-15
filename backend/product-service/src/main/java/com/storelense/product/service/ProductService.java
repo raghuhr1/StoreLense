@@ -74,8 +74,8 @@ public class ProductService {
 
         if (req.ean() != null && !req.ean().isBlank()) {
             Barcode barcode = barcodeRepository
-                    .findByProduct_IdAndBarcodeType(id, "EAN")
-                    .orElseGet(() -> Barcode.builder().product(product).barcodeType("EAN").primary(true).build());
+                    .findByProduct_IdAndBarcodeType(id, "ean13")
+                    .orElseGet(() -> Barcode.builder().product(product).barcodeType("ean13").primary(true).build());
             barcode.setBarcodeValue(req.ean().trim());
             barcodeRepository.save(barcode);
         }

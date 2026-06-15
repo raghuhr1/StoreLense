@@ -10,7 +10,7 @@ import org.mapstruct.*;
 public interface ProductMapper {
 
     @Mapping(target = "primaryEan", expression = "java(product.getBarcodes().stream()" +
-            ".filter(b -> \"EAN\".equals(b.getBarcodeType()))" +
+            ".filter(b -> \"ean13\".equals(b.getBarcodeType()))" +
             ".map(com.storelense.product.domain.entity.Barcode::getBarcodeValue)" +
             ".findFirst().orElse(null))")
     ProductResponse toResponse(Product product);
