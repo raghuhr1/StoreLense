@@ -4,7 +4,10 @@ import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import timber.log.Timber
 import java.time.Instant
 import javax.inject.Inject
@@ -39,6 +42,9 @@ class EmDkRfidReader @Inject constructor(
     private val _reads = MutableSharedFlow<EpcRead>(extraBufferCapacity = 1024)
     override val reads: Flow<EpcRead> = _reads.asSharedFlow()
 
+    private val _connectionState = MutableStateFlow(false)
+    override val connectionState: StateFlow<Boolean> = _connectionState.asStateFlow()
+
     private var _isConnected = false
     override val isConnected: Boolean get() = _isConnected
 
@@ -58,6 +64,7 @@ class EmDkRfidReader @Inject constructor(
         //EMDK:             reader?.Events?.addEventsListener(eventsListener)
         //EMDK:             reader?.Events?.isHandheldTriggerEvent = true
         //EMDK:             _isConnected = true
+        //EMDK:             _connectionState.value = true
         //EMDK:             Timber.d("EMDK reader connected")
         //EMDK:             cont.resume(Unit)
         //EMDK:         } catch (e: Exception) {
@@ -65,7 +72,7 @@ class EmDkRfidReader @Inject constructor(
         //EMDK:             cont.resumeWithException(e)
         //EMDK:         }
         //EMDK:     }
-        //EMDK:     override fun onClosed() { _isConnected = false }
+        //EMDK:     override fun onClosed() { _isConnected = false; _connectionState.value = false }
         //EMDK: })
         //EMDK: if (result.statusCode != EMDKResults.STATUS_CODE.SUCCESS) {
         //EMDK:     cont.resumeWithException(IllegalStateException("EMDK unavailable: ${result.statusCode}"))
@@ -105,6 +112,7 @@ class EmDkRfidReader @Inject constructor(
         //EMDK:     emdkManager?.release()
         //EMDK: } catch (e: Exception) { Timber.e(e) }
         _isConnected = false
+        _connectionState.value = false
     }
 
     //EMDK: private val eventsListener = object : RfidEventsListener {

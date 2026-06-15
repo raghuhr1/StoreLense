@@ -7,6 +7,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.time.Instant
@@ -18,6 +21,9 @@ class MockRfidReader @Inject constructor() : RfidReader {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val _reads = MutableSharedFlow<EpcRead>(extraBufferCapacity = 1024)
     override val reads: Flow<EpcRead> = _reads
+
+    private val _connectionState = MutableStateFlow(false)
+    override val connectionState: StateFlow<Boolean> = _connectionState.asStateFlow()
 
     private var scanJob: Job? = null
     private var txPower = 27
@@ -32,12 +38,14 @@ class MockRfidReader @Inject constructor() : RfidReader {
     override suspend fun connect() {
         delay(300) // simulate EMDK init
         isConnected = true
+        _connectionState.value = true
         Timber.d("[Mock] RFID reader connected (txPower=$txPower dBm)")
     }
 
     override suspend fun disconnect() {
         stopScan()
         isConnected = false
+        _connectionState.value = false
         Timber.d("[Mock] RFID reader disconnected")
     }
 

@@ -35,7 +35,9 @@ data class InboundScanState(
     // Fix #3 — resume restore
     val restoredCount: Int          = 0,
     // Fix #5 — shortage guard
-    val showShortageDialog: Boolean = false
+    val showShortageDialog: Boolean = false,
+    // Fix #14 — distinguish "paused by user" from "paused because load failed"
+    val loadFailed: Boolean         = false
 )
 
 enum class ScanPhase { Connecting, Scanning, Paused, Uploading, Done }
@@ -104,20 +106,21 @@ class InboundScanViewModel @Inject constructor(
                     }
                 }
             }
-            is Result.Error -> _state.update { it.copy(phase = ScanPhase.Paused, error = r.message) }
+            is Result.Error -> _state.update { it.copy(phase = ScanPhase.Paused, error = r.message, loadFailed = true) }
         }
     }
 
     fun togglePause() {
         when (_state.value.phase) {
             ScanPhase.Scanning -> { rfid.stopScan(); _state.update { it.copy(phase = ScanPhase.Paused) } }
-            // Fix #14: only call startScan() when reader is actually connected
+            // Fix #14: only call startScan() when reader is actually connected;
+            // otherwise re-run the full load() so the session + RFID are both initialised.
             ScanPhase.Paused   -> {
                 if (rfid.isConnected) {
                     rfid.startScan()
-                    _state.update { it.copy(phase = ScanPhase.Scanning) }
+                    _state.update { it.copy(phase = ScanPhase.Scanning, loadFailed = false) }
                 } else {
-                    // Reader not connected — retry full load
+                    _state.update { it.copy(loadFailed = false) }
                     load()
                 }
             }

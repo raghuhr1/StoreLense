@@ -11,6 +11,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.work.ExistingWorkPolicy
 import androidx.work.WorkManager
 import com.storelense.mobile.data.repository.AuthRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import com.storelense.mobile.data.repository.Result
 import com.storelense.mobile.data.repository.SohRepository
 import com.storelense.mobile.rfid.RfidReader
@@ -75,6 +77,7 @@ class ScanViewModel @Inject constructor(
     private val scannedSet  = mutableSetOf<String>()
     private val expectedSet = mutableSetOf<String>()
     private var overcountWarned = false   // Fix #11 — fire the alert only once per session
+    private var reconnectJob: Job? = null // Fix #8 — auto-reconnect after reader drop
 
     // 2-second sliding window of read timestamps (ALL reads, not just unique)
     private val readTimestamps = ArrayDeque<Long>()
@@ -123,6 +126,7 @@ class ScanViewModel @Inject constructor(
                 rfid.setTxPower(27)
                 rfid.startScan()
                 _state.update { it.copy(phase = ScanPhase.Scanning) }
+                collectConnectionState()   // Fix #8: watch for hardware drop
                 collectReads()
             }
             is Result.Error -> _state.update { it.copy(phase = ScanPhase.Paused, error = r.message) }
@@ -170,6 +174,34 @@ class ScanViewModel @Inject constructor(
                 }
             } else {
                 _state.update { it.copy(readRate = rate, readerSignalBars = bars) }
+            }
+        }
+    }
+
+    // Fix #8: React to reader hardware disconnect while scanning.
+    // Pauses the session and schedules a single auto-reconnect attempt after 5 s.
+    private fun collectConnectionState() = viewModelScope.launch {
+        rfid.connectionState.collect { connected ->
+            if (!connected && _state.value.phase == ScanPhase.Scanning) {
+                rfid.stopScan()
+                _state.update {
+                    it.copy(
+                        phase = ScanPhase.Paused,
+                        error = "Reader disconnected — check cable or trigger"
+                    )
+                }
+                reconnectJob?.cancel()
+                reconnectJob = viewModelScope.launch {
+                    delay(5_000L)
+                    try {
+                        rfid.connect()
+                        rfid.setTxPower(27)
+                        rfid.startScan()
+                        _state.update { it.copy(phase = ScanPhase.Scanning, error = null) }
+                    } catch (_: Exception) {
+                        _state.update { it.copy(error = "Could not reconnect — tap Resume to retry") }
+                    }
+                }
             }
         }
     }
@@ -231,12 +263,21 @@ class ScanViewModel @Inject constructor(
 
         when (val up = soh.uploadBatch(sessionId, storeId)) {
             is Result.Error -> {
-                // Fix #7: Upload failed — queue a background retry instead of silently dropping data.
+                // Fix #7: Queue background retry — worker runs when network is back.
+                // Fix #9: Distinguish auth expiry from generic network failure so the
+                //         user knows they need to re-login rather than wait for reconnect.
                 enqueueUploadWorker(policy = ExistingWorkPolicy.REPLACE)
+                val msg = up.message ?: ""
+                val isAuthError = msg.contains("401") ||
+                        msg.contains("Unauthorized", ignoreCase = true) ||
+                        msg.contains("Forbidden", ignoreCase = true)
                 _state.update {
                     it.copy(
                         phase = ScanPhase.Paused,
-                        error = "Upload failed — data saved locally and will retry when connected"
+                        error = if (isAuthError)
+                            "Session expired — data saved locally and will upload after you log in again"
+                        else
+                            "Upload failed — data saved locally and will retry when connected"
                     )
                 }
                 return
@@ -259,6 +300,7 @@ class ScanViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         try { context.unregisterReceiver(batteryReceiver) } catch (_: Exception) {}
+        reconnectJob?.cancel()
         if (scannedSet.isNotEmpty() && _state.value.phase != ScanPhase.Done) {
             enqueueUploadWorker(policy = ExistingWorkPolicy.KEEP)
         }

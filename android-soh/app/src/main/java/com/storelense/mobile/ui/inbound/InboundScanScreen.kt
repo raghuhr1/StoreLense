@@ -308,7 +308,14 @@ fun InboundScanScreen(
                             modifier = Modifier.weight(1f),
                             shape    = RoundedCornerShape(12.dp)
                         ) {
-                            Text(if (state.phase == ScanPhase.Paused) "Resume Scan" else "Pause Scan")
+                            // Fix #14: "Retry" when initial load failed — "Resume / Pause" for normal flow
+                            Text(
+                                when {
+                                    state.phase == ScanPhase.Paused && state.loadFailed -> "Retry"
+                                    state.phase == ScanPhase.Paused                     -> "Resume Scan"
+                                    else                                                 -> "Pause Scan"
+                                }
+                            )
                         }
                     }
                 }
