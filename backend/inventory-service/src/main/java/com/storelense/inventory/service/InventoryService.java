@@ -7,6 +7,7 @@ import com.storelense.inventory.domain.entity.EpcRegistry;
 import com.storelense.inventory.domain.entity.InventoryState;
 import com.storelense.inventory.domain.repository.EpcRegistryRepository;
 import com.storelense.inventory.domain.repository.InventoryStateRepository;
+import com.storelense.inventory.dto.EpcLocationResponse;
 import com.storelense.inventory.dto.EpcsByEanResponse;
 import com.storelense.inventory.dto.SkuInventoryResponse;
 import com.storelense.inventory.dto.SkuLedgerRow;
@@ -106,6 +107,40 @@ public class InventoryService {
                                 .quantityExpected(quantityExpected)
                                 .quantityOnHand(0)
                                 .build()));
+    }
+
+    /**
+     * Returns the last-seen zone and timestamp for a single EPC.
+     * Joins epc_registry → stores.zones to resolve zone name.
+     * Returns empty Optional (not exception) so callers can degrade gracefully.
+     */
+    @Transactional(readOnly = true)
+    public EpcLocationResponse getEpcLocation(String epc, UUID storeId) {
+        return jdbcClient.sql("""
+                SELECT
+                    er.epc,
+                    er.store_id,
+                    er.last_seen_at,
+                    z.name AS zone_name
+                FROM inventory.epc_registry er
+                LEFT JOIN stores.zones z ON z.id = er.zone_id
+                WHERE er.epc      = :epc
+                  AND er.store_id = :storeId
+                LIMIT 1
+                """)
+                .param("epc",     epc)
+                .param("storeId", storeId)
+                .query((rs, rowNum) -> new EpcLocationResponse(
+                        rs.getString("epc"),
+                        rs.getString("zone_name"),
+                        rs.getTimestamp("last_seen_at") != null
+                                ? rs.getTimestamp("last_seen_at").toInstant()
+                                       .atOffset(ZoneOffset.UTC).toString()
+                                : null,
+                        rs.getObject("store_id", UUID.class)
+                ))
+                .optional()
+                .orElseThrow(() -> new ResourceNotFoundException("EPC", epc));
     }
 
     /**

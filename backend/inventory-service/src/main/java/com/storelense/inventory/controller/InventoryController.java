@@ -3,6 +3,7 @@ package com.storelense.inventory.controller;
 import com.storelense.common.dto.ApiResponse;
 import com.storelense.common.security.StoreLensePrincipal;
 import com.storelense.inventory.domain.entity.InventoryState;
+import com.storelense.inventory.dto.EpcLocationResponse;
 import com.storelense.inventory.dto.EpcsByEanResponse;
 import com.storelense.inventory.dto.MarkEpcsSoldRequest;
 import com.storelense.inventory.dto.SkuLedgerRow;
@@ -80,6 +81,20 @@ public class InventoryController {
 
         UUID effective = principal.isAdmin() ? storeId : principal.storeId();
         return ResponseEntity.ok(ApiResponse.ok(inventoryService.getSkuInventory(sku, effective)));
+    }
+
+    @GetMapping("/epc/{epc}")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE')")
+    @Operation(summary = "Last-seen zone and timestamp for a single EPC",
+               description = "Used by the handheld app after product search to show where an item " +
+                             "was most recently scanned. Returns 404 if the EPC has never been seen at this store.")
+    public ResponseEntity<ApiResponse<EpcLocationResponse>> getEpcLocation(
+            @PathVariable String epc,
+            @RequestParam(required = false) UUID storeId,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+
+        UUID effective = principal.isAdmin() ? storeId : principal.storeId();
+        return ResponseEntity.ok(ApiResponse.ok(inventoryService.getEpcLocation(epc, effective)));
     }
 
     @GetMapping("/epc-by-ean/{ean}")
