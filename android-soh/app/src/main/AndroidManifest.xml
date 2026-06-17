@@ -3,7 +3,6 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="com.symbol.emdk.permission.EMDK" />
 
     <application
         android:name=".StoreLenseApp"
@@ -12,9 +11,6 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:allowBackup="false"
         tools:targetApi="31">
-
-        <!-- EMDK is a Zebra system library; required=false allows install on non-Zebra devices -->
-        <uses-library android:name="com.symbol.emdk" android:required="false" />
 
         <activity
             android:name=".MainActivity"

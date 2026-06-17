@@ -24,6 +24,19 @@ android {
         versionName   = "1.0.0"
     }
 
+    flavorDimensions += "device"
+    productFlavors {
+        create("zebra") {
+            dimension = "device"
+        }
+        create("chainway") {
+            dimension    = "device"
+            // Separate applicationId so both APKs can coexist on a test device
+            applicationIdSuffix = ".c72"
+            versionNameSuffix   = "-c72"
+        }
+    }
+
     buildTypes {
         debug {
             val url = localProps.getProperty("storelense.debug.url", "http://10.0.2.2:8080/")
@@ -59,8 +72,11 @@ android {
 }
 
 dependencies {
-    // EMDK — system library on Zebra devices; place JAR in app/libs/
-    compileOnly(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar"))))
+    // EMDK — Zebra system library; place com.symbol.emdk.jar in app/libs/
+    "zebraCompileOnly"(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar"))))
+
+    // Chainway UHF RFID SDK — place RFIDWithUHFUART.jar in app/chainway-libs/
+    "chainwayCompileOnly"(fileTree(mapOf("dir" to "chainway-libs", "include" to listOf("*.jar"))))
 
     implementation(libs.core.ktx)
     implementation(libs.splash)
