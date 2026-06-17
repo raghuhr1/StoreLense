@@ -84,7 +84,7 @@ fun WorkflowsScreen(
                         PriorityCard(
                             icon       = Icons.Default.LocalShipping,
                             label      = "Receive DC",
-                            count      = 2,
+                            count      = state.pendingInbound,
                             countLabel = "Pending",
                             color      = GreenComplete,
                             onClick    = onInbound,
@@ -93,7 +93,7 @@ fun WorkflowsScreen(
                         PriorityCard(
                             icon       = Icons.Default.MoveDown,
                             label      = "Replenish",
-                            count      = 5,
+                            count      = state.pendingReplenishments,
                             countLabel = "Pending",
                             color      = AmberReplenish,
                             onClick    = onReplenish,
@@ -107,7 +107,7 @@ fun WorkflowsScreen(
                         PriorityCard(
                             icon       = Icons.Default.SwapHoriz,
                             label      = "Transfer Out",
-                            count      = 1,
+                            count      = state.pendingTransfers,
                             countLabel = "Pending",
                             color      = IndigoTransfer,
                             onClick    = onTransferOut,
@@ -139,39 +139,30 @@ fun WorkflowsScreen(
                 ) {
                     Column {
                         WorkflowRow(
-                            icon     = Icons.Default.BarChart,
-                            label    = "SOH Count",
-                            subtitle = "Reconciliation",
-                            badge    = "0 open",
-                            badgeColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            onClick  = onSoh
+                            icon       = Icons.Default.BarChart,
+                            label      = "SOH Count",
+                            subtitle   = "Reconciliation",
+                            badge      = if (state.openSohSessions > 0) "${state.openSohSessions} open" else "No open sessions",
+                            badgeColor = if (state.openSohSessions > 0) AmberReplenish else MaterialTheme.colorScheme.onSurfaceVariant,
+                            onClick    = onSoh
                         )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         WorkflowRow(
-                            icon     = Icons.Default.Search,
-                            label    = "Product Search",
-                            subtitle = "Find any SKU",
-                            badge    = null,
+                            icon       = Icons.Default.Search,
+                            label      = "Product Search",
+                            subtitle   = "Find any SKU",
+                            badge      = null,
                             badgeColor = Color.Gray,
-                            onClick  = onProductSearch
+                            onClick    = onProductSearch
                         )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         WorkflowRow(
-                            icon     = Icons.Default.Store,
-                            label    = "Store Audit",
-                            subtitle = "Full scan",
-                            badge    = "2 pending",
-                            badgeColor = AmberReplenish,
-                            onClick  = onSoh
-                        )
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                        WorkflowRow(
-                            icon     = Icons.Default.Wifi,
-                            label    = "Reader Health",
-                            subtitle = "Devices & readers",
-                            badge    = "• 1 alert",
-                            badgeColor = Color(0xFFE53935),
-                            onClick  = onSettings
+                            icon       = Icons.Default.Wifi,
+                            label      = "Reader Health",
+                            subtitle   = "Devices & readers",
+                            badge      = null,
+                            badgeColor = Color.Gray,
+                            onClick    = onSettings
                         )
                     }
                 }

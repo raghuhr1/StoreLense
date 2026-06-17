@@ -107,8 +107,11 @@ class ProductSearchViewModel @Inject constructor(
     }
 
     private fun runSearch(q: String) {
-        val storeId = auth.storeId ?: ""
         if (q.isBlank()) { _state.update { it.copy(results = emptyList(), isSearching = false) }; return }
+        val storeId = auth.storeId ?: run {
+            _state.update { it.copy(isSearching = false, lastSyncError = "Not logged in to a store") }
+            return
+        }
         _state.update { it.copy(isSearching = true) }
         viewModelScope.launch {
             val results = repo.search(q, storeId)

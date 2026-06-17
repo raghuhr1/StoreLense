@@ -46,6 +46,7 @@ class ProductRepository @Inject constructor(
         }
 
         if (all.isNotEmpty()) {
+            productDao.deleteForStore(storeId)
             productDao.upsertAll(all.map { it.toEntity(storeId) })
         }
         Result.Success(totalFetched)

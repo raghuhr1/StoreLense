@@ -108,7 +108,7 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text  = "${state.storeName ?: "Store #042"} · Floor 2",
+                        text  = state.storeName ?: "Store",
                         color = Color.White.copy(alpha = 0.6f),
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -220,14 +220,16 @@ fun HomeScreen(
                             subtitle = "Refill now",
                             onClick  = onReplenish
                         )
-                        Spacer(Modifier.height(8.dp))
-                        ActionRow(
-                            icon     = Icons.Default.SwapHoriz,
-                            color    = Color(0xFF1565C0),
-                            title    = "1 Transfer Pending",
-                            subtitle = "Awaiting dispatch",
-                            onClick  = onTransferOut
-                        )
+                        if (state.pendingTransfers > 0) {
+                            Spacer(Modifier.height(8.dp))
+                            ActionRow(
+                                icon     = Icons.Default.SwapHoriz,
+                                color    = Color(0xFF1565C0),
+                                title    = "${state.pendingTransfers} Transfer${if (state.pendingTransfers != 1) "s" else ""} Pending",
+                                subtitle = "Awaiting dispatch",
+                                onClick  = onTransferOut
+                            )
+                        }
                     }
                 }
             }

@@ -169,7 +169,9 @@ data class DashboardSummaryDto(
     val scannedEpcsToday: Int = 0,
     val receivedShipmentsToday: Int = 0,
     val transferredEpcsToday: Int = 0,
-    val pendingReplenishments: Int = 0
+    val pendingReplenishments: Int = 0,
+    val pendingInbound: Int = 0,
+    val pendingTransfers: Int = 0
 )
 
 // ── Stores ────────────────────────────────────────────────────────────────────
