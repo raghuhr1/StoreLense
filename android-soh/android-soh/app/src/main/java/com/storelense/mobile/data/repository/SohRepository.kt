@@ -172,12 +172,13 @@ class SohRepository @Inject constructor(
     }
 
     private fun SohSessionDto.toEntity() = SohSessionEntity(
-        id          = id,
-        storeId     = storeId,
-        status      = status,
-        sessionType = sessionType,
-        startedAt   = startedAt,
-        source      = source,
-        zoneRegion  = zoneRegion
+        id            = id,
+        storeId       = storeId,
+        status        = status,
+        sessionType   = sessionType,
+        startedAt     = startedAt,
+        source        = source,
+        zoneRegion    = zoneRegion,
+        expectedCount = expectedEpcs?.size ?: result?.totalUnitsExpected ?: 0
     )
 }

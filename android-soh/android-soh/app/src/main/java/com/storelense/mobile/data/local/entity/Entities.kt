@@ -28,6 +28,7 @@ data class SohSessionEntity(
     val startedAt: String?,
     val source: String = "manual",     // manual | erp_triggered
     val zoneRegion: String? = null,
+    val expectedCount: Int = 0,
     val cachedAt: Long = System.currentTimeMillis()
 )
 

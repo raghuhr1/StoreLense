@@ -22,6 +22,9 @@ class ReplenishRepository @Inject constructor(
     fun itemsFlow(taskId: String): Flow<List<RefillTaskItemEntity>> =
         dao.getItemsForTask(taskId)
 
+    fun allItemsFlow(storeId: String): Flow<List<RefillTaskItemEntity>> =
+        dao.getAllItemsForStore(storeId)
+
     suspend fun refreshTasks(storeId: String): Result<Unit> = try {
         val resp = api.getRefillTasks(storeId)
         val body = resp.body()

@@ -1,8 +1,14 @@
 package com.storelense.mobile.ui.soh
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.style.TextAlign
+import kotlin.math.roundToInt
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BatteryFull
@@ -191,12 +197,9 @@ fun ScanScreen(
         }
     ) { padding ->
         Column(
-            Modifier.fillMaxSize().padding(padding).padding(24.dp),
+            Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            PhaseIndicator(state.phase)
-            Spacer(Modifier.height(16.dp))
-
             // Fix #3: Restored EPCs banner shown when re-entering an interrupted session
             if (state.restoredCount > 0) {
                 Surface(
@@ -231,12 +234,14 @@ fun ScanScreen(
                 Spacer(Modifier.height(8.dp))
             }
 
-            BigCounterRow("Scanned",  state.scannedCount,  MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(8.dp))
-            BigCounterRow("Matched",  state.matchedCount,  MaterialTheme.colorScheme.secondary)
-            Spacer(Modifier.height(8.dp))
-            BigCounterRow("Expected", state.expectedCount, MaterialTheme.colorScheme.outline)
-            Spacer(Modifier.height(16.dp))
+            AuditProgressCard(
+                scannedCount  = state.scannedCount,
+                matchedCount  = state.matchedCount,
+                expectedCount = state.expectedCount,
+                phase         = state.phase,
+                zoneRegion    = state.zoneRegion
+            )
+            Spacer(Modifier.height(12.dp))
 
             // ── Metrics row ────────────────────────────────────────────────
             Card(
@@ -373,16 +378,94 @@ private fun PhaseIndicator(phase: ScanPhase) {
 }
 
 @Composable
-private fun BigCounterRow(label: String, count: Int, color: Color) {
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(label, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface)
-        Text(count.toString(), fontSize = 48.sp, fontWeight = FontWeight.Bold, color = color)
+private fun AuditProgressCard(
+    scannedCount: Int,
+    matchedCount: Int,
+    expectedCount: Int,
+    phase: ScanPhase,
+    zoneRegion: String?
+) {
+    val pct     = if (expectedCount > 0) (matchedCount.toFloat() / expectedCount * 100f).coerceIn(0f, 100f) else 0f
+    val missing = if (expectedCount > 0) maxOf(0, expectedCount - matchedCount) else 0
+    val ringColor = when {
+        pct >= 95f -> Color(0xFF4CAF50)
+        pct >= 70f -> MaterialTheme.colorScheme.primary
+        pct > 0f   -> Color(0xFFFF9800)
+        else       -> MaterialTheme.colorScheme.primary
     }
-    HorizontalDivider()
+    Card(
+        modifier  = Modifier.fillMaxWidth(),
+        shape     = RoundedCornerShape(20.dp),
+        elevation = CardDefaults.cardElevation(2.dp)
+    ) {
+        Column(
+            modifier            = Modifier.padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            AuditRing(pct = pct, color = ringColor, phase = phase)
+            Text(
+                "Zone: ${zoneRegion ?: "Full Store"}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            HorizontalDivider()
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                AuditStat("%,d".format(scannedCount), "Scanned EPCs")
+                VerticalDivider(Modifier.height(36.dp))
+                AuditStat(
+                    "$missing", "Missing Items",
+                    if (missing > 0) Color(0xFFE53935) else Color(0xFF4CAF50)
+                )
+                VerticalDivider(Modifier.height(36.dp))
+                AuditStat("${pct.roundToInt()}%", "Accuracy", ringColor)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AuditRing(pct: Float, color: Color, phase: ScanPhase) {
+    val animPct by animateFloatAsState(
+        targetValue   = (pct / 100f).coerceIn(0f, 1f),
+        animationSpec = tween(800, easing = FastOutSlowInEasing),
+        label         = "auditRing"
+    )
+    val (phaseText, phaseColor) = when (phase) {
+        ScanPhase.Connecting -> "Connecting…" to Color(0xFFFF9800)
+        ScanPhase.Scanning   -> "In Progress" to Color(0xFF4CAF50)
+        ScanPhase.Paused     -> "Paused"      to Color(0xFFFF9800)
+        ScanPhase.Uploading  -> "Uploading…"  to MaterialTheme.colorScheme.primary
+        ScanPhase.Done       -> "Complete ✓"  to Color(0xFF4CAF50)
+    }
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(160.dp)) {
+        Canvas(Modifier.size(160.dp)) {
+            val stroke = Stroke(16.dp.toPx(), cap = StrokeCap.Round)
+            drawArc(Color.Gray.copy(alpha = 0.15f), -90f, 360f, false, style = stroke)
+            if (animPct > 0f) drawArc(color, -90f, animPct * 360f, false, style = stroke)
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("${pct.roundToInt()}%",
+                style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+            Surface(color = phaseColor.copy(0.15f), shape = MaterialTheme.shapes.extraSmall) {
+                Text(
+                    phaseText,
+                    Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    color = phaseColor, fontWeight = FontWeight.SemiBold, fontSize = 11.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AuditStat(value: String, label: String, valueColor: Color = Color.Unspecified) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        val c = if (valueColor != Color.Unspecified) valueColor else MaterialTheme.colorScheme.onSurface
+        Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = c)
+        Text(label, style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+    }
 }
 
 // ── Previews ──────────────────────────────────────────────────────────────────

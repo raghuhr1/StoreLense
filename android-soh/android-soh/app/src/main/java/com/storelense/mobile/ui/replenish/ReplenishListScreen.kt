@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,7 +23,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.storelense.mobile.ui.theme.AmberReplenish
 import com.storelense.mobile.ui.theme.AmberTint
-import com.storelense.mobile.ui.theme.RedCritical
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,15 +32,13 @@ fun ReplenishListScreen(
     vm: ReplenishListViewModel = hiltViewModel()
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
-    val highPriority = state.tasks.filter { it.priority >= 2 }
-    val normalPriority = state.tasks.filter { it.priority < 2 }
+    val highItems   = state.displayItems.filter { it.priority >= 2 }
+    val normalItems = state.displayItems.filter { it.priority < 2 }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text("Replenish", color = Color.White, fontWeight = FontWeight.SemiBold)
-                },
+                title = { Text("Replenish", color = Color.White, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
@@ -48,7 +46,7 @@ fun ReplenishListScreen(
                 },
                 actions = {
                     IconButton(onClick = { vm.refresh() }) {
-                        Icon(Icons.Default.MoreVert, null, tint = Color.White)
+                        Icon(Icons.Default.Refresh, null, tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = AmberReplenish)
@@ -62,11 +60,11 @@ fun ReplenishListScreen(
                     .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
                 Button(
-                    onClick = { state.tasks.firstOrNull()?.let { onTaskSelected(it.id) } },
+                    onClick  = { state.tasks.firstOrNull()?.let { onTaskSelected(it.id) } },
                     modifier = Modifier.fillMaxWidth().height(52.dp),
-                    shape = RoundedCornerShape(26.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = AmberReplenish),
-                    enabled = state.tasks.isNotEmpty()
+                    shape    = RoundedCornerShape(26.dp),
+                    colors   = ButtonDefaults.buttonColors(containerColor = AmberReplenish),
+                    enabled  = state.displayItems.isNotEmpty()
                 ) {
                     Icon(Icons.Default.QrCodeScanner, null, Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
@@ -77,69 +75,49 @@ fun ReplenishListScreen(
     ) { padding ->
         Box(Modifier.fillMaxSize().background(Color(0xFFF8F9FA)).padding(padding)) {
             when {
-                state.isLoading && state.tasks.isEmpty() ->
-                    CircularProgressIndicator(
-                        Modifier.align(Alignment.Center),
-                        color = AmberReplenish
-                    )
+                state.isLoading && state.displayItems.isEmpty() ->
+                    CircularProgressIndicator(Modifier.align(Alignment.Center), color = AmberReplenish)
 
-                state.tasks.isEmpty() ->
+                state.displayItems.isEmpty() ->
                     Column(
                         Modifier.align(Alignment.Center),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(
-                            Icons.Default.Inventory2, null,
-                            Modifier.size(64.dp), tint = Color(0xFFBDBDBD)
-                        )
+                        Icon(Icons.Default.Inventory2, null, Modifier.size(64.dp), tint = Color(0xFFBDBDBD))
                         Spacer(Modifier.height(12.dp))
-                        Text(
-                            "No pending tasks",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Color(0xFF757575)
-                        )
+                        Text("No pending tasks", style = MaterialTheme.typography.bodyLarge, color = Color(0xFF757575))
                         Spacer(Modifier.height(8.dp))
-                        TextButton(onClick = { vm.refresh() }) {
-                            Text("Refresh", color = AmberReplenish)
-                        }
+                        TextButton(onClick = { vm.refresh() }) { Text("Refresh", color = AmberReplenish) }
                     }
 
                 else -> LazyColumn(
-                    contentPadding = PaddingValues(16.dp),
+                    contentPadding     = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     item {
-                        QueueSummaryCard(totalCount = state.tasks.size)
+                        QueueSummaryCard(totalCount = state.displayItems.size)
                         Spacer(Modifier.height(4.dp))
                     }
 
-                    if (highPriority.isNotEmpty()) {
-                        item {
-                            SectionHeader("HIGH PRIORITY")
-                        }
-                        items(highPriority, key = { it.id }) { task ->
-                            ReplenishTaskCard(
-                                taskId     = task.id,
-                                itemCount  = task.itemCount,
-                                dueBy      = task.dueBy,
-                                isHighPrio = true,
-                                onClick    = { onTaskSelected(task.id) }
+                    if (highItems.isNotEmpty()) {
+                        item { SectionHeader("HIGH PRIORITY") }
+                        items(highItems, key = { it.item.id }) { di ->
+                            ReplenishItemCard(
+                                displayItem = di,
+                                onClick     = { onTaskSelected(di.taskId) }
                             )
                         }
                     }
 
-                    if (normalPriority.isNotEmpty()) {
+                    if (normalItems.isNotEmpty()) {
                         item {
                             Spacer(Modifier.height(4.dp))
                             SectionHeader("NORMAL PRIORITY")
                         }
-                        items(normalPriority, key = { it.id }) { task ->
-                            ReplenishTaskCard(
-                                taskId     = task.id,
-                                itemCount  = task.itemCount,
-                                dueBy      = task.dueBy,
-                                isHighPrio = false,
-                                onClick    = { onTaskSelected(task.id) }
+                        items(normalItems, key = { it.item.id }) { di ->
+                            ReplenishItemCard(
+                                displayItem = di,
+                                onClick     = { onTaskSelected(di.taskId) }
                             )
                         }
                     }
@@ -163,6 +141,8 @@ fun ReplenishListScreen(
     }
 }
 
+// ── Sub-composables ───────────────────────────────────────────────────────────
+
 @Composable
 private fun QueueSummaryCard(totalCount: Int) {
     Card(
@@ -171,36 +151,17 @@ private fun QueueSummaryCard(totalCount: Int) {
         colors    = CardDefaults.cardColors(containerColor = AmberTint),
         elevation = CardDefaults.cardElevation(0.dp)
     ) {
-        Row(
-            Modifier.padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(
-                    "Replenishment Queue",
-                    style      = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color      = Color(0xFF212121)
-                )
+                Text("Replenishment Queue", style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold, color = Color(0xFF212121))
                 Spacer(Modifier.height(4.dp))
-                Text(
-                    "$totalCount",
-                    style      = MaterialTheme.typography.displaySmall,
-                    fontWeight = FontWeight.Bold,
-                    color      = Color(0xFF212121)
-                )
-                Text(
-                    "Pending",
-                    style      = MaterialTheme.typography.bodyMedium,
-                    color      = AmberReplenish,
-                    fontWeight = FontWeight.Medium
-                )
+                Text("$totalCount", style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.Bold, color = Color(0xFF212121))
+                Text("Pending", style = MaterialTheme.typography.bodyMedium,
+                    color = AmberReplenish, fontWeight = FontWeight.Medium)
             }
-            Icon(
-                Icons.Default.Inventory2, null,
-                Modifier.size(72.dp),
-                tint = AmberReplenish.copy(alpha = 0.5f)
-            )
+            Icon(Icons.Default.Inventory2, null, Modifier.size(72.dp), tint = AmberReplenish.copy(alpha = 0.5f))
         }
     }
 }
@@ -209,23 +170,18 @@ private fun QueueSummaryCard(totalCount: Int) {
 private fun SectionHeader(text: String) {
     Text(
         text,
-        style    = MaterialTheme.typography.labelSmall.copy(
-            fontWeight   = FontWeight.SemiBold,
-            letterSpacing = 1.sp
-        ),
+        style    = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp),
         color    = Color(0xFF757575),
         modifier = Modifier.padding(vertical = 4.dp)
     )
 }
 
 @Composable
-private fun ReplenishTaskCard(
-    taskId: String,
-    itemCount: Int,
-    dueBy: String?,
-    isHighPrio: Boolean,
+private fun ReplenishItemCard(
+    displayItem: ReplenishDisplayItem,
     onClick: () -> Unit
 ) {
+    val item = displayItem.item
     Card(
         modifier  = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape     = RoundedCornerShape(12.dp),
@@ -234,65 +190,81 @@ private fun ReplenishTaskCard(
     ) {
         Row(
             Modifier.padding(16.dp),
-            verticalAlignment    = Alignment.CenterVertically,
+            verticalAlignment     = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // Letter avatar
+            val avatarLetter = item.productName.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
             Box(
                 Modifier
-                    .size(56.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFFF5F5F5)),
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(AmberReplenish.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    Icons.Default.Checkroom, null,
-                    Modifier.size(28.dp), tint = Color(0xFFBDBDBD)
-                )
+                Text(avatarLetter, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = AmberReplenish)
             }
 
             Column(Modifier.weight(1f)) {
                 Text(
-                    "SKU ${taskId.take(10).uppercase()}",
+                    item.sku,
                     fontWeight = FontWeight.Bold,
                     style      = MaterialTheme.typography.bodyMedium,
                     color      = Color(0xFF212121)
                 )
-                Spacer(Modifier.height(2.dp))
                 Text(
-                    "$itemCount items to move",
+                    item.productName,
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF757575)
+                    color = Color(0xFF616161)
                 )
                 Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    InfoChip("Move $itemCount pcs")
-                    dueBy?.let { InfoChip("Due ${it.take(10)}") }
+                // Zone flow: Backroom → Floor
+                if (item.fromZone != null || item.toZone != null) {
+                    Row(
+                        verticalAlignment     = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        item.fromZone?.let {
+                            ZoneChip(it, Color(0xFF1565C0))
+                            Icon(Icons.AutoMirrored.Filled.ArrowForward, null,
+                                Modifier.size(12.dp), tint = Color(0xFFBDBDBD))
+                        }
+                        item.toZone?.let { ZoneChip(it, AmberReplenish) }
+                        Spacer(Modifier.width(4.dp))
+                        ZoneChip("Move ${item.requiredQty} pcs", Color(0xFF388E3C))
+                    }
+                } else {
+                    ZoneChip("Move ${item.requiredQty} pcs", Color(0xFF388E3C))
                 }
             }
 
-            if (isHighPrio) {
-                Text(
-                    "Low Stock",
-                    style      = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color      = RedCritical
-                )
+            if (displayItem.priority >= 2) {
+                Surface(
+                    color = Color(0xFFFFEBEE),
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        "Low Stock",
+                        Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        style      = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color      = Color(0xFFC62828)
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun InfoChip(text: String) {
-    Surface(
-        color = Color(0xFFF5F5F5),
-        shape = RoundedCornerShape(4.dp)
-    ) {
+private fun ZoneChip(text: String, color: Color) {
+    Surface(color = color.copy(alpha = 0.1f), shape = RoundedCornerShape(4.dp)) {
         Text(
             text,
             Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-            style = MaterialTheme.typography.labelSmall,
-            color = Color(0xFF616161)
+            style      = MaterialTheme.typography.labelSmall,
+            color      = color,
+            fontWeight = FontWeight.Medium
         )
     }
 }

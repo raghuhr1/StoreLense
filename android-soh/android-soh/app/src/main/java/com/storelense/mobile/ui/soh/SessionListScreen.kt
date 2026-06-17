@@ -109,11 +109,25 @@ private fun SessionCard(session: com.storelense.mobile.data.local.entity.SohSess
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(session.sessionType ?: "Full Store", style = MaterialTheme.typography.titleMedium)
-                    if (session.source == "erp_triggered") {
-                        ErpTriggeredChip()
+                    if (session.source == "erp_triggered") ErpTriggeredChip()
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(session.startedAt?.take(10) ?: "—", style = MaterialTheme.typography.bodySmall)
+                    if (session.expectedCount > 0) {
+                        Text(
+                            "${"%,d".format(session.expectedCount)} expected",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    session.zoneRegion?.let {
+                        Text("Zone: $it", style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                Text(session.startedAt?.take(10) ?: "—", style = MaterialTheme.typography.bodySmall)
             }
             StatusChip(session.status)
         }

@@ -8,6 +8,7 @@ import com.storelense.mobile.data.repository.ReaderSettings
 import com.storelense.mobile.data.repository.ReaderSettingsRepository
 import com.storelense.mobile.data.repository.SyncSettings
 import com.storelense.mobile.data.repository.SyncSettingsRepository
+import com.storelense.mobile.rfid.RfidReader
 import com.storelense.mobile.work.ProductSyncWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,7 +22,8 @@ data class SettingsState(
     val username: String = "",
     val role: String = "",
     val readerSettings: ReaderSettings = ReaderSettings(),
-    val syncSettings: SyncSettings = SyncSettings()
+    val syncSettings: SyncSettings = SyncSettings(),
+    val isReaderConnected: Boolean = false
 )
 
 @HiltViewModel
@@ -29,18 +31,28 @@ class SettingsViewModel @Inject constructor(
     private val auth: AuthRepository,
     private val readerPrefs: ReaderSettingsRepository,
     private val syncPrefs: SyncSettingsRepository,
-    private val workManager: WorkManager
+    private val workManager: WorkManager,
+    private val rfid: RfidReader
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
         SettingsState(
-            username       = auth.username ?: "",
-            role           = auth.role?.removePrefix("ROLE_") ?: "",
-            readerSettings = readerPrefs.load(),
-            syncSettings   = syncPrefs.load()
+            username          = auth.username ?: "",
+            role              = auth.role?.removePrefix("ROLE_") ?: "",
+            readerSettings    = readerPrefs.load(),
+            syncSettings      = syncPrefs.load(),
+            isReaderConnected = rfid.isConnected
         )
     )
     val state = _state.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            rfid.connectionState.collect { connected ->
+                _state.update { it.copy(isReaderConnected = connected) }
+            }
+        }
+    }
 
     fun saveReaderSettings(settings: ReaderSettings) {
         readerPrefs.save(settings)

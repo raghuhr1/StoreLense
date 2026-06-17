@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.storelense.mobile.data.local.entity.ProductEntity
 import com.storelense.mobile.data.remote.ApiService
+import com.storelense.mobile.data.remote.dto.EpcLocationDto
 import com.storelense.mobile.data.remote.dto.InventorySkuDto
 import com.storelense.mobile.data.repository.AuthRepository
 import com.storelense.mobile.data.repository.ProductRepository
@@ -24,7 +25,9 @@ data class ProductSearchState(
     val selectedProduct: ProductEntity? = null,
     val inventoryCounts: InventorySkuDto? = null,
     val inventoryLoading: Boolean      = false,
-    val inventoryError: String?        = null
+    val inventoryError: String?        = null,
+    val epcLocation: EpcLocationDto?   = null,
+    val locationLoading: Boolean       = false
 )
 
 @HiltViewModel
@@ -66,7 +69,9 @@ class ProductSearchViewModel @Inject constructor(
             selectedProduct  = product,
             inventoryCounts  = null,
             inventoryLoading = true,
-            inventoryError   = null
+            inventoryError   = null,
+            epcLocation      = null,
+            locationLoading  = false
         ) }
         viewModelScope.launch {
             val resp = try {
@@ -78,6 +83,17 @@ class ProductSearchViewModel @Inject constructor(
             val data = resp.body()?.data
             if (resp.isSuccessful && data != null) {
                 _state.update { it.copy(inventoryCounts = data, inventoryLoading = false) }
+                val firstEpc = data.epcs.firstOrNull()
+                if (firstEpc != null) {
+                    _state.update { it.copy(locationLoading = true) }
+                    try {
+                        val locResp = api.getEpcLocation(firstEpc)
+                        val loc = if (locResp.isSuccessful) locResp.body()?.data else null
+                        _state.update { it.copy(epcLocation = loc, locationLoading = false) }
+                    } catch (_: Exception) {
+                        _state.update { it.copy(locationLoading = false) }
+                    }
+                }
             } else {
                 _state.update { it.copy(inventoryLoading = false, inventoryError = "Could not load inventory") }
             }

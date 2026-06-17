@@ -28,6 +28,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.storelense.mobile.ui.theme.CardDark
 import com.storelense.mobile.ui.theme.DarkNavy
 import com.storelense.mobile.ui.theme.GreenGlow
+import kotlinx.coroutines.launch
 
 // ── Bottom nav tab enum shared by Home + Workflows ────────────────────────────
 enum class BottomNavTab { HOME, SCAN, LOCATE, TASKS, MORE }
@@ -36,21 +37,18 @@ enum class BottomNavTab { HOME, SCAN, LOCATE, TASKS, MORE }
 @Composable
 fun HomeScreen(
     onSoh: () -> Unit,
-    onInbound: () -> Unit,
     onReplenish: () -> Unit,
     onTransferOut: () -> Unit,
-    onProductSearch: () -> Unit,
     onItemLocator: () -> Unit,
-    onSpotCount: () -> Unit,
-    onGeigerLocate: () -> Unit,
     onExceptions: () -> Unit,
-    onSyncStatus: () -> Unit,
     onSettings: () -> Unit,
     onWorkflows: () -> Unit,
-    onLogout: () -> Unit,
     vm: DashboardViewModel = hiltViewModel()
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+    var showAiSheet by remember { mutableStateOf(false) }
 
     val healthPct = state.sohAccuracy.coerceIn(0f, 100f)
     val healthLabel = when {
@@ -74,8 +72,8 @@ fun HomeScreen(
                     Text("StoreLense", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 20.sp)
                 },
                 actions = {
-                    IconButton(onClick = {}) {
-                        Icon(Icons.Default.Notifications, contentDescription = "Notifications", tint = Color.White)
+                    IconButton(onClick = { showAiSheet = true }) {
+                        Icon(Icons.Default.Notifications, contentDescription = "AI Insights", tint = Color.White)
                     }
                 }
             )
@@ -251,6 +249,18 @@ fun HomeScreen(
                     }
                 }
             }
+        }
+    }
+
+    if (showAiSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showAiSheet = false },
+            sheetState       = sheetState,
+            containerColor   = MaterialTheme.colorScheme.surface
+        ) {
+            AiComingSoonSheet(onDismiss = {
+                scope.launch { sheetState.hide() }.invokeOnCompletion { showAiSheet = false }
+            })
         }
     }
 }
@@ -455,5 +465,94 @@ private fun ActivityStat(icon: ImageVector, value: String, label: String) {
         Icon(icon, null, tint = GreenGlow.copy(0.7f), modifier = Modifier.size(22.dp))
         Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
         Text(label, style = MaterialTheme.typography.labelSmall,  color = Color.White.copy(0.5f), textAlign = TextAlign.Center)
+    }
+}
+
+// ── StoreLense AI — Coming Soon sheet ─────────────────────────────────────────
+
+private val aiFeatures = listOf(
+    Triple(Icons.Default.TrendingDown,  "Shrinkage Alerts",        "AI detects unusual EPC loss patterns and flags likely theft or miscount zones before they hit P&L."),
+    Triple(Icons.Default.Autorenew,     "Smart Replenishment",     "Predicts which SKUs will hit zero before next delivery and pre-builds replenishment tasks overnight."),
+    Triple(Icons.Default.Insights,      "SOH Anomaly Detection",   "Compares scan-day counts against rolling 30-day baseline and highlights outliers for investigation."),
+    Triple(Icons.Default.Schedule,      "Optimal Scan Scheduling", "Recommends the best time windows for store audits based on traffic patterns and staffing data.")
+)
+
+@Composable
+private fun AiComingSoonSheet(onDismiss: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        // ── Header ──────────────────────────────────────────────────────────
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                Modifier
+                    .size(48.dp)
+                    .background(GreenGlow.copy(0.12f), RoundedCornerShape(14.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.AutoAwesome, null, tint = GreenGlow, modifier = Modifier.size(26.dp))
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text("StoreLense AI",
+                    style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("Retail intelligence for your store",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Surface(
+                color = GreenGlow.copy(0.12f),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("Coming Soon",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = GreenGlow)
+            }
+        }
+
+        HorizontalDivider()
+
+        // ── Feature preview tiles ────────────────────────────────────────────
+        aiFeatures.forEach { (icon, title, desc) ->
+            Row(
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Box(
+                    Modifier
+                        .size(40.dp)
+                        .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(10.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(icon, null,
+                        tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(title,
+                        style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Text(desc,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+
+        // ── Close ────────────────────────────────────────────────────────────
+        Button(
+            onClick  = onDismiss,
+            modifier = Modifier.fillMaxWidth(),
+            shape    = RoundedCornerShape(12.dp)
+        ) {
+            Text("Got it")
+        }
     }
 }

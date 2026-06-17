@@ -26,7 +26,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.storelense.mobile.data.local.entity.ProductEntity
+import com.storelense.mobile.data.remote.dto.EpcLocationDto
 import com.storelense.mobile.data.remote.dto.InventorySkuDto
 import com.storelense.mobile.ui.theme.StoreLenseTheme
 
@@ -35,9 +37,10 @@ import com.storelense.mobile.ui.theme.StoreLenseTheme
 fun ProductSearchScreen(
     onBack: () -> Unit,
     onViewEpcs: (String) -> Unit = {},
+    onLocate: (String) -> Unit = {},
     viewModel: ProductSearchViewModel = hiltViewModel()
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -90,11 +93,14 @@ fun ProductSearchScreen(
             ) {
                 state.selectedProduct?.let { product ->
                     InventoryPanel(
-                        product    = product,
-                        counts     = state.inventoryCounts,
-                        loading    = state.inventoryLoading,
-                        error      = state.inventoryError,
-                        onViewEpcs = { onViewEpcs(product.sku) }
+                        product         = product,
+                        counts          = state.inventoryCounts,
+                        loading         = state.inventoryLoading,
+                        error           = state.inventoryError,
+                        location        = state.epcLocation,
+                        locationLoading = state.locationLoading,
+                        onViewEpcs      = { onViewEpcs(product.sku) },
+                        onLocate        = { epc -> onLocate(epc) }
                     )
                 }
             }
@@ -133,7 +139,10 @@ private fun InventoryPanel(
     counts: InventorySkuDto?,
     loading: Boolean,
     error: String?,
-    onViewEpcs: () -> Unit
+    location: EpcLocationDto?,
+    locationLoading: Boolean,
+    onViewEpcs: () -> Unit,
+    onLocate: (String) -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -177,19 +186,32 @@ private fun InventoryPanel(
                         CountTile("Backroom",     counts.inBackroom, Modifier.weight(1f))
                         CountTile("Total",        counts.total,      Modifier.weight(1f))
                     }
-                    // ── VIEW EPCs button ───────────────────────────────────
-                    OutlinedButton(
-                        onClick  = onViewEpcs,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled  = counts.epcs.isNotEmpty()
-                    ) {
-                        Icon(Icons.Default.QrCode, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            if (counts.epcs.isNotEmpty()) "VIEW ${counts.epcs.size} EPCs"
-                            else "No EPCs on record"
-                        )
+                    // ── Action buttons ─────────────────────────────────────
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick  = onViewEpcs,
+                            modifier = Modifier.weight(1f),
+                            enabled  = counts.epcs.isNotEmpty()
+                        ) {
+                            Icon(Icons.Default.QrCode, null, Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (counts.epcs.isNotEmpty()) "${counts.epcs.size} EPCs" else "No EPCs")
+                        }
+                        Button(
+                            onClick  = { counts.epcs.firstOrNull()?.let { onLocate(it) } },
+                            modifier = Modifier.weight(1f),
+                            enabled  = counts.epcs.isNotEmpty(),
+                            colors   = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary
+                            )
+                        ) {
+                            Icon(Icons.Default.MyLocation, null, Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Locate")
+                        }
                     }
+                    // ── Last seen location ──────────────────────────────────
+                    LocationRow(location = location, loading = locationLoading)
                 }
             }
         }
@@ -220,6 +242,59 @@ private fun CountTile(label: String, count: Int, modifier: Modifier = Modifier) 
             )
         }
     }
+}
+
+@Composable
+private fun LocationRow(location: EpcLocationDto?, loading: Boolean) {
+    when {
+        loading -> Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 1.5.dp)
+            Text("Fetching location…", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        location != null && (location.zone != null || location.lastSeenAt != null) -> {
+            HorizontalDivider(Modifier.padding(vertical = 2.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(Icons.Default.LocationOn, null, Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.primary)
+                location.zone?.let {
+                    Text(it, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                }
+                location.lastSeenAt?.let {
+                    Text(
+                        "Last seen ${formatRelativeTime(it)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+        else -> {}
+    }
+}
+
+private fun formatRelativeTime(iso: String): String {
+    return try {
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
+        sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        val then = sdf.parse(iso.substringBefore('.').substringBefore('Z')) ?: return iso
+        val diffMs = System.currentTimeMillis() - then.time
+        val diffMin = diffMs / 60_000
+        when {
+            diffMin < 1   -> "just now"
+            diffMin < 60  -> "${diffMin}m ago"
+            diffMin < 1440 -> "${diffMin / 60}h ago"
+            else          -> "${diffMin / 1440}d ago"
+        }
+    } catch (_: Exception) { iso }
 }
 
 // ── Product list ───────────────────────────────────────────────────────────────

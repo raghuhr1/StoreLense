@@ -36,6 +36,7 @@ fun WorkflowsScreen(
     onScan: () -> Unit,
     onLocate: () -> Unit,
     onSettings: () -> Unit,
+    onReaderSettings: () -> Unit,
     vm: DashboardViewModel = hiltViewModel()
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -162,7 +163,7 @@ fun WorkflowsScreen(
                             subtitle   = "Devices & readers",
                             badge      = null,
                             badgeColor = Color.Gray,
-                            onClick    = onSettings
+                            onClick    = onReaderSettings
                         )
                     }
                 }

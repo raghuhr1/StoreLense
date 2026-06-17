@@ -18,7 +18,6 @@ import com.storelense.mobile.ui.home.HomeScreen
 import com.storelense.mobile.ui.home.WorkflowsScreen
 import com.storelense.mobile.ui.inbound.InboundListScreen
 import com.storelense.mobile.ui.inbound.InboundResultScreen
-import com.storelense.mobile.ui.inbound.legacy.InboundListScreenLegacy
 import com.storelense.mobile.ui.inbound.InboundScanScreen
 import com.storelense.mobile.ui.locator.GeigerLocatorScreen
 import com.storelense.mobile.ui.locator.ItemLocatorScreen
@@ -26,14 +25,12 @@ import com.storelense.mobile.ui.login.LoginScreen
 import com.storelense.mobile.ui.products.InventoryEpcsScreen
 import com.storelense.mobile.ui.products.ProductSearchScreen
 import com.storelense.mobile.ui.replenish.ReplenishListScreen
-import com.storelense.mobile.ui.replenish.legacy.ReplenishListScreenLegacy
 import com.storelense.mobile.ui.exceptions.ExceptionsListScreen
 import com.storelense.mobile.ui.exceptions.ExceptionsScreen
 import com.storelense.mobile.ui.exceptions.GhostAnalysisScreen
 import com.storelense.mobile.ui.exceptions.MissingEpcScreen
 import com.storelense.mobile.ui.transfer.TransferOutScreen
 import com.storelense.mobile.ui.transfer.TransferReceiveScreen
-import com.storelense.mobile.ui.UiConfig
 import com.storelense.mobile.ui.replenish.ReplenishResultScreen
 import com.storelense.mobile.ui.replenish.ReplenishTaskScreen
 import com.storelense.mobile.ui.settings.DeviceInfoScreen
@@ -112,39 +109,30 @@ fun AppNavigation() {
 
         composable(Routes.HOME) {
             HomeScreen(
-                onSoh           = { nav.navigate(Routes.SOH_LIST) },
-                onInbound       = { nav.navigate(Routes.INBOUND_LIST) },
-                onReplenish     = { nav.navigate(Routes.REPLENISH_LIST) },
-                onTransferOut   = { nav.navigate(Routes.TRANSFER_OUT) },
-                onProductSearch = { nav.navigate(Routes.PRODUCT_SEARCH) },
-                onItemLocator   = { nav.navigate(Routes.ITEM_LOCATOR) },
-                onSpotCount     = { nav.navigate(Routes.SPOT_COUNT) },
-                onGeigerLocate  = { nav.navigate(Routes.geigerLocate("")) },
-                onExceptions    = { nav.navigate(Routes.EXCEPTIONS) },
-                onSyncStatus    = { nav.navigate(Routes.SYNC_STATUS) },
-                onSettings      = { nav.navigate(Routes.SETTINGS) },
-                onWorkflows     = { nav.navigate(Routes.WORKFLOWS) },
-                onLogout        = {
-                    nav.navigate(Routes.LOGIN) {
-                        popUpTo(Routes.HOME) { inclusive = true }
-                    }
-                }
+                onSoh         = { nav.navigate(Routes.SOH_LIST) },
+                onReplenish   = { nav.navigate(Routes.REPLENISH_LIST) },
+                onTransferOut = { nav.navigate(Routes.TRANSFER_OUT) },
+                onItemLocator = { nav.navigate(Routes.ITEM_LOCATOR) },
+                onExceptions  = { nav.navigate(Routes.EXCEPTIONS) },
+                onSettings    = { nav.navigate(Routes.SETTINGS) },
+                onWorkflows   = { nav.navigate(Routes.WORKFLOWS) }
             )
         }
 
         // ── Workflows / Tasks hub ─────────────────────────────────────────
         composable(Routes.WORKFLOWS) {
             WorkflowsScreen(
-                onSoh           = { nav.navigate(Routes.SOH_LIST) },
-                onInbound       = { nav.navigate(Routes.INBOUND_LIST) },
-                onReplenish     = { nav.navigate(Routes.REPLENISH_LIST) },
-                onTransferOut   = { nav.navigate(Routes.TRANSFER_OUT) },
-                onExceptions    = { nav.navigate(Routes.EXCEPTIONS) },
-                onProductSearch = { nav.navigate(Routes.PRODUCT_SEARCH) },
-                onHome          = { nav.navigate(Routes.HOME) { popUpTo(Routes.HOME) { inclusive = true } } },
-                onScan          = { nav.navigate(Routes.SOH_LIST) },
-                onLocate        = { nav.navigate(Routes.ITEM_LOCATOR) },
-                onSettings      = { nav.navigate(Routes.SETTINGS) }
+                onSoh             = { nav.navigate(Routes.SOH_LIST) },
+                onInbound         = { nav.navigate(Routes.INBOUND_LIST) },
+                onReplenish       = { nav.navigate(Routes.REPLENISH_LIST) },
+                onTransferOut     = { nav.navigate(Routes.TRANSFER_OUT) },
+                onExceptions      = { nav.navigate(Routes.EXCEPTIONS) },
+                onProductSearch   = { nav.navigate(Routes.PRODUCT_SEARCH) },
+                onHome            = { nav.navigate(Routes.HOME) { popUpTo(Routes.HOME) { inclusive = true } } },
+                onScan            = { nav.navigate(Routes.SOH_LIST) },
+                onLocate          = { nav.navigate(Routes.ITEM_LOCATOR) },
+                onSettings        = { nav.navigate(Routes.SETTINGS) },
+                onReaderSettings  = { nav.navigate(Routes.SETTINGS_READER) }
             )
         }
 
@@ -179,17 +167,10 @@ fun AppNavigation() {
 
         // ── Inbound ───────────────────────────────────────────────────────
         composable(Routes.INBOUND_LIST) {
-            if (UiConfig.USE_NEW_UI) {
-                InboundListScreen(
-                    onShipmentSelected = { id -> nav.navigate(Routes.inboundScan(id)) },
-                    onBack             = { nav.popBackStack() }
-                )
-            } else {
-                InboundListScreenLegacy(
-                    onShipmentSelected = { id -> nav.navigate(Routes.inboundScan(id)) },
-                    onBack             = { nav.popBackStack() }
-                )
-            }
+            InboundListScreen(
+                onShipmentSelected = { id -> nav.navigate(Routes.inboundScan(id)) },
+                onBack             = { nav.popBackStack() }
+            )
         }
 
         composable(
@@ -221,17 +202,10 @@ fun AppNavigation() {
 
         // ── Replenish ─────────────────────────────────────────────────────
         composable(Routes.REPLENISH_LIST) {
-            if (UiConfig.USE_NEW_UI) {
-                ReplenishListScreen(
-                    onTaskSelected = { id -> nav.navigate(Routes.replenishTask(id)) },
-                    onBack         = { nav.popBackStack() }
-                )
-            } else {
-                ReplenishListScreenLegacy(
-                    onTaskSelected = { id -> nav.navigate(Routes.replenishTask(id)) },
-                    onBack         = { nav.popBackStack() }
-                )
-            }
+            ReplenishListScreen(
+                onTaskSelected = { id -> nav.navigate(Routes.replenishTask(id)) },
+                onBack         = { nav.popBackStack() }
+            )
         }
 
         composable(
@@ -259,7 +233,8 @@ fun AppNavigation() {
         composable(Routes.PRODUCT_SEARCH) {
             ProductSearchScreen(
                 onBack     = { nav.popBackStack() },
-                onViewEpcs = { sku -> nav.navigate(Routes.inventoryEpcs(sku)) }
+                onViewEpcs = { sku -> nav.navigate(Routes.inventoryEpcs(sku)) },
+                onLocate   = { epc -> nav.navigate(Routes.geigerLocate(epc)) }
             )
         }
 

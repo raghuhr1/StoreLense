@@ -128,6 +128,13 @@ interface RefillDao {
 
     @Query("UPDATE refill_tasks SET status = 'completed' WHERE id = :taskId")
     suspend fun markCompleted(taskId: String)
+
+    @Query("""
+        SELECT ri.* FROM refill_task_items ri
+        INNER JOIN refill_tasks rt ON ri.taskId = rt.id
+        WHERE rt.storeId = :storeId AND rt.status != 'completed'
+    """)
+    fun getAllItemsForStore(storeId: String): Flow<List<RefillTaskItemEntity>>
 }
 
 // ── Stores ────────────────────────────────────────────────────────────────────

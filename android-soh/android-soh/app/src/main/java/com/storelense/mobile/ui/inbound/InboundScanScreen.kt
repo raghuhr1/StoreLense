@@ -273,8 +273,8 @@ fun InboundScanScreen(
                     }
                 }
             } else {
-                items(state.recentScans) { epc ->
-                    RecentScanRow(epc)
+                items(state.recentScans) { entry ->
+                    RecentScanRow(entry)
                 }
             }
 
@@ -328,7 +328,14 @@ fun InboundScanScreen(
 // ── Sub-composables ───────────────────────────────────────────────────────────
 
 @Composable
-private fun RecentScanRow(epc: String) {
+private fun RecentScanRow(entry: InboundScanEntry) {
+    val elapsed = System.currentTimeMillis() - entry.scannedAtMillis
+    val timeLabel = when {
+        elapsed < 60_000L   -> "${elapsed / 1000}s ago"
+        elapsed < 3600_000L -> "${elapsed / 60_000}m ago"
+        else                -> java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                                   .format(java.util.Date(entry.scannedAtMillis))
+    }
     Row(
         modifier              = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment     = Alignment.CenterVertically,
@@ -336,12 +343,12 @@ private fun RecentScanRow(epc: String) {
     ) {
         Icon(Icons.Default.Nfc, null, Modifier.size(16.dp), tint = GreenComplete)
         Text(
-            "···${epc.takeLast(8)}",
+            "···${entry.epc.takeLast(8)}",
             style    = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1f)
         )
         Text(
-            "just now",
+            timeLabel,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

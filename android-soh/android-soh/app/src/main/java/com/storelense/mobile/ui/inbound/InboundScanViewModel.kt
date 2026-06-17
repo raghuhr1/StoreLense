@@ -39,7 +39,7 @@ data class InboundScanState(
     // Fix #14 — distinguish "paused by user" from "paused because load failed"
     val loadFailed: Boolean         = false,
     // Fix #12 — live EPC feed: last 10 unique scans, newest first
-    val recentScans: List<String>   = emptyList()
+    val recentScans: List<InboundScanEntry> = emptyList()
 )
 
 enum class ScanPhase { Connecting, Scanning, Paused, Uploading, Done }
@@ -103,7 +103,7 @@ class InboundScanViewModel @Inject constructor(
                                 scannedCount = scannedSet.size,
                                 matchedCount = if (read.epc in expectedSet) s.matchedCount + 1 else s.matchedCount,
                                 lastEpc      = read.epc.takeLast(8),
-                                recentScans  = (listOf(read.epc) + s.recentScans).take(10)  // Fix #12
+                                recentScans  = (listOf(InboundScanEntry(read.epc)) + s.recentScans).take(10)
                             )
                         }
                     }
@@ -212,6 +212,8 @@ class InboundScanViewModel @Inject constructor(
         viewModelScope.launch { rfid.disconnect() }
     }
 }
+
+data class InboundScanEntry(val epc: String, val scannedAtMillis: Long = System.currentTimeMillis())
 
 sealed interface InboundEvent {
     data class Complete(val received: Int, val expected: Int, val shortage: Int) : InboundEvent
