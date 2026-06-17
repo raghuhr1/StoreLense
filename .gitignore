@@ -31,6 +31,16 @@ android/**/*.keystore
 android/.idea/
 android/**/*.iml
 
+# android-soh project (nested at android-soh/android-soh/)
+android-soh/**/.gradle/
+android-soh/**/local.properties
+android-soh/**/build/
+android-soh/**/.idea/
+android-soh/**/*.apk
+android-soh/**/*.aab
+android-soh/**/*.keystore
+android-soh/**/*.iml
+
 # ── IDEs ──────────────────────────────────────────────────────────────────────
 .idea/
 *.iml
