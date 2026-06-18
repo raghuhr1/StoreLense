@@ -9,6 +9,7 @@ import { z }                  from 'zod'
 import { Plus, Pencil }       from 'lucide-react'
 import Header                 from '@/components/layout/Header'
 import DataTable              from '@/components/ui/DataTable'
+import SearchWithSuggestions  from '@/components/ui/SearchWithSuggestions'
 import { statusBadge }        from '@/components/ui/Badge'
 import { productsApi }        from '@/lib/api/products'
 import { fmt }                from '@/lib/utils'
@@ -88,6 +89,32 @@ export default function ProductsPage() {
   }, [data, filterBrand, filterRfid, filterStatus])
 
   const hasFilters = filterBrand || filterRfid || filterStatus
+
+  const suggestions = useMemo(() => {
+    const products = data?.content ?? []
+    const skuSuggestions = products.map(p => ({
+      id:       `sku-${p.id}`,
+      label:    p.sku,
+      sublabel: p.name,
+      category: 'SKU',
+      value:    p.sku,
+    }))
+    const nameSuggestions = products.map(p => ({
+      id:       `name-${p.id}`,
+      label:    p.name,
+      sublabel: p.brand ?? undefined,
+      category: 'Product Name',
+      value:    p.name,
+    }))
+    const brandSuggestions = brands.map(b => ({
+      id:       `brand-${b}`,
+      label:    b,
+      sublabel: 'Brand',
+      category: 'Brand',
+      value:    b,
+    }))
+    return [...skuSuggestions, ...nameSuggestions, ...brandSuggestions]
+  }, [data, brands])
 
   const columns = useMemo<ColumnDef<Product, unknown>[]>(() => [
     { accessorKey: 'sku',           header: 'SKU',    cell: i => <span className="font-mono text-xs font-semibold">{i.getValue<string>()}</span> },
@@ -196,11 +223,12 @@ export default function ProductsPage() {
       <div className="p-6 space-y-4">
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <input
-            className="input-field max-w-xs"
-            placeholder="Search by SKU or name…"
+          <SearchWithSuggestions
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={setSearch}
+            suggestions={suggestions}
+            placeholder="Search by SKU or name…"
+            className="max-w-xs"
           />
 
           <div className="flex flex-wrap items-center gap-2">

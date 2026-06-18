@@ -138,6 +138,33 @@ export default function InventoryPage() {
 
   const hasFilters = filterZone || filterBrand || filterAccuracy || filterStock
 
+  const suggestions = useMemo(() => {
+    const skuSuggestions = enrichedItems.map(r => ({
+      id:       `sku-${r.productId}`,
+      label:    r.sku,
+      sublabel: r.productName,
+      category: 'SKU',
+      value:    r.sku,
+    }))
+    const nameSuggestions = enrichedItems
+      .filter((r, i, arr) => arr.findIndex(x => x.productName === r.productName) === i && r.productName !== '—')
+      .map(r => ({
+        id:       `name-${r.productId}`,
+        label:    r.productName,
+        sublabel: r.sku,
+        category: 'Product',
+        value:    r.productName,
+      }))
+    const brandSuggestions = brands.map(b => ({
+      id:       `brand-${b}`,
+      label:    b,
+      sublabel: 'Department',
+      category: 'Brand',
+      value:    b,
+    }))
+    return [...skuSuggestions, ...nameSuggestions, ...brandSuggestions]
+  }, [enrichedItems, brands])
+
   const inventoryStats = useMemo(() => {
     const storeLevel = (items ?? []).filter(i => i.zoneId == null)
     const totalExpected = storeLevel.reduce((s, i) => s + i.quantityExpected, 0)
@@ -299,6 +326,7 @@ export default function InventoryPage() {
             isLoading={isLoading}
             searchable
             searchPlaceholder="Search SKU or product name…"
+            suggestions={suggestions}
           />
         </div>
 

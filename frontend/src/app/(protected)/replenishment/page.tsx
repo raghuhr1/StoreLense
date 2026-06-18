@@ -98,6 +98,35 @@ export default function ReplenishmentPage() {
   }, [rawTasks])
 
   const hasFilters = filterStatus || filterMovement
+
+  const suggestions = useMemo(() => {
+    const tasks = rawTasks ?? []
+    const taskSuggestions = tasks.map(t => ({
+      id:       `task-${t.id}`,
+      label:    t.id.slice(-8),
+      sublabel: SOURCE_LABEL[t.source] ?? t.source,
+      category: 'Tasks',
+      value:    t.id.slice(-8),
+    }))
+    const statusSuggestions = [
+      { id: 's-pending',     label: 'Pending',     sublabel: 'Status', category: 'Status', value: 'pending'     },
+      { id: 's-in_progress', label: 'In Progress', sublabel: 'Status', category: 'Status', value: 'in_progress' },
+      { id: 's-completed',   label: 'Completed',   sublabel: 'Status', category: 'Status', value: 'completed'   },
+      { id: 's-cancelled',   label: 'Cancelled',   sublabel: 'Status', category: 'Status', value: 'cancelled'   },
+    ]
+    const movementSuggestions = [
+      { id: 'mv-backroom', label: 'Backroom → Floor',  sublabel: 'Movement', category: 'Movement', value: 'Backroom → Floor'  },
+      { id: 'mv-dc',       label: 'DC → Sales Floor',  sublabel: 'Movement', category: 'Movement', value: 'DC → Sales Floor'  },
+    ]
+    const sourceSuggestions = Object.entries(SOURCE_LABEL).map(([k, v]) => ({
+      id:       `src-${k}`,
+      label:    v,
+      sublabel: 'Source',
+      category: 'Source',
+      value:    v,
+    }))
+    return [...taskSuggestions, ...statusSuggestions, ...movementSuggestions, ...sourceSuggestions]
+  }, [rawTasks])
   const selectCls  = 'text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500'
 
   const columns = useMemo<ColumnDef<RefillTask, unknown>[]>(() => [
@@ -239,6 +268,7 @@ export default function ReplenishmentPage() {
             isLoading={isLoading}
             searchable
             searchPlaceholder="Search tasks…"
+            suggestions={suggestions}
           />
         </div>
 

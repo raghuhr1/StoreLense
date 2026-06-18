@@ -8,6 +8,7 @@ import {
 import { useState }       from 'react'
 import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
 import { cn }             from '@/lib/utils'
+import SearchWithSuggestions, { type Suggestion } from './SearchWithSuggestions'
 
 interface Props<T> {
   data:     T[]
@@ -15,11 +16,12 @@ interface Props<T> {
   pageSize?: number
   searchable?: boolean
   searchPlaceholder?: string
+  suggestions?: Suggestion[]
   isLoading?: boolean
 }
 
 export default function DataTable<T>({
-  data, columns, pageSize = 20, searchable, searchPlaceholder = 'Search…', isLoading,
+  data, columns, pageSize = 20, searchable, searchPlaceholder = 'Search…', suggestions, isLoading,
 }: Props<T>) {
   const [sorting, setSorting]       = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
@@ -42,12 +44,22 @@ export default function DataTable<T>({
   return (
     <div className="space-y-3">
       {searchable && (
-        <input
-          value={globalFilter}
-          onChange={e => setGlobal(e.target.value)}
-          placeholder={searchPlaceholder}
-          className="input-field max-w-xs"
-        />
+        suggestions ? (
+          <SearchWithSuggestions
+            value={globalFilter}
+            onChange={setGlobal}
+            suggestions={suggestions}
+            placeholder={searchPlaceholder}
+            className="max-w-xs"
+          />
+        ) : (
+          <input
+            value={globalFilter}
+            onChange={e => setGlobal(e.target.value)}
+            placeholder={searchPlaceholder}
+            className="input-field max-w-xs"
+          />
+        )
       )}
 
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
