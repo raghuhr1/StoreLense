@@ -66,6 +66,7 @@ android {
         kotlinCompilerExtensionVersion = "1.5.15"
     }
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -84,8 +85,11 @@ dependencies {
     // EMDK — Zebra system library; place com.symbol.emdk.jar in app/libs/
     "zebraCompileOnly"(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar"))))
 
-    // Chainway UHF RFID SDK — place RFIDWithUHFUART.jar in app/chainway-libs/
-    "chainwayCompileOnly"(fileTree(mapOf("dir" to "chainway-libs", "include" to listOf("*.jar"))))
+    // Chainway UHF RFID SDK — supports both JAR and AAR
+    "chainwayImplementation"(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
+    "chainwayImplementation"(fileTree(mapOf("dir" to "chainway-libs", "include" to listOf("*.aar", "*.jar"))))
+
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     implementation(libs.core.ktx)
     implementation(libs.splash)

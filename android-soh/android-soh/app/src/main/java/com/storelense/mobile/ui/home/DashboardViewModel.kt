@@ -56,41 +56,45 @@ class DashboardViewModel @Inject constructor(
 
     init {
         refresh()
-        val storeId = auth.storeId ?: return
+        auth.storeId?.let { storeId ->
+            // Store name — try local DB first, fetch from API if not cached yet
+            viewModelScope.launch {
+                var name = stores.getStoresSync().firstOrNull { it.id == storeId }?.name
+                if (name == null) {
+                    stores.refreshStores()
+                    name = stores.getStoresSync().firstOrNull { it.id == storeId }?.name
+                }
+                if (name != null) _state.update { it.copy(storeName = name) }
+            }
 
-        // Store name from local DB (populated by product/store sync)
-        viewModelScope.launch {
-            val name = stores.getStoresSync().firstOrNull { it.id == storeId }?.name
-            if (name != null) _state.update { it.copy(storeName = name) }
-        }
-
-        // SOH sessions — count open (in_progress or pending)
-        viewModelScope.launch {
-            soh.sessionsFlow(storeId).collect { sessions ->
-                _state.update { s ->
-                    s.copy(
-                        activeErpSession = sessions.any {
-                            it.source == "erp_triggered" && it.status == "in_progress"
-                        },
-                        openSohSessions = sessions.count {
-                            it.status == "in_progress" || it.status == "pending"
-                        }
-                    )
+            // SOH sessions — count open (in_progress or pending)
+            viewModelScope.launch {
+                soh.sessionsFlow(storeId).collect { sessions ->
+                    _state.update { s ->
+                        s.copy(
+                            activeErpSession = sessions.any {
+                                it.source == "erp_triggered" && it.status == "in_progress"
+                            },
+                            openSohSessions = sessions.count {
+                                it.status == "in_progress" || it.status == "pending"
+                            }
+                        )
+                    }
                 }
             }
-        }
 
-        // Inbound shipments — count expected (not yet received)
-        viewModelScope.launch {
-            inbound.shipmentsFlow(storeId).collect { shipments ->
-                _state.update { it.copy(pendingInbound = shipments.count { s -> s.status == "expected" }) }
+            // Inbound shipments — count expected (not yet received)
+            viewModelScope.launch {
+                inbound.shipmentsFlow(storeId).collect { shipments ->
+                    _state.update { it.copy(pendingInbound = shipments.count { s -> s.status == "expected" }) }
+                }
             }
-        }
 
-        // Transfers — count not yet submitted
-        viewModelScope.launch {
-            transfers.transfersFlow().collect { list ->
-                _state.update { it.copy(pendingTransfers = list.count { t -> t.status == "PENDING" }) }
+            // Transfers — count not yet submitted
+            viewModelScope.launch {
+                transfers.transfersFlow().collect { list ->
+                    _state.update { it.copy(pendingTransfers = list.count { t -> t.status == "PENDING" }) }
+                }
             }
         }
     }

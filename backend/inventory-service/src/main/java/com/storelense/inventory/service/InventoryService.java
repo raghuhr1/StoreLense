@@ -1,5 +1,6 @@
 package com.storelense.inventory.service;
 
+import com.storelense.common.dto.PageResponse;
 import com.storelense.common.event.SohUpdatedEvent;
 import com.storelense.common.exception.ResourceNotFoundException;
 import com.storelense.common.kafka.KafkaTopics;
@@ -7,12 +8,14 @@ import com.storelense.inventory.domain.entity.EpcRegistry;
 import com.storelense.inventory.domain.entity.InventoryState;
 import com.storelense.inventory.domain.repository.EpcRegistryRepository;
 import com.storelense.inventory.domain.repository.InventoryStateRepository;
+import com.storelense.inventory.dto.EpcLedgerRow;
 import com.storelense.inventory.dto.EpcLocationResponse;
 import com.storelense.inventory.dto.EpcsByEanResponse;
 import com.storelense.inventory.dto.SkuInventoryResponse;
 import com.storelense.inventory.dto.SkuLedgerRow;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Pageable;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
@@ -273,6 +276,65 @@ public class InventoryService {
 
         log.info("Marked {} / {} EPCs as sold at store {}", marked, epcs.size(), storeId);
         return marked;
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<EpcLedgerRow> getEpcLedger(UUID storeId, String status, Pageable pageable) {
+        String statusParam = (status != null && !status.isBlank()) ? status : "";
+
+        long total = jdbcClient.sql("""
+                SELECT COUNT(*)
+                FROM inventory.epc_registry er
+                WHERE er.store_id = :storeId
+                  AND (:status = '' OR er.status = :status)
+                """)
+                .param("storeId", storeId)
+                .param("status",  statusParam)
+                .query(Long.class)
+                .single();
+
+        List<EpcLedgerRow> rows = jdbcClient.sql("""
+                SELECT
+                    er.epc,
+                    er.product_id,
+                    er.status,
+                    er.last_seen_at,
+                    er.first_seen_at,
+                    p.sku,
+                    p.name      AS product_name,
+                    z.name      AS zone_name
+                FROM inventory.epc_registry er
+                LEFT JOIN products.products p ON p.id = er.product_id
+                LEFT JOIN stores.zones z      ON z.id = er.zone_id
+                WHERE er.store_id = :storeId
+                  AND (:status = '' OR er.status = :status)
+                ORDER BY er.last_seen_at DESC NULLS LAST
+                LIMIT :size OFFSET :offset
+                """)
+                .param("storeId", storeId)
+                .param("status",  statusParam)
+                .param("size",    pageable.getPageSize())
+                .param("offset",  pageable.getOffset())
+                .query((rs, n) -> new EpcLedgerRow(
+                        rs.getString("epc"),
+                        rs.getObject("product_id", UUID.class),
+                        rs.getString("sku"),
+                        rs.getString("product_name"),
+                        rs.getString("zone_name"),
+                        rs.getString("status"),
+                        rs.getTimestamp("last_seen_at")  != null
+                                ? rs.getTimestamp("last_seen_at").toInstant().atOffset(ZoneOffset.UTC).toString()
+                                : null,
+                        rs.getTimestamp("first_seen_at") != null
+                                ? rs.getTimestamp("first_seen_at").toInstant().atOffset(ZoneOffset.UTC).toString()
+                                : null
+                ))
+                .list();
+
+        int pageNum   = pageable.getPageNumber();
+        int pageSize  = pageable.getPageSize();
+        int totalPages = pageSize > 0 ? (int) Math.ceil((double) total / pageSize) : 1;
+        return new PageResponse<>(rows, pageNum, pageSize, total, totalPages, (pageNum + 1) >= totalPages);
     }
 
     private java.math.BigDecimal calcAccuracy(int onHand, int expected) {

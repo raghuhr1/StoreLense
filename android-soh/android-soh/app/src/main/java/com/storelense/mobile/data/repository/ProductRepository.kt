@@ -26,37 +26,59 @@ class ProductRepository @Inject constructor(
     suspend fun getById(id: String): ProductEntity? = productDao.getById(id)
 
     suspend fun syncProducts(storeId: String): Result<Int> = try {
+        // Step 1: get store-specific inventory quantities and the set of relevant productIds.
+        // inventory/state is populated by ERP imports (quantityExpected) and RFID scans
+        // (quantityOnHand), so it correctly reflects what is actually in this store.
+        val invResp = api.getInventoryState(storeId)
+        val invByProductId: Map<String, Pair<Int, Int>> =
+            if (invResp.isSuccessful && invResp.body()?.success == true) {
+                val rows = invResp.body()?.data ?: emptyList()
+                // Aggregate across zones: sum quantities per product
+                rows.groupBy { it.productId }
+                    .mapValues { (_, zoneRows) ->
+                        Pair(
+                            zoneRows.sumOf { it.quantityOnHand },
+                            zoneRows.sumOf { it.quantityExpected }
+                        )
+                    }
+            } else emptyMap()
+
+        // Step 2: fetch global product catalog (backend ignores storeId, returns all products)
         var page = 0
-        var totalFetched = 0
         var hasMore = true
         val all = mutableListOf<ProductDto>()
-
         while (hasMore) {
             val resp = api.getProducts(storeId = storeId, page = page, size = 200)
             val body = resp.body()
             if (resp.isSuccessful && body?.success == true && body.data != null) {
-                val paged = body.data
-                all.addAll(paged.content)
-                totalFetched += paged.content.size
-                hasMore = page < paged.totalPages - 1
+                all.addAll(body.data.content)
+                hasMore = page < body.data.totalPages - 1
                 page++
-            } else {
-                hasMore = false
-            }
+            } else hasMore = false
         }
 
-        if (all.isNotEmpty()) {
-            productDao.deleteForStore(storeId)
-            productDao.upsertAll(all.map { it.toEntity(storeId) })
+        // Step 3: keep only products that have an inventory record for this store.
+        // If inventory state is empty (store has no data yet), fall back to the full catalog
+        // so the app isn't blank on first setup.
+        val storeProducts = if (invByProductId.isNotEmpty()) {
+            all.filter { it.id in invByProductId }.map { dto ->
+                val (onHand, expected) = invByProductId[dto.id] ?: Pair(0, 0)
+                dto.toEntity(storeId, onHand, expected)
+            }
+        } else {
+            all.map { it.toEntity(storeId, 0, 0) }
         }
-        Result.Success(totalFetched)
+
+        productDao.deleteForStore(storeId)
+        productDao.upsertAll(storeProducts)
+        Result.Success(storeProducts.size)
     } catch (e: Exception) {
         Result.Error(e.message ?: "Sync error")
     }
 
     suspend fun catalogCount(storeId: String): Int = productDao.countForStore(storeId)
 
-    private fun ProductDto.toEntity(storeId: String) = ProductEntity(
+    private fun ProductDto.toEntity(storeId: String, onHandQty: Int, expectedQty: Int) = ProductEntity(
         id           = id,
         sku          = sku,
         name         = name,
@@ -64,7 +86,7 @@ class ProductRepository @Inject constructor(
         brand        = brand,
         category     = category,
         erpCode      = erpCode,
-        storeId      = this.storeId ?: storeId,
+        storeId      = storeId,
         onHandQty    = onHandQty,
         expectedQty  = expectedQty,
         imageUrl     = imageUrl

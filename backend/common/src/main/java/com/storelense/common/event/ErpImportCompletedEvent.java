@@ -1,6 +1,7 @@
 package com.storelense.common.event;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 public record ErpImportCompletedEvent(
@@ -11,5 +12,8 @@ public record ErpImportCompletedEvent(
         int     totalSnapshots,
         int     resolvedEpcCount,
         int     unresolvedEanCount,
-        String  zoneRegion
-) {}
+        String  zoneRegion,
+        List<ResolvedItem> resolvedItems
+) {
+    public record ResolvedItem(UUID productId, int expectedQty) {}
+}

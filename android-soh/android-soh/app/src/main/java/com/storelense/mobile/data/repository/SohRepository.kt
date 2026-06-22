@@ -30,6 +30,7 @@ class SohRepository @Inject constructor(
             val body = resp.body()
             if (resp.isSuccessful && body?.success == true) {
                 val sessions = body.data?.content ?: emptyList()
+                sessionDao.deleteForStore(storeId)
                 sessionDao.upsertAll(sessions.map { it.toEntity() })
                 Result.Success(Unit)
             } else {
@@ -155,6 +156,10 @@ class SohRepository @Inject constructor(
         } catch (e: Exception) {
             return Result.Error(e.message ?: "Upload error")
         }
+    }
+
+    suspend fun deleteSession(sessionId: String) {
+        sessionDao.deleteById(sessionId)
     }
 
     suspend fun completeSession(sessionId: String): Result<SohSessionDto> {

@@ -1,5 +1,5 @@
 import client from './client'
-import type { ApiResponse, InventoryState, SkuLedgerRow } from '@/types'
+import type { ApiResponse, EpcLedgerRow, InventoryState, PageResponse, SkuLedgerRow } from '@/types'
 
 export const inventoryApi = {
   getState: (storeId: string) =>
@@ -17,4 +17,9 @@ export const inventoryApi = {
   skuLedger: (storeId: string) =>
     client.get<ApiResponse<SkuLedgerRow[]>>('/inventory/sku-ledger', { params: { storeId } })
       .then(r => r.data.data),
+
+  epcLedger: (storeId: string, status: string, page: number, size = 50) =>
+    client.get<ApiResponse<PageResponse<EpcLedgerRow>>>('/inventory/epc-ledger', {
+      params: { storeId, ...(status ? { status } : {}), page, size },
+    }).then(r => r.data.data),
 }

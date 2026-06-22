@@ -1,8 +1,10 @@
 package com.storelense.inventory.controller;
 
 import com.storelense.common.dto.ApiResponse;
+import com.storelense.common.dto.PageResponse;
 import com.storelense.common.security.StoreLensePrincipal;
 import com.storelense.inventory.domain.entity.InventoryState;
+import com.storelense.inventory.dto.EpcLedgerRow;
 import com.storelense.inventory.dto.EpcLocationResponse;
 import com.storelense.inventory.dto.EpcsByEanResponse;
 import com.storelense.inventory.dto.MarkEpcsSoldRequest;
@@ -14,6 +16,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -109,6 +113,19 @@ public class InventoryController {
 
         UUID effective = principal.isAdmin() ? storeId : principal.storeId();
         return ResponseEntity.ok(ApiResponse.ok(inventoryService.getEpcsByEan(ean, effective)));
+    }
+
+    @GetMapping("/epc-ledger")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER')")
+    @Operation(summary = "Individual EPC tag ledger — one row per EPC with status, product, and zone")
+    public ResponseEntity<ApiResponse<PageResponse<EpcLedgerRow>>> getEpcLedger(
+            @RequestParam UUID storeId,
+            @RequestParam(required = false) String status,
+            @PageableDefault(size = 50) Pageable pageable,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+
+        UUID effective = principal.isAdmin() ? storeId : principal.storeId();
+        return ResponseEntity.ok(ApiResponse.ok(inventoryService.getEpcLedger(effective, status, pageable)));
     }
 
     @GetMapping("/sku-ledger")

@@ -170,7 +170,18 @@ class ScanViewModel @Inject constructor(
                 collectConnectionState()   // Fix #8: watch for hardware drop
                 collectReads()
             }
-            is Result.Error -> _state.update { it.copy(phase = ScanPhase.Paused, error = r.message) }
+            is Result.Error -> {
+                val notFound = r.message?.contains("not found", ignoreCase = true) == true
+                            || r.message?.contains("404") == true
+                if (notFound) {
+                    // Server confirmed this session is gone — purge stale DB row and go back
+                    soh.deleteSession(sessionId)
+                    _events.emit(ScanEvent.Exit)
+                } else {
+                    // Network or other transient error — keep the session, show message
+                    _state.update { it.copy(phase = ScanPhase.Paused, error = r.message) }
+                }
+            }
         }
     }
 
@@ -324,9 +335,15 @@ class ScanViewModel @Inject constructor(
         }
     }
 
-    // Phase 5: shown when this is the last active device after marking done
+    // Phase 5: shown when this is the last active device after marking done.
+    // "Keep Scanning" → re-join as active, restart RFID so the session is resumable.
     fun dismissLastDeviceDialog() {
-        _state.update { it.copy(showLastDeviceDialog = false) }
+        _state.update { it.copy(showLastDeviceDialog = false, isZoneDone = false) }
+        viewModelScope.launch {
+            soh.joinSession(sessionId, deviceId, _state.value.zoneRegion)
+            rfid.startScan()
+            _state.update { it.copy(phase = ScanPhase.Scanning) }
+        }
     }
 
     fun completeAsLastDevice() = viewModelScope.launch {

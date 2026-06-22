@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -27,6 +28,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Slf4j
@@ -41,6 +43,7 @@ public class ErpImportService {
     private final ErpImportProperties           importProperties;
     private final EanResolutionService          eanResolutionService;
     private final ErpStoreMappingRepository     storeMappingRepository;
+    private final JdbcClient                    jdbcClient;
 
     // Self-injection through Spring proxy so @Transactional on commitImport is honoured
     @Lazy @Autowired
@@ -153,6 +156,29 @@ public class ErpImportService {
 
     private void publishEvent(ErpImportBatch batch, List<ErpSohSnapshot> snapshots) {
         String zoneRegion = snapshots.isEmpty() ? null : snapshots.get(0).getZoneRegion();
+
+        // Resolve EAN → productId via cross-schema query (shared Postgres DB)
+        List<ErpImportCompletedEvent.ResolvedItem> resolvedItems = snapshots.stream()
+                .filter(s -> "RESOLVED".equals(s.getResolutionStatus()))
+                .map(s -> {
+                    Optional<UUID> productId = jdbcClient.sql("""
+                            SELECT p.id FROM products.products p
+                            JOIN products.barcodes b ON b.product_id = p.id
+                            WHERE b.barcode_value = :ean
+                              AND b.barcode_type IN ('ean13','ean8','upc_a')
+                              AND p.is_active = true
+                            LIMIT 1
+                            """)
+                            .param("ean", s.getEan())
+                            .query(UUID.class)
+                            .optional();
+                    return productId.map(pid ->
+                            new ErpImportCompletedEvent.ResolvedItem(pid, s.getExpectedQty()))
+                            .orElse(null);
+                })
+                .filter(item -> item != null)
+                .toList();
+
         kafkaTemplate.send(
                 KafkaTopics.ERP_IMPORT_COMPLETED,
                 batch.getStoreId().toString(),
@@ -164,7 +190,8 @@ public class ErpImportService {
                         snapshots.size(),
                         batch.getResolvedRows(),
                         batch.getUnresolvedRows(),
-                        zoneRegion
+                        zoneRegion,
+                        resolvedItems
                 )
         );
     }

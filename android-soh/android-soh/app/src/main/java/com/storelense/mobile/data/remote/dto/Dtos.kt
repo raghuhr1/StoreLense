@@ -239,6 +239,14 @@ data class MissingEpcDetailDto(
     val classification: String   // READ_MISS_LIKELY | ACTUALLY_MISSING
 )
 
+// ── Inventory state (store-specific product list + quantities) ────────────────
+
+data class InventoryStateDto(
+    val productId: String,
+    val quantityOnHand: Int = 0,
+    val quantityExpected: Int = 0
+)
+
 // ── Inventory Lookup ──────────────────────────────────────────────────────────
 
 data class InventorySkuDto(

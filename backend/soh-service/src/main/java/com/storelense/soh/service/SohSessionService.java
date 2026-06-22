@@ -179,8 +179,18 @@ public class SohSessionService {
 
     private SohResult calculateResult(SohSession session) {
         var items = session.getItems();
-        int totalCounted  = items.stream().mapToInt(SohSessionItem::getCountedQuantity).sum();
-        int totalExpected = items.stream().mapToInt(SohSessionItem::getExpectedQuantity).sum();
+        int totalCounted = items.stream().mapToInt(SohSessionItem::getCountedQuantity).sum();
+
+        // Expected quantities live in inventory_state (populated by ERP import via Kafka).
+        // SohSessionItem.expectedQuantity is never set during scanning, so we query directly.
+        int totalExpected = jdbcClient.sql("""
+                SELECT COALESCE(SUM(quantity_expected), 0)
+                FROM inventory.inventory_state
+                WHERE store_id = :storeId
+                """)
+                .param("storeId", session.getStoreId())
+                .query(Integer.class)
+                .single();
         int varianceCount = (int) items.stream().filter(i -> i.getCountedQuantity() != i.getExpectedQuantity()).count();
         int overcount     = (int) items.stream().filter(i -> i.getCountedQuantity() > i.getExpectedQuantity()).count();
         int undercount    = (int) items.stream().filter(i -> i.getCountedQuantity() < i.getExpectedQuantity()).count();

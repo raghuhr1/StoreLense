@@ -33,11 +33,17 @@ interface SohSessionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(entities: List<SohSessionEntity>)
 
+    @Query("DELETE FROM soh_sessions WHERE storeId = :storeId")
+    suspend fun deleteForStore(storeId: String)
+
     @Query("SELECT * FROM soh_sessions WHERE storeId = :storeId ORDER BY cachedAt DESC")
     fun getForStore(storeId: String): Flow<List<SohSessionEntity>>
 
     @Query("SELECT * FROM soh_sessions WHERE id = :id")
     suspend fun getById(id: String): SohSessionEntity?
+
+    @Query("DELETE FROM soh_sessions WHERE id = :id")
+    suspend fun deleteById(id: String)
 }
 
 @Dao

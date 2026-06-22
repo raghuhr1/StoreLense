@@ -69,7 +69,14 @@ fun HomeScreen(
                     }
                 },
                 title = {
-                    Text("StoreLense", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 20.sp)
+                    Column {
+                        Text("StoreLense", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 20.sp)
+                        Text(
+                            text  = state.storeName ?: "Loading store…",
+                            color = Color.White.copy(alpha = 0.6f),
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
                 },
                 actions = {
                     IconButton(onClick = { showAiSheet = true }) {

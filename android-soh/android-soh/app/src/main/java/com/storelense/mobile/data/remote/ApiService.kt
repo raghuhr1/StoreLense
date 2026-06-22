@@ -178,6 +178,11 @@ interface ApiService {
 
     // ── Inventory Lookup ──────────────────────────────────────────────────────
 
+    @GET("api/inventory/state")
+    suspend fun getInventoryState(
+        @Query("storeId") storeId: String
+    ): Response<ApiResponse<List<InventoryStateDto>>>
+
     @GET("api/inventory/sku/{sku}")
     suspend fun getInventoryBySku(
         @Path("sku")      sku: String,

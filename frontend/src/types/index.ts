@@ -185,3 +185,14 @@ export interface SkuLedgerRow {
   total:       number
   lastSeenAt:  string | null
 }
+
+export interface EpcLedgerRow {
+  epc:         string
+  productId:   string | null
+  sku:         string | null
+  productName: string | null
+  zoneName:    string | null
+  status:      'in_store' | 'sold' | 'missing' | 'damaged' | 'transferred'
+  lastSeenAt:  string | null
+  firstSeenAt: string | null
+}
