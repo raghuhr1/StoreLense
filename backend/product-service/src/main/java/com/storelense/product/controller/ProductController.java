@@ -29,11 +29,14 @@ public class ProductController {
     private final ProductService productService;
 
     @GetMapping
-    @Operation(summary = "List or search products")
+    @Operation(summary = "List or search products",
+               description = "When storeId is supplied returns only products present in that store " +
+                             "(via inventory_state or epc_registry). Omit storeId for the full global catalog (admin use).")
     public ResponseEntity<ApiResponse<PageResponse<ProductResponse>>> list(
             @RequestParam(required = false) String search,
+            @RequestParam(required = false) UUID storeId,
             @PageableDefault(size = 50) Pageable pageable) {
-        return ResponseEntity.ok(ApiResponse.ok(productService.listProducts(search, pageable)));
+        return ResponseEntity.ok(ApiResponse.ok(productService.listProducts(search, storeId, pageable)));
     }
 
     @GetMapping("/{id}")

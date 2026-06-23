@@ -43,7 +43,9 @@ class ProductRepository @Inject constructor(
                     }
             } else emptyMap()
 
-        // Step 2: fetch global product catalog (backend ignores storeId, returns all products)
+        // Step 2: fetch store-scoped product catalog.
+        // Backend filters by storeId using inventory_state + epc_registry, so only
+        // products belonging to this store are returned.
         var page = 0
         var hasMore = true
         val all = mutableListOf<ProductDto>()
@@ -57,15 +59,18 @@ class ProductRepository @Inject constructor(
             } else hasMore = false
         }
 
-        // Step 3: keep only products that have an inventory record for this store.
-        // If inventory state is empty (store has no data yet), fall back to the full catalog
-        // so the app isn't blank on first setup.
+        // Step 3: attach inventory quantities to each product.
+        // When invByProductId is non-empty we also cross-check so only products
+        // with a known inventory record carry quantities. When it is empty (new store,
+        // no ERP import yet) we show the store's RFID-tracked products with qty=0
+        // rather than flooding the view with the entire global catalog.
         val storeProducts = if (invByProductId.isNotEmpty()) {
             all.filter { it.id in invByProductId }.map { dto ->
                 val (onHand, expected) = invByProductId[dto.id] ?: Pair(0, 0)
                 dto.toEntity(storeId, onHand, expected)
             }
         } else {
+            // No inventory_state yet — show backend-filtered list with qty=0
             all.map { it.toEntity(storeId, 0, 0) }
         }
 

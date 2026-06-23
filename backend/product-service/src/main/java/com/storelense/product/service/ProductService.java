@@ -39,10 +39,14 @@ public class ProductService {
     private static final Duration EPC_CACHE_TTL  = Duration.ofMinutes(30);
 
     @Transactional(readOnly = true)
-    public PageResponse<ProductResponse> listProducts(String search, Pageable pageable) {
-        var page = StringUtils.hasText(search)
-                ? productRepository.search(search, pageable)
-                : productRepository.findByActiveTrue(pageable);
+    public PageResponse<ProductResponse> listProducts(String search, UUID storeId, Pageable pageable) {
+        var page = storeId != null
+                ? (StringUtils.hasText(search)
+                        ? productRepository.searchByStore(search, storeId.toString(), pageable)
+                        : productRepository.findByStore(storeId.toString(), pageable))
+                : (StringUtils.hasText(search)
+                        ? productRepository.search(search, pageable)
+                        : productRepository.findByActiveTrue(pageable));
         return PageResponse.from(page.map(productMapper::toResponse));
     }
 

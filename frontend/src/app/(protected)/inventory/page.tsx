@@ -74,14 +74,14 @@ export default function InventoryPage() {
     enabled:  !!storeId,
   })
 
-  // Load all products for brand/name enrichment (cached 5 min)
+  // Load store-scoped products for brand/name enrichment (cached 5 min)
   const { data: allProducts } = useQuery({
-    queryKey: ['products-all-lookup'],
+    queryKey: ['products-store-lookup', storeId],
     queryFn:  async () => {
       const all: Product[] = []
       let page = 0
       while (true) {
-        const resp = await productsApi.list({ size: 500, page })
+        const resp = await productsApi.list({ size: 500, page, storeId: storeId || undefined })
         if (!resp?.content?.length) break
         all.push(...resp.content)
         if (resp.last || all.length >= resp.totalElements) break
@@ -89,6 +89,7 @@ export default function InventoryPage() {
       }
       return all
     },
+    enabled:   !!storeId,
     staleTime: 5 * 60 * 1000,
   })
 

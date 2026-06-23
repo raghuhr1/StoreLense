@@ -18,4 +18,64 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     @Query("SELECT p FROM Product p WHERE p.active = true AND " +
            "(LOWER(p.name) LIKE LOWER(CONCAT('%',:q,'%')) OR LOWER(p.sku) LIKE LOWER(CONCAT('%',:q,'%')))")
     Page<Product> search(@Param("q") String query, Pageable pageable);
+
+    // Store-scoped queries: return only products that belong to a specific store,
+    // determined by inventory_state (ERP-imported) or epc_registry (RFID-tracked).
+    @Query(value = """
+            SELECT DISTINCT p.* FROM products.products p
+            WHERE p.is_active = true
+              AND p.id IN (
+                  SELECT product_id FROM inventory.inventory_state
+                   WHERE store_id = :storeId::uuid
+                  UNION
+                  SELECT et.product_id FROM inventory.epc_registry er
+                  JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
+                   WHERE er.store_id = :storeId::uuid
+              )
+            """,
+            countQuery = """
+            SELECT COUNT(DISTINCT p.id) FROM products.products p
+            WHERE p.is_active = true
+              AND p.id IN (
+                  SELECT product_id FROM inventory.inventory_state
+                   WHERE store_id = :storeId::uuid
+                  UNION
+                  SELECT et.product_id FROM inventory.epc_registry er
+                  JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
+                   WHERE er.store_id = :storeId::uuid
+              )
+            """,
+            nativeQuery = true)
+    Page<Product> findByStore(@Param("storeId") String storeId, Pageable pageable);
+
+    @Query(value = """
+            SELECT DISTINCT p.* FROM products.products p
+            WHERE p.is_active = true
+              AND p.id IN (
+                  SELECT product_id FROM inventory.inventory_state
+                   WHERE store_id = :storeId::uuid
+                  UNION
+                  SELECT et.product_id FROM inventory.epc_registry er
+                  JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
+                   WHERE er.store_id = :storeId::uuid
+              )
+              AND (LOWER(p.name) LIKE LOWER(CONCAT('%',:q,'%'))
+                OR LOWER(p.sku)  LIKE LOWER(CONCAT('%',:q,'%')))
+            """,
+            countQuery = """
+            SELECT COUNT(DISTINCT p.id) FROM products.products p
+            WHERE p.is_active = true
+              AND p.id IN (
+                  SELECT product_id FROM inventory.inventory_state
+                   WHERE store_id = :storeId::uuid
+                  UNION
+                  SELECT et.product_id FROM inventory.epc_registry er
+                  JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
+                   WHERE er.store_id = :storeId::uuid
+              )
+              AND (LOWER(p.name) LIKE LOWER(CONCAT('%',:q,'%'))
+                OR LOWER(p.sku)  LIKE LOWER(CONCAT('%',:q,'%')))
+            """,
+            nativeQuery = true)
+    Page<Product> searchByStore(@Param("q") String query, @Param("storeId") String storeId, Pageable pageable);
 }

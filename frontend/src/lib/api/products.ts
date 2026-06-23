@@ -2,7 +2,7 @@ import client from './client'
 import type { ApiResponse, PageResponse, Product } from '@/types'
 
 export const productsApi = {
-  list: (params?: { search?: string; page?: number; size?: number }) =>
+  list: (params?: { search?: string; storeId?: string; page?: number; size?: number }) =>
     client.get<ApiResponse<PageResponse<Product>>>('/products', { params }).then(r => r.data.data),
 
   get: (id: string) =>
