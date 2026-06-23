@@ -4,7 +4,6 @@ import com.storelense.common.dto.ApiResponse;
 import com.storelense.common.dto.PageResponse;
 import com.storelense.common.security.StoreLensePrincipal;
 import com.storelense.product.dto.*;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import com.storelense.product.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -41,11 +40,17 @@ public class ProductController {
             @RequestParam(defaultValue = "false") boolean sync,
             @PageableDefault(size = 50) Pageable pageable,
             @AuthenticationPrincipal StoreLensePrincipal principal) {
-        // sync=true: mobile catalog download — return all active products, skip inventory filter.
+        // sync=true: mobile catalog download — null effective skips findByStore() entirely
+        // and calls findByActiveTrue() instead, which has no cross-schema dependency.
         // Otherwise non-admin users are scoped to their own store's inventory data.
-        UUID effective = (principal != null && !principal.isAdmin() && !sync)
-                ? principal.storeId()
-                : storeId;
+        UUID effective;
+        if (sync) {
+            effective = null;
+        } else if (principal != null && !principal.isAdmin()) {
+            effective = principal.storeId();
+        } else {
+            effective = storeId;
+        }
         return ResponseEntity.ok(ApiResponse.ok(productService.listProducts(search, effective, pageable)));
     }
 
