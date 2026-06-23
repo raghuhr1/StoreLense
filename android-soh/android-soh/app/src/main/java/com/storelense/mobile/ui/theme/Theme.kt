@@ -24,6 +24,14 @@ val DarkNavy       = Color(0xFF0D1A2E)   // Home dashboard dark background
 val CardDark       = Color(0xFF162032)   // Cards on dark background
 val GreenGlow      = Color(0xFF00E676)   // Health score accent on dark bg
 
+// ── Vibrant Clarity / Expert UI Palette ──────────────────────────────────────
+val DeepNavy      = Color(0xFF0F172A)
+val SurfaceSlate  = Color(0xFF1E293B)
+val EnergyEmerald = Color(0xFF10B981)
+val EnergyTeal    = Color(0xFF14B8A6)
+val SoftAmber     = Color(0xFFF59E0B)
+val MutedText     = Color(0xFF94A3B8)
+
 // ── Tinted card backgrounds (workflow) ───────────────────────────────────────
 val GreenTint      = Color(0xFFF1F8E9)
 val AmberTint      = Color(0xFFFFF3E0)

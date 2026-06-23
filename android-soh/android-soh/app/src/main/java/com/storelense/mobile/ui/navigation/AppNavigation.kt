@@ -15,6 +15,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.storelense.mobile.ui.home.HomeScreen
+import com.storelense.mobile.ui.home.ExpertHomeScreen
 import com.storelense.mobile.ui.home.WorkflowsScreen
 import com.storelense.mobile.ui.inbound.InboundListScreen
 import com.storelense.mobile.ui.inbound.InboundResultScreen
@@ -108,7 +109,8 @@ fun AppNavigation() {
         }
 
         composable(Routes.HOME) {
-            HomeScreen(
+            // Switch to ExpertHomeScreen for a better UX, or keep HomeScreen for the old version
+            ExpertHomeScreen(
                 onSoh         = { nav.navigate(Routes.SOH_LIST) },
                 onReplenish   = { nav.navigate(Routes.REPLENISH_LIST) },
                 onTransferOut = { nav.navigate(Routes.TRANSFER_OUT) },

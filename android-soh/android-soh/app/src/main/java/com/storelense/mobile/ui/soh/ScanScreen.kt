@@ -1,32 +1,41 @@
 package com.storelense.mobile.ui.soh
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.style.TextAlign
-import kotlin.math.roundToInt
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BatteryFull
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.storelense.mobile.ui.theme.StoreLenseTheme
+import com.storelense.mobile.ui.theme.*
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,289 +48,197 @@ fun ScanScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Collect navigation + one-shot events from the ViewModel
     LaunchedEffect(Unit) {
         vm.events.collect { event ->
             when (event) {
                 is ScanEvent.Complete -> onComplete(event.sessionId)
                 is ScanEvent.Exit     -> onBack()
-                // Fix #11: Overcount — show a persistent snackbar (user must dismiss)
                 is ScanEvent.Overcount -> snackbarHostState.showSnackbar(
-                    message  = "Scanned more items than expected — check you're in the correct zone",
-                    duration = SnackbarDuration.Indefinite,
-                    actionLabel = "OK"
+                    message  = "Overcount detected! Please verify the zone.",
+                    duration = SnackbarDuration.Short
                 )
             }
         }
     }
 
-    // Fix #1: Intercept Android system back gesture / button
     BackHandler { vm.requestExit() }
 
-    // Fix #1: Exit confirmation dialog
+    // Dialogs using the same theme style
     if (state.showExitDialog) {
-        AlertDialog(
-            onDismissRequest = vm::dismissExit,
-            title   = { Text("Leave scan?") },
-            text    = {
-                Text(
-                    "You have ${state.scannedCount} scanned EPCs not yet uploaded to the server. " +
-                    "They will be queued and uploaded automatically when you reconnect."
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = vm::confirmExit) { Text("Leave & Queue Upload") }
-            },
-            dismissButton = {
-                TextButton(onClick = vm::dismissExit) { Text("Keep Scanning") }
-            }
+        ScanAlertDialog(
+            title = "Interrupt Session?",
+            text = "You have ${state.scannedCount} scans pending upload. They will be saved locally.",
+            confirmLabel = "Confirm Exit",
+            onConfirm = vm::confirmExit,
+            onDismiss = vm::dismissExit
         )
     }
 
-    // Fix #4: Low-coverage warning before completing
     if (state.showLowCoverageDialog) {
-        val pct = if (state.expectedCount > 0)
-            (state.matchedCount * 100 / state.expectedCount) else 0
-        AlertDialog(
-            onDismissRequest = vm::dismissLowCoverage,
-            title   = { Text("Low coverage") },
-            text    = {
-                Text(
-                    "Only $pct% of expected items were found. " +
-                    "Are you sure this count is complete?"
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = vm::completeAnyway) { Text("Complete Anyway") }
-            },
-            dismissButton = {
-                TextButton(onClick = vm::dismissLowCoverage) { Text("Keep Scanning") }
-            }
-        )
-    }
-
-    // Fix #13: (superseded by Phase 5 zone-done flow — kept for safety, will not normally show)
-    if (state.showOtherDevicesActiveDialog) {
-        AlertDialog(
-            onDismissRequest = vm::dismissOtherDevicesDialog,
-            title = { Text("Other devices active") },
-            text  = {
-                Text(
-                    "${state.activeDeviceCount - 1} other device(s) are still scanning this session. " +
-                    "Completing now will finalise the count without their scans. Continue?"
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = vm::completeWithOtherDevicesActive) { Text("Complete Now") }
-            },
-            dismissButton = {
-                TextButton(onClick = vm::dismissOtherDevicesDialog) { Text("Wait for Others") }
-            }
-        )
-    }
-
-    // Phase 5: Zone conflict — another device already claimed our zone; join without a zone claim
-    if (state.showZonePickerDialog) {
-        AlertDialog(
-            onDismissRequest = vm::joinWithoutZone,
-            title = { Text("Zone already taken") },
-            text  = {
-                Text(
-                    "Zone '${state.takenZone}' is already claimed by another device. " +
-                    "You will join as 'Full Store' (no specific zone). " +
-                    "Your scans will still be counted."
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = vm::joinWithoutZone) { Text("Join as Full Store") }
-            }
-        )
-    }
-
-    // Phase 5: This device is the last active participant — offer to finalise the session
-    if (state.showLastDeviceDialog) {
-        AlertDialog(
-            onDismissRequest = vm::dismissLastDeviceDialog,
-            title = { Text("You're the last one counting") },
-            text  = { Text("All other devices have finished their zones. Complete the full session now?") },
-            confirmButton = {
-                TextButton(onClick = vm::completeAsLastDevice) { Text("Complete Session") }
-            },
-            dismissButton = {
-                TextButton(onClick = vm::dismissLastDeviceDialog) { Text("Keep Scanning") }
-            }
+        val pct = if (state.expectedCount > 0) (state.matchedCount * 100 / state.expectedCount) else 0
+        ScanAlertDialog(
+            title = "Incomplete Coverage",
+            text = "Only $pct% of expected items found. Finish session anyway?",
+            confirmLabel = "Complete",
+            onConfirm = vm::completeAnyway,
+            onDismiss = vm::dismissLowCoverage
         )
     }
 
     Scaffold(
+        containerColor = DeepNavy,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = DeepNavy),
                 title = {
-                    // Fix #10: show zone + ERP badge under the screen title
                     Column {
-                        Text("SOH Scan")
-                        Row(
-                            verticalAlignment     = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                "Zone: ${state.zoneRegion ?: "Full Store"}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            if (state.isErpTriggered) {
-                                Surface(
-                                    color = Color(0xFFFFF3E0),
-                                    shape = MaterialTheme.shapes.extraSmall
-                                ) {
-                                    Text(
-                                        "ERP",
-                                        Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                        color      = Color(0xFFE65100),
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize   = 10.sp
-                                    )
-                                }
-                            }
-                        }
+                        Text("Inventory Audit", fontWeight = FontWeight.Black, color = Color.White)
+                        Text(
+                            text = state.zoneRegion ?: "Full Store",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = EnergyTeal,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 },
-                // Fix #1: route back arrow through requestExit instead of onBack directly
                 navigationIcon = {
                     IconButton(onClick = vm::requestExit) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
+                    }
+                },
+                actions = {
+                    if (state.isErpTriggered) {
+                        Surface(
+                            color = SoftAmber.copy(0.15f),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.padding(end = 16.dp)
+                        ) {
+                            Text(
+                                "ERP PRIORITY",
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = SoftAmber,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
                     }
                 }
             )
         }
     ) { padding ->
         Column(
-            Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // Fix #3: Restored EPCs banner shown when re-entering an interrupted session
-            if (state.restoredCount > 0) {
+            // Multi-device banner
+            AnimatedVisibility(visible = state.activeDeviceCount > 1) {
                 Surface(
-                    color  = MaterialTheme.colorScheme.primaryContainer,
-                    shape  = MaterialTheme.shapes.medium,
+                    color = EnergyTeal.copy(0.1f),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        "Restored ${state.restoredCount} EPCs from previous session",
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Speed, null, tint = EnergyTeal, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "${state.activeDeviceCount} users scanning this session",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = EnergyTeal,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
-                Spacer(Modifier.height(8.dp))
-            }
-
-            // Fix #13: Multi-device banner — only visible when another device is in the same session
-            if (state.activeDeviceCount > 1) {
-                Surface(
-                    color    = Color(0xFFFFF3E0),
-                    shape    = MaterialTheme.shapes.medium,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        "👥 ${state.activeDeviceCount} devices scanning this session",
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        style    = MaterialTheme.typography.bodySmall,
-                        color    = Color(0xFFE65100)
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
             }
 
             AuditProgressCard(
                 scannedCount  = state.scannedCount,
                 matchedCount  = state.matchedCount,
                 expectedCount = state.expectedCount,
-                phase         = state.phase,
-                zoneRegion    = state.zoneRegion
+                phase         = state.phase
             )
-            Spacer(Modifier.height(12.dp))
 
-            // ── Metrics row ────────────────────────────────────────────────
-            Card(
+            // Metrics Grid
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                MetricCard(
+                    label = "Read Rate",
+                    value = "${state.readRate.toInt()}/s",
+                    icon = Icons.Default.Speed,
+                    modifier = Modifier.weight(1f)
+                )
+                MetricCard(
+                    label = "Battery",
+                    value = "${state.batteryPct}%",
+                    icon = Icons.Default.BatteryFull,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            // Signal & Last EPC
+            Surface(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                color = SurfaceSlate.copy(0.5f),
+                shape = RoundedCornerShape(16.dp)
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    MetricItem(
-                        icon  = { Icon(Icons.Default.Speed, null, modifier = Modifier.size(16.dp)) },
-                        value = "${"%.1f".format(state.readRate)}/s",
-                        label = "Rate"
-                    )
-                    VerticalDivider(modifier = Modifier.height(32.dp))
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        SignalBarsIcon(
-                            bars     = state.readerSignalBars,
-                            modifier = Modifier.size(width = 22.dp, height = 18.dp)
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SignalBarsIcon(bars = state.readerSignalBars, modifier = Modifier.size(24.dp, 18.dp))
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("LAST READ", style = MaterialTheme.typography.labelSmall, color = MutedText, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (state.lastEpc.isEmpty()) "Wating for tags…" else state.lastEpc,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(0.7f),
+                            maxLines = 1
                         )
-                        Text("Reader", style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    VerticalDivider(modifier = Modifier.height(32.dp))
-                    MetricItem(
-                        icon  = { Icon(Icons.Default.BatteryFull, null, modifier = Modifier.size(16.dp)) },
-                        value = "${state.batteryPct}%",
-                        label = "Battery"
-                    )
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-
-            if (state.lastEpc.isNotBlank()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Last: …${state.lastEpc}", style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.outline)
-                    state.lastEpcTime?.let {
-                        Text("  @$it", style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outlineVariant)
                     }
                 }
-            }
-
-            state.error?.let {
-                Spacer(Modifier.height(8.dp))
-                Text(it, color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall)
             }
 
             Spacer(Modifier.weight(1f))
 
+            // Action Section
             if (state.phase == ScanPhase.Uploading) {
-                CircularProgressIndicator()
-                Text("Uploading…", Modifier.padding(top = 8.dp))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = EnergyEmerald)
+                    Spacer(Modifier.height(12.dp))
+                    Text("Syncing audit results…", color = Color.White, fontWeight = FontWeight.Bold)
+                }
             } else {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    if (state.phase == ScanPhase.Scanning || state.phase == ScanPhase.Paused) {
-                        OutlinedButton(
-                            onClick = vm::togglePause,
-                            modifier = Modifier.weight(1f).height(52.dp)
-                        ) {
-                            Text(if (state.phase == ScanPhase.Paused) "Resume" else "Pause")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    // Pause/Resume Button
+                    Surface(
+                        onClick = vm::togglePause,
+                        modifier = Modifier.weight(1f).height(60.dp),
+                        shape = RoundedCornerShape(18.dp),
+                        color = SurfaceSlate
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                if (state.phase == ScanPhase.Paused) "RESUME" else "PAUSE",
+                                color = Color.White,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.sp
+                            )
                         }
                     }
+
+                    // Done Button
                     Button(
                         onClick  = vm::markZoneDone,
-                        modifier = Modifier.weight(1f).height(52.dp),
-                        enabled  = state.scannedCount > 0
-                                && !state.isZoneDone
-                                && state.phase != ScanPhase.Uploading
-                                && state.phase != ScanPhase.Done
+                        modifier = Modifier.weight(1.5f).height(60.dp),
+                        shape    = RoundedCornerShape(18.dp),
+                        colors   = ButtonDefaults.buttonColors(containerColor = EnergyEmerald),
+                        enabled  = state.scannedCount > 0 && !state.isZoneDone
                     ) {
                         Text(
-                            if (state.isZoneDone) "Waiting…" else "Mark Zone Done",
-                            fontSize = 16.sp
+                            if (state.isZoneDone) "PENDING…" else "FINISH ZONE",
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.sp
                         )
                     }
                 }
@@ -331,49 +248,18 @@ fun ScanScreen(
 }
 
 @Composable
-private fun MetricItem(icon: @Composable () -> Unit, value: String, label: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            icon()
-            Text(value, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+private fun MetricCard(label: String, value: String, icon: ImageVector, modifier: Modifier) {
+    Surface(
+        modifier = modifier,
+        color = SurfaceSlate,
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Icon(icon, null, tint = EnergyTeal, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.height(8.dp))
+            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, color = Color.White)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MutedText)
         }
-        Text(label, style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun SignalBarsIcon(bars: Int, modifier: Modifier = Modifier) {
-    val activeColor   = Color(0xFF4CAF50)
-    val inactiveColor = Color.Gray.copy(alpha = 0.3f)
-    Canvas(modifier = modifier) {
-        if (size.isEmpty()) return@Canvas
-        val totalBars = 4
-        val gap       = size.width * 0.1f
-        val barWidth  = (size.width - gap * (totalBars - 1)) / totalBars
-        for (i in 0 until totalBars) {
-            val barH = size.height * (i + 1) / totalBars.toFloat()
-            drawRect(
-                color   = if (i < bars) activeColor else inactiveColor,
-                topLeft = Offset(x = i * (barWidth + gap), y = size.height - barH),
-                size    = Size(barWidth, barH)
-            )
-        }
-    }
-}
-
-@Composable
-private fun PhaseIndicator(phase: ScanPhase) {
-    val (text, color) = when (phase) {
-        ScanPhase.Connecting -> "Connecting…" to Color(0xFFFF9800)
-        ScanPhase.Scanning   -> "● SCANNING"  to Color(0xFF4CAF50)
-        ScanPhase.Paused     -> "⏸ PAUSED"    to Color(0xFFFF9800)
-        ScanPhase.Uploading  -> "Uploading…"  to MaterialTheme.colorScheme.primary
-        ScanPhase.Done       -> "Complete ✓"  to Color(0xFF4CAF50)
-    }
-    Surface(color = color.copy(.15f), shape = MaterialTheme.shapes.medium) {
-        Text(text, Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-            color = color, fontWeight = FontWeight.Bold, fontSize = 16.sp)
     }
 }
 
@@ -382,112 +268,125 @@ private fun AuditProgressCard(
     scannedCount: Int,
     matchedCount: Int,
     expectedCount: Int,
-    phase: ScanPhase,
-    zoneRegion: String?
+    phase: ScanPhase
 ) {
-    val pct     = if (expectedCount > 0) (matchedCount.toFloat() / expectedCount * 100f).coerceIn(0f, 100f) else 0f
-    val missing = if (expectedCount > 0) maxOf(0, expectedCount - matchedCount) else 0
-    val ringColor = when {
-        pct >= 95f -> Color(0xFF4CAF50)
-        pct >= 70f -> MaterialTheme.colorScheme.primary
-        pct > 0f   -> Color(0xFFFF9800)
-        else       -> MaterialTheme.colorScheme.primary
-    }
+    val rawPct = if (expectedCount > 0) (matchedCount.toFloat() / expectedCount * 100f).coerceIn(0f, 100f) else 0f
+    val pct by animateFloatAsState(
+        targetValue = rawPct,
+        animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing),
+        label = "auditRing"
+    )
+
     Card(
-        modifier  = Modifier.fillMaxWidth(),
-        shape     = RoundedCornerShape(20.dp),
-        elevation = CardDefaults.cardElevation(2.dp)
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceSlate),
+        border = BorderStroke(1.dp, Color.White.copy(0.05f))
     ) {
         Column(
-            modifier            = Modifier.padding(20.dp),
+            modifier = Modifier.padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            AuditRing(pct = pct, color = ringColor, phase = phase)
-            Text(
-                "Zone: ${zoneRegion ?: "Full Store"}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            HorizontalDivider()
+            Box(contentAlignment = Alignment.Center) {
+                // Large High-End Ring
+                Canvas(Modifier.size(180.dp)) {
+                    val stroke = Stroke(18.dp.toPx(), cap = StrokeCap.Round)
+                    drawArc(Color.White.copy(0.05f), -90f, 360f, false, style = stroke)
+                    drawArc(
+                        brush = Brush.sweepGradient(listOf(EnergyEmerald, EnergyTeal, EnergyEmerald)),
+                        startAngle = -90f,
+                        sweepAngle = (pct / 100f) * 360f,
+                        useCenter = false,
+                        style = stroke
+                    )
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("${pct.toInt()}%", fontSize = 48.sp, fontWeight = FontWeight.Black, color = Color.White)
+                    Text("COVERAGE", style = MaterialTheme.typography.labelSmall, color = MutedText, letterSpacing = 2.sp)
+                }
+                
+                // Status Indicator
+                Box(Modifier.size(180.dp), contentAlignment = Alignment.BottomCenter) {
+                    val phaseColor = when(phase) {
+                        ScanPhase.Scanning -> EnergyEmerald
+                        ScanPhase.Paused -> SoftAmber
+                        else -> EnergyTeal
+                    }
+                    Surface(
+                        color = phaseColor,
+                        shape = CircleShape,
+                        modifier = Modifier.size(12.dp).offset(y = 6.dp)
+                    ) {}
+                }
+            }
+
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                AuditStat("%,d".format(scannedCount), "Scanned EPCs")
-                VerticalDivider(Modifier.height(36.dp))
-                AuditStat(
-                    "$missing", "Missing Items",
-                    if (missing > 0) Color(0xFFE53935) else Color(0xFF4CAF50)
-                )
-                VerticalDivider(Modifier.height(36.dp))
-                AuditStat("${pct.roundToInt()}%", "Accuracy", ringColor)
+                ScanStatItem("Scanned", scannedCount.toString(), Color.White)
+                Box(Modifier.width(1.dp).height(32.dp).background(Color.White.copy(0.1f)))
+                ScanStatItem("Missing", maxOf(0, expectedCount - matchedCount).toString(), Color(0xFFFB7185))
+                Box(Modifier.width(1.dp).height(32.dp).background(Color.White.copy(0.1f)))
+                ScanStatItem("Matched", matchedCount.toString(), EnergyEmerald)
             }
         }
     }
 }
 
 @Composable
-private fun AuditRing(pct: Float, color: Color, phase: ScanPhase) {
-    val animPct by animateFloatAsState(
-        targetValue   = (pct / 100f).coerceIn(0f, 1f),
-        animationSpec = tween(800, easing = FastOutSlowInEasing),
-        label         = "auditRing"
+private fun ScanStatItem(label: String, value: String, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, color = color)
+        Text(label.uppercase(), style = MaterialTheme.typography.labelSmall, color = MutedText, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun ScanAlertDialog(
+    title: String,
+    text: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceSlate,
+        titleContentColor = Color.White,
+        textContentColor = MutedText,
+        title = { Text(title, fontWeight = FontWeight.Bold) },
+        text = { Text(text) },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(containerColor = EnergyEmerald)
+            ) {
+                Text(confirmLabel, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = MutedText)
+            }
+        }
     )
-    val (phaseText, phaseColor) = when (phase) {
-        ScanPhase.Connecting -> "Connecting…" to Color(0xFFFF9800)
-        ScanPhase.Scanning   -> "In Progress" to Color(0xFF4CAF50)
-        ScanPhase.Paused     -> "Paused"      to Color(0xFFFF9800)
-        ScanPhase.Uploading  -> "Uploading…"  to MaterialTheme.colorScheme.primary
-        ScanPhase.Done       -> "Complete ✓"  to Color(0xFF4CAF50)
-    }
-    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(160.dp)) {
-        Canvas(Modifier.size(160.dp)) {
-            val stroke = Stroke(16.dp.toPx(), cap = StrokeCap.Round)
-            drawArc(Color.Gray.copy(alpha = 0.15f), -90f, 360f, false, style = stroke)
-            if (animPct > 0f) drawArc(color, -90f, animPct * 360f, false, style = stroke)
-        }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("${pct.roundToInt()}%",
-                style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-            Surface(color = phaseColor.copy(0.15f), shape = MaterialTheme.shapes.extraSmall) {
-                Text(
-                    phaseText,
-                    Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                    color = phaseColor, fontWeight = FontWeight.SemiBold, fontSize = 11.sp
-                )
-            }
-        }
-    }
 }
 
 @Composable
-private fun AuditStat(value: String, label: String, valueColor: Color = Color.Unspecified) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        val c = if (valueColor != Color.Unspecified) valueColor else MaterialTheme.colorScheme.onSurface
-        Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = c)
-        Text(label, style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-    }
-}
-
-// ── Previews ──────────────────────────────────────────────────────────────────
-
-@Preview(showBackground = true, widthDp = 360, name = "Phase – Scanning")
-@Composable
-private fun PhaseIndicatorScanningPreview() {
-    StoreLenseTheme { PhaseIndicator(ScanPhase.Scanning) }
-}
-
-@Preview(showBackground = true, widthDp = 360, name = "Phase – Paused")
-@Composable
-private fun PhaseIndicatorPausedPreview() {
-    StoreLenseTheme { PhaseIndicator(ScanPhase.Paused) }
-}
-
-@Preview(showBackground = true, widthDp = 360, name = "Signal Bars – 3 of 4")
-@Composable
-private fun SignalBarsPreview() {
-    StoreLenseTheme {
-        Box(Modifier.padding(16.dp)) {
-            SignalBarsIcon(bars = 3, modifier = Modifier.size(width = 44.dp, height = 36.dp))
+private fun SignalBarsIcon(bars: Int, modifier: Modifier = Modifier) {
+    val activeColor   = EnergyEmerald
+    val inactiveColor = Color.White.copy(alpha = 0.1f)
+    Canvas(modifier = modifier) {
+        if (size.isEmpty()) return@Canvas
+        val totalBars = 4
+        val gap       = size.width * 0.15f
+        val barWidth  = (size.width - gap * (totalBars - 1)) / totalBars
+        for (i in 0 until totalBars) {
+            val barH = size.height * (i + 1) / totalBars.toFloat()
+            drawRect(
+                color   = if (i < bars) activeColor else inactiveColor,
+                topLeft = Offset(x = i * (barWidth + gap), y = size.height - barH),
+                size    = Size(barWidth, barH)
+            )
         }
     }
 }

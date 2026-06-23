@@ -60,18 +60,12 @@ class ProductRepository @Inject constructor(
         }
 
         // Step 3: attach inventory quantities to each product.
-        // When invByProductId is non-empty we also cross-check so only products
-        // with a known inventory record carry quantities. When it is empty (new store,
-        // no ERP import yet) we show the store's RFID-tracked products with qty=0
-        // rather than flooding the view with the entire global catalog.
-        val storeProducts = if (invByProductId.isNotEmpty()) {
-            all.filter { it.id in invByProductId }.map { dto ->
-                val (onHand, expected) = invByProductId[dto.id] ?: Pair(0, 0)
-                dto.toEntity(storeId, onHand, expected)
-            }
-        } else {
-            // No inventory_state yet — show backend-filtered list with qty=0
-            all.map { it.toEntity(storeId, 0, 0) }
+        // We only keep products that are present in the store's inventory state.
+        // This prevents flooding the view with the entire global catalog for stores
+        // that only own a subset of products.
+        val storeProducts = all.filter { it.id in invByProductId }.map { dto ->
+            val (onHand, expected) = invByProductId[dto.id] ?: Pair(0, 0)
+            dto.toEntity(storeId, onHand, expected)
         }
 
         productDao.deleteForStore(storeId)

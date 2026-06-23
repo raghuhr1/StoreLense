@@ -3,6 +3,7 @@ package com.storelense.mobile.ui.products
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,9 +19,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -30,7 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.storelense.mobile.data.local.entity.ProductEntity
 import com.storelense.mobile.data.remote.dto.EpcLocationDto
 import com.storelense.mobile.data.remote.dto.InventorySkuDto
-import com.storelense.mobile.ui.theme.StoreLenseTheme
+import com.storelense.mobile.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,27 +46,29 @@ fun ProductSearchScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     Scaffold(
+        containerColor = DeepNavy,
         topBar = {
             TopAppBar(
-                title = { Text("Product Search", fontWeight = FontWeight.SemiBold) },
+                title = { Text("Product Search", fontWeight = FontWeight.Black, color = Color.White) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
                 },
                 actions = {
                     if (state.isSyncing) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(24.dp).padding(end = 8.dp),
-                            strokeWidth = 2.dp
+                            strokeWidth = 2.dp,
+                            color = EnergyEmerald
                         )
                     } else {
                         IconButton(onClick = { viewModel.triggerSync() }) {
-                            Icon(Icons.Default.Sync, contentDescription = "Sync catalog")
+                            Icon(Icons.Default.Sync, contentDescription = "Sync catalog", tint = Color.White)
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = DeepNavy)
             )
         }
     ) { padding ->
@@ -72,17 +77,24 @@ fun ProductSearchScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            CatalogStatusCard(
+            // ── Search & Filter Section ─────────────────────────────────────
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(DeepNavy)
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                SearchBar(
+                    query         = state.query,
+                    onQueryChange = viewModel::onQueryChange,
+                    onClear       = viewModel::clearQuery
+                )
+            }
+
+            CatalogStatusBadge(
                 count     = state.catalogCount,
                 syncError = state.lastSyncError,
                 onSync    = { viewModel.triggerSync() }
-            )
-
-            SearchBar(
-                query         = state.query,
-                onQueryChange = viewModel::onQueryChange,
-                onClear       = viewModel::clearQuery,
-                modifier      = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
 
             // ── Inventory panel — appears when a product is selected ────────
@@ -110,9 +122,9 @@ fun ProductSearchScreen(
                     state.isSearching -> {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                                Text("Searching offline catalog…", style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                CircularProgressIndicator(color = EnergyEmerald)
+                                Text("Searching catalog…", style = MaterialTheme.typography.bodyMedium,
+                                    color = MutedText)
                             }
                         }
                     }
@@ -147,154 +159,201 @@ private fun InventoryPanel(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-        shape  = RoundedCornerShape(12.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceSlate),
+        shape  = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, Color.White.copy(0.05f))
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    product.name,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1, overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    product.sku,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            when {
-                loading -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Text("Loading inventory…", style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Box(
+                    modifier = Modifier.size(40.dp).background(EnergyEmerald.copy(0.1f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Inventory2, null, tint = EnergyEmerald, modifier = Modifier.size(20.dp))
                 }
-                error != null -> Text(error, style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error)
-                counts != null -> {
-                    // ── 3 stat tiles ───────────────────────────────────────
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        CountTile("Store Floor",  counts.onFloor,    Modifier.weight(1f))
-                        CountTile("Backroom",     counts.inBackroom, Modifier.weight(1f))
-                        CountTile("Total",        counts.total,      Modifier.weight(1f))
-                    }
-                    // ── Action buttons ─────────────────────────────────────
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
-                            onClick  = onViewEpcs,
-                            modifier = Modifier.weight(1f),
-                            enabled  = counts.epcs.isNotEmpty()
-                        ) {
-                            Icon(Icons.Default.QrCode, null, Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(if (counts.epcs.isNotEmpty()) "${counts.epcs.size} EPCs" else "No EPCs")
-                        }
-                        Button(
-                            onClick  = { counts.epcs.firstOrNull()?.let { onLocate(it) } },
-                            modifier = Modifier.weight(1f),
-                            enabled  = counts.epcs.isNotEmpty(),
-                            colors   = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            )
-                        ) {
-                            Icon(Icons.Default.MyLocation, null, Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Locate")
-                        }
-                    }
-                    // ── Last seen location ──────────────────────────────────
-                    LocationRow(location = location, loading = locationLoading)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CountTile(label: String, count: Int, modifier: Modifier = Modifier) {
-    Card(
-        modifier = modifier,
-        colors   = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Column(
-            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                count.toString(),
-                style      = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color      = MaterialTheme.colorScheme.primary
-            )
-            Text(
-                label,
-                style    = MaterialTheme.typography.labelSmall,
-                color    = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1
-            )
-        }
-    }
-}
-
-@Composable
-private fun LocationRow(location: EpcLocationDto?, loading: Boolean) {
-    when {
-        loading -> Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 1.5.dp)
-            Text("Fetching location…", style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        location != null && (location.zone != null || location.lastSeenAt != null) -> {
-            HorizontalDivider(Modifier.padding(vertical = 2.dp))
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Icon(Icons.Default.LocationOn, null, Modifier.size(14.dp),
-                    tint = MaterialTheme.colorScheme.primary)
-                location.zone?.let {
-                    Text(it, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
-                }
-                location.lastSeenAt?.let {
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "Last seen ${formatRelativeTime(it)}",
+                        product.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        product.sku,
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f)
+                        color = EnergyTeal,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }
+
+            when {
+                loading -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = EnergyEmerald)
+                    Text("Updating inventory status…", style = MaterialTheme.typography.bodySmall, color = MutedText)
+                }
+                error != null -> Text(error, style = MaterialTheme.typography.bodySmall, color = Color(0xFFFB7185))
+                counts != null -> {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        CountBadge("Floor", counts.onFloor, Modifier.weight(1f))
+                        CountBadge("Back", counts.inBackroom, Modifier.weight(1f))
+                        CountBadge("Total", counts.total, Modifier.weight(1f), isPrimary = true)
+                    }
+                    
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(
+                            onClick  = onViewEpcs,
+                            modifier = Modifier.weight(1f).height(48.dp),
+                            shape    = RoundedCornerShape(12.dp),
+                            colors   = ButtonDefaults.buttonColors(containerColor = Color.White.copy(0.05f)),
+                            enabled  = counts.epcs.isNotEmpty()
+                        ) {
+                            Icon(Icons.Default.QrCode, null, Modifier.size(16.dp), tint = Color.White)
+                            Spacer(Modifier.width(8.dp))
+                            Text("${counts.epcs.size} Tags", color = Color.White)
+                        }
+                        Button(
+                            onClick  = { counts.epcs.firstOrNull()?.let { onLocate(it) } },
+                            modifier = Modifier.weight(1f).height(48.dp),
+                            shape    = RoundedCornerShape(12.dp),
+                            colors   = ButtonDefaults.buttonColors(containerColor = EnergyEmerald),
+                            enabled  = counts.epcs.isNotEmpty()
+                        ) {
+                            Icon(Icons.Default.MyLocation, null, Modifier.size(16.dp), tint = Color.White)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Locate", color = Color.White)
+                        }
+                    }
+                    
+                    when {
+                        locationLoading -> Surface(
+                            color = Color.Black.copy(0.2f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(12.dp),
+                                    strokeWidth = 1.5.dp,
+                                    color = MutedText
+                                )
+                                Text("Fetching location…", style = MaterialTheme.typography.labelSmall, color = MutedText)
+                            }
+                        }
+                        location != null -> Surface(
+                            color = Color.Black.copy(0.2f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.History, null, tint = MutedText, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = "Last seen in ${location.zone ?: "Unknown"} • ${formatRelativeTime(location.lastSeenAt ?: "")}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MutedText
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
-        else -> {}
     }
 }
 
-private fun formatRelativeTime(iso: String): String {
-    return try {
-        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
-        sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
-        val then = sdf.parse(iso.substringBefore('.').substringBefore('Z')) ?: return iso
-        val diffMs = System.currentTimeMillis() - then.time
-        val diffMin = diffMs / 60_000
-        when {
-            diffMin < 1   -> "just now"
-            diffMin < 60  -> "${diffMin}m ago"
-            diffMin < 1440 -> "${diffMin / 60}h ago"
-            else          -> "${diffMin / 1440}d ago"
+@Composable
+private fun CountBadge(label: String, count: Int, modifier: Modifier, isPrimary: Boolean = false) {
+    Surface(
+        modifier = modifier,
+        color = if (isPrimary) EnergyTeal.copy(0.1f) else Color.White.copy(0.03f),
+        shape = RoundedCornerShape(16.dp),
+        border = if (isPrimary) BorderStroke(1.dp, EnergyTeal.copy(0.2f)) else null
+    ) {
+        Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(count.toString(), fontSize = 20.sp, fontWeight = FontWeight.Black, color = if (isPrimary) EnergyTeal else Color.White)
+            Text(label.uppercase(), style = MaterialTheme.typography.labelSmall, color = MutedText, fontWeight = FontWeight.Bold)
         }
-    } catch (_: Exception) { iso }
+    }
+}
+
+@Composable
+private fun CatalogStatusBadge(count: Int, syncError: String?, onSync: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        color = if (count > 0) EnergyEmerald.copy(0.05f) else Color(0xFFFB7185).copy(0.1f),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                if (count > 0) Icons.Default.CheckCircle else Icons.Default.CloudOff,
+                null,
+                tint = if (count > 0) EnergyEmerald else Color(0xFFFB7185),
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                if (count > 0) "$count products synced offline" else "Offline catalog missing",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (count > 0) EnergyEmerald else Color(0xFFFB7185),
+                modifier = Modifier.weight(1f)
+            )
+            if (count == 0) {
+                Text(
+                    "SYNC NOW",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFFFB7185),
+                    modifier = Modifier.clickable { onSync() }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SearchBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onClear: () -> Unit
+) {
+    OutlinedTextField(
+        value         = query,
+        onValueChange = onQueryChange,
+        modifier      = Modifier.fillMaxWidth(),
+        placeholder   = { Text("Search products…", color = MutedText) },
+        leadingIcon   = { Icon(Icons.Default.Search, null, tint = EnergyTeal) },
+        trailingIcon  = {
+            if (query.isNotEmpty()) {
+                IconButton(onClick = onClear) {
+                    Icon(Icons.Default.Clear, null, tint = MutedText)
+                }
+            }
+        },
+        singleLine      = true,
+        shape           = RoundedCornerShape(16.dp),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = EnergyEmerald,
+            unfocusedBorderColor = SurfaceSlate,
+            focusedContainerColor = SurfaceSlate.copy(0.5f),
+            unfocusedContainerColor = SurfaceSlate.copy(0.5f),
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White,
+            cursorColor = EnergyEmerald
+        )
+    )
 }
 
 // ── Product list ───────────────────────────────────────────────────────────────
@@ -306,17 +365,9 @@ private fun ProductResultList(
     onSelect: (ProductEntity) -> Unit
 ) {
     LazyColumn(
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item {
-            Text(
-                text     = "${products.size} result${if (products.size == 1) "" else "s"}",
-                style    = MaterialTheme.typography.labelMedium,
-                color    = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 4.dp)
-            )
-        }
         items(products, key = { it.id }) { product ->
             ProductCard(
                 product    = product,
@@ -337,239 +388,111 @@ private fun ProductCard(
     Card(
         onClick   = onClick,
         modifier  = Modifier.fillMaxWidth(),
-        shape     = RoundedCornerShape(12.dp),
+        shape     = RoundedCornerShape(20.dp),
         colors    = CardDefaults.cardColors(
-            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                             else MaterialTheme.colorScheme.surface
+            containerColor = if (isSelected) EnergyEmerald.copy(0.1f) else SurfaceSlate
         ),
-        border    = if (isSelected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 4.dp else 2.dp)
+        border    = BorderStroke(
+            width = if (isSelected) 2.dp else 1.dp,
+            color = if (isSelected) EnergyEmerald else Color.White.copy(0.05f)
+        )
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val avatarColor = remember(product.sku) { skuColor(product.sku) }
+            // Circle Avatar
             Box(
                 modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(avatarColor.copy(alpha = 0.15f)),
+                    .size(44.dp)
+                    .background(Color.White.copy(0.05f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text       = product.name.take(2).uppercase(),
-                    fontWeight = FontWeight.Bold,
-                    fontSize   = 16.sp,
-                    color      = avatarColor
+                    text = product.name.take(1).uppercase(),
+                    fontWeight = FontWeight.Black,
+                    color = Color.White
                 )
             }
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text       = product.name,
-                    style      = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines   = 1,
-                    overflow   = TextOverflow.Ellipsis
+                    text = product.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Chip(label = product.sku)
-                    product.brand?.let { Chip(label = it, color = MaterialTheme.colorScheme.secondaryContainer) }
-                }
-                product.category?.let {
-                    Text(text = it, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                }
+                Text(
+                    text = product.sku,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MutedText
+                )
             }
             Spacer(Modifier.width(8.dp))
-            StockBadge(onHand = product.onHandQty, expected = product.expectedQty)
+            StockMiniBadge(onHand = product.onHandQty, expected = product.expectedQty)
         }
     }
 }
 
-// ── Catalog status + search bar ───────────────────────────────────────────────
-
 @Composable
-private fun CatalogStatusCard(count: Int, syncError: String?, onSync: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (count > 0) MaterialTheme.colorScheme.primaryContainer
-                             else MaterialTheme.colorScheme.errorContainer
-        ),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = if (count > 0) Icons.Outlined.Inventory2 else Icons.Default.CloudOff,
-                contentDescription = null,
-                tint = if (count > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                modifier = Modifier.size(28.dp)
-            )
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = if (count > 0) "$count products available offline" else "No offline catalog",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                if (syncError != null) {
-                    Text(syncError, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error)
-                } else if (count == 0) {
-                    Text("Tap sync to download product catalog",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            if (count == 0) {
-                TextButton(onClick = onSync) { Text("Sync") }
-            }
-        }
+private fun StockMiniBadge(onHand: Int, expected: Int) {
+    val statusColor = when {
+        onHand >= expected && expected > 0 -> EnergyEmerald
+        onHand > 0 -> SoftAmber
+        else -> Color(0xFFFB7185)
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SearchBar(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    onClear: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    OutlinedTextField(
-        value         = query,
-        onValueChange = onQueryChange,
-        modifier      = modifier.fillMaxWidth(),
-        placeholder   = { Text("Search by name, SKU, brand, category…") },
-        leadingIcon   = { Icon(Icons.Default.Search, contentDescription = null) },
-        trailingIcon  = {
-            if (query.isNotEmpty()) {
-                IconButton(onClick = onClear) {
-                    Icon(Icons.Default.Clear, contentDescription = "Clear")
-                }
-            }
-        },
-        singleLine      = true,
-        shape           = RoundedCornerShape(12.dp),
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(onSearch = {}),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor   = MaterialTheme.colorScheme.primary,
-            unfocusedBorderColor = MaterialTheme.colorScheme.outline
+    Column(horizontalAlignment = Alignment.End) {
+        Text(
+            text = "$onHand / $expected",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Black,
+            color = statusColor
         )
-    )
+        Text("STOCK", style = MaterialTheme.typography.labelSmall, color = MutedText, fontSize = 9.sp)
+    }
 }
-
-// ── Empty / no-results ─────────────────────────────────────────────────────────
 
 @Composable
 private fun EmptySearchHint(catalogCount: Int) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(Icons.Default.Search, contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), modifier = Modifier.size(80.dp))
-        Spacer(Modifier.height(16.dp))
-        Text("Search Product Catalog", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = if (catalogCount > 0)
-                "Type a product name, SKU, brand, or\ncategory to search $catalogCount products offline"
-            else
-                "Tap the sync icon above to download\nthe product catalog for offline use",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-        )
+    Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(Icons.Default.Search, null, tint = SurfaceSlate, modifier = Modifier.size(80.dp))
+            Spacer(Modifier.height(16.dp))
+            Text("Product Catalog", fontWeight = FontWeight.Bold, color = Color.White)
+            Text(
+                "Search through $catalogCount items synced for store LK001",
+                textAlign = TextAlign.Center, color = MutedText, style = MaterialTheme.typography.bodySmall
+            )
+        }
     }
 }
 
 @Composable
 private fun NoResultsView(query: String) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(Icons.Default.SearchOff, contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), modifier = Modifier.size(72.dp))
-        Spacer(Modifier.height(16.dp))
-        Text("No results for \"$query\"", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(4.dp))
-        Text("Try a different keyword or sync the catalog",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-// ── Small helpers ──────────────────────────────────────────────────────────────
-
-@Composable
-private fun Chip(label: String, color: Color = MaterialTheme.colorScheme.primaryContainer) {
-    Box(
-        modifier = Modifier.clip(CircleShape).background(color).padding(horizontal = 8.dp, vertical = 2.dp)
-    ) {
-        Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-    }
-}
-
-@Composable
-private fun StockBadge(onHand: Int, expected: Int) {
-    val pct = if (expected > 0) (onHand * 100 / expected) else 0
-    val (bg, fg) = when {
-        pct >= 90 -> Pair(Color(0xFFE8F5E9), Color(0xFF2E7D32))
-        pct >= 60 -> Pair(Color(0xFFFFF8E1), Color(0xFFF57F17))
-        else      -> Pair(Color(0xFFFFEBEE), Color(0xFFC62828))
-    }
-    Column(horizontalAlignment = Alignment.End) {
-        Box(modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(bg).padding(horizontal = 8.dp, vertical = 4.dp)) {
-            Text("$onHand / $expected", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = fg)
-        }
-        Text("On Hand / Exp", style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
-    }
-}
-
-private fun skuColor(sku: String): Color {
-    val colors = listOf(
-        Color(0xFF1565C0), Color(0xFF00897B), Color(0xFF6A1B9A),
-        Color(0xFFE65100), Color(0xFF37474F), Color(0xFFAD1457)
-    )
-    return colors[sku.hashCode().and(0x7fffffff) % colors.size]
-}
-
-// ── Previews ──────────────────────────────────────────────────────────────────
-
-@Preview(showBackground = true, widthDp = 360, heightDp = 300, name = "Empty Search Hint")
-@Composable
-private fun EmptySearchHintPreview() {
-    StoreLenseTheme { EmptySearchHint(catalogCount = 1250) }
-}
-
-@Preview(showBackground = true, widthDp = 360, heightDp = 200, name = "No Results")
-@Composable
-private fun NoResultsViewPreview() {
-    StoreLenseTheme { NoResultsView(query = "shirt blue xl") }
-}
-
-@Preview(showBackground = true, widthDp = 360, name = "Stock Badge – Good")
-@Composable
-private fun StockBadgeGoodPreview() {
-    StoreLenseTheme {
-        Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StockBadge(onHand = 95,  expected = 100)
-            StockBadge(onHand = 60,  expected = 100)
-            StockBadge(onHand = 20,  expected = 100)
+    Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(Icons.Default.SearchOff, null, tint = SurfaceSlate, modifier = Modifier.size(64.dp))
+            Spacer(Modifier.height(16.dp))
+            Text("No results for \"$query\"", fontWeight = FontWeight.Bold, color = Color.White)
+            Text("Check your spelling or sync the catalog", color = MutedText, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
 
+private fun formatRelativeTime(iso: String): String {
+    return try {
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
+        sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        val then = sdf.parse(iso.substringBefore('.').substringBefore('Z')) ?: return iso
+        val diffMs = System.currentTimeMillis() - then.time
+        val diffMin = diffMs / 60_000
+        when {
+            diffMin < 1   -> "just now"
+            diffMin < 60  -> "${diffMin}m ago"
+            diffMin < 1440 -> "${diffMin / 60}h ago"
+            else          -> "${diffMin / 1440}d ago"
+        }
+    } catch (_: Exception) { "Recently" }
+}

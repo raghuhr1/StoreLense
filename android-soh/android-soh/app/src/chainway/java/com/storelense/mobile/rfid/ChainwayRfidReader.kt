@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import timber.log.Timber
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.time.Instant
 import javax.inject.Inject
 import kotlin.coroutines.resume
@@ -30,9 +32,9 @@ import kotlin.coroutines.suspendCoroutine
  * Main class:        RFIDWithUHFUART
  */
 
-//CHAINWAY: import com.rscja.deviceapi.RFIDWithUHFUART
-//CHAINWAY: import com.rscja.deviceapi.entity.UHFTAGInfo
-//CHAINWAY: import com.rscja.deviceapi.interfaces.IUHF
+import com.rscja.deviceapi.RFIDWithUHFUART
+import com.rscja.deviceapi.entity.UHFTAGInfo
+import com.rscja.deviceapi.interfaces.IUHF
 
 class ChainwayRfidReader @Inject constructor(
     @ApplicationContext private val context: Context
@@ -47,84 +49,80 @@ class ChainwayRfidReader @Inject constructor(
     private var _isConnected = false
     override val isConnected: Boolean get() = _isConnected
 
-    //CHAINWAY: private var uhfReader: RFIDWithUHFUART? = null
+    private var uhfReader: RFIDWithUHFUART? = null
 
     override suspend fun connect() = suspendCoroutine { cont ->
-        //CHAINWAY: try {
-        //CHAINWAY:     uhfReader = RFIDWithUHFUART.getInstance()
-        //CHAINWAY:     val ok = uhfReader!!.init(context)
-        //CHAINWAY:     if (!ok) {
-        //CHAINWAY:         cont.resumeWithException(IllegalStateException("Chainway RFID init returned false"))
-        //CHAINWAY:         return@suspendCoroutine
-        //CHAINWAY:     }
-        //CHAINWAY:     _isConnected = true
-        //CHAINWAY:     _connectionState.value = true
-        //CHAINWAY:     Timber.d("Chainway RFID reader connected")
-        //CHAINWAY:     cont.resume(Unit)
-        //CHAINWAY: } catch (e: Exception) {
-        //CHAINWAY:     Timber.e(e, "Chainway RFID connect failed")
-        //CHAINWAY:     cont.resumeWithException(e)
-        //CHAINWAY: }
-
-        Timber.w("ChainwayRfidReader.connect() — RFIDWithUHFUART.jar not present, use MockRfidReader in debug")
-        cont.resume(Unit)
+        try {
+            uhfReader = RFIDWithUHFUART.getInstance()
+            val ok = uhfReader!!.init(context)
+            if (!ok) {
+                cont.resumeWithException(IllegalStateException("Chainway RFID init returned false"))
+                return@suspendCoroutine
+            }
+            _isConnected = true
+            _connectionState.value = true
+            Timber.d("Chainway RFID reader connected")
+            cont.resume(Unit)
+        } catch (e: Exception) {
+            Timber.e(e, "Chainway RFID connect failed")
+            cont.resumeWithException(e)
+        }
     }
 
     override fun startScan() {
-        //CHAINWAY: try {
-        //CHAINWAY:     uhfReader?.startInventoryTag(0, 0, 0)
-        //CHAINWAY:     startPollingTags()
-        //CHAINWAY: } catch (e: Exception) { Timber.e(e, "startScan failed") }
-        Timber.w("ChainwayRfidReader.startScan() — Chainway JAR required")
+        try {
+            uhfReader?.startInventoryTag(0, 0, 0)
+            startPollingTags()
+        } catch (e: Exception) { Timber.e(e, "startScan failed") }
     }
 
     override fun stopScan() {
-        //CHAINWAY: try {
-        //CHAINWAY:     pollingJob?.cancel()
-        //CHAINWAY:     uhfReader?.stopInventory()
-        //CHAINWAY: } catch (e: Exception) { Timber.e(e) }
+        try {
+            pollingJob?.cancel()
+            uhfReader?.stopInventory()
+        } catch (e: Exception) { Timber.e(e) }
     }
 
     override fun setTxPower(dbm: Int) {
-        //CHAINWAY: try {
-        //CHAINWAY:     // Chainway power: 0–30 dBm. Map our standard 27 dBm → Chainway index.
-        //CHAINWAY:     uhfReader?.setPower(dbm)
-        //CHAINWAY: } catch (e: Exception) { Timber.e(e, "setTxPower failed") }
+        try {
+            // Chainway power: 0–30 dBm. Map our standard 27 dBm → Chainway index.
+            uhfReader?.setPower(dbm)
+        } catch (e: Exception) { Timber.e(e, "setTxPower failed") }
     }
 
     override suspend fun disconnect() {
-        //CHAINWAY: try {
-        //CHAINWAY:     pollingJob?.cancel()
-        //CHAINWAY:     uhfReader?.free()
-        //CHAINWAY:     uhfReader = null
-        //CHAINWAY: } catch (e: Exception) { Timber.e(e) }
+        try {
+            pollingJob?.cancel()
+            uhfReader?.free()
+            uhfReader = null
+        } catch (e: Exception) { Timber.e(e) }
         _isConnected = false
         _connectionState.value = false
     }
 
-    //CHAINWAY: private var pollingJob: kotlinx.coroutines.Job? = null
-    //CHAINWAY: private val pollingScope = kotlinx.coroutines.CoroutineScope(
-    //CHAINWAY:     kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob()
-    //CHAINWAY: )
-    //CHAINWAY:
-    //CHAINWAY: // Chainway SDK uses a pull model: poll getTagInfo() in a loop while scanning.
-    //CHAINWAY: private fun startPollingTags() {
-    //CHAINWAY:     pollingJob = pollingScope.launch {
-    //CHAINWAY:         while (true) {
-    //CHAINWAY:             val tag: UHFTAGInfo? = uhfReader?.readTagFromBuffer()
-    //CHAINWAY:             if (tag != null && !tag.strEPC.isNullOrBlank()) {
-    //CHAINWAY:                 _reads.tryEmit(
-    //CHAINWAY:                     EpcRead(
-    //CHAINWAY:                         epc         = tag.strEPC,
-    //CHAINWAY:                         rssi        = tag.rssi.toDoubleOrNull(),
-    //CHAINWAY:                         antennaPort = 1,
-    //CHAINWAY:                         readAt      = Instant.now().toString()
-    //CHAINWAY:                     )
-    //CHAINWAY:                 )
-    //CHAINWAY:             } else {
-    //CHAINWAY:                 kotlinx.coroutines.delay(20)
-    //CHAINWAY:             }
-    //CHAINWAY:         }
-    //CHAINWAY:     }
-    //CHAINWAY: }
+    private var pollingJob: kotlinx.coroutines.Job? = null
+    private val pollingScope = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob()
+    )
+
+    // Chainway SDK uses a pull model: poll getTagInfo() in a loop while scanning.
+    private fun startPollingTags() {
+        pollingJob = pollingScope.launch {
+            while (true) {
+                val tag: UHFTAGInfo? = uhfReader?.readTagFromBuffer()
+                if (tag != null && !tag.epc.isNullOrBlank()) {
+                    _reads.tryEmit(
+                        EpcRead(
+                            epc         = tag.epc,
+                            rssi        = tag.rssi.toDoubleOrNull(),
+                            antennaPort = 1,
+                            readAt      = Instant.now().toString()
+                        )
+                    )
+                } else {
+                    kotlinx.coroutines.delay(20)
+                }
+            }
+        }
+    }
 }
