@@ -35,7 +35,7 @@ spring:
 storelense:
   jwt:
     secret: ${JWT_SECRET:storelense-dev-secret-key-minimum-32-chars}
-    access-token-expiry-ms: 900000     # 15 minutes
+    access-token-expiry-ms: 28800000    # 8 hours (full store shift)
     refresh-token-expiry-ms: 604800000 # 7 days
 
 management:

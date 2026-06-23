@@ -27,7 +27,8 @@ class AuthInterceptor @Inject constructor(
         val req = chain.request().withBearer(tokenManager.accessToken)
         val resp = chain.proceed(req)
 
-        if (resp.code != 401) return resp
+        // 401 = explicit Unauthorized; 403 can mean expired JWT fell through to anonymous user
+        if (resp.code != 401 && resp.code != 403) return resp
         resp.close()
 
         val newToken = synchronized(lock) {
