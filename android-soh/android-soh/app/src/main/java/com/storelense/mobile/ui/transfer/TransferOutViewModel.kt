@@ -8,6 +8,7 @@ import com.storelense.mobile.data.repository.Result
 import com.storelense.mobile.data.repository.StoreRepository
 import com.storelense.mobile.data.repository.TransferRepository
 import com.storelense.mobile.rfid.RfidReader
+import timber.log.Timber
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -60,9 +61,15 @@ class TransferOutViewModel @Inject constructor(
         scanJob?.cancel()
         _state.update { it.copy(isScanning = true, error = null) }
         scanJob = viewModelScope.launch {
-            rfid.connect()
-            rfid.setTxPower(27)
-            rfid.startScan()
+            try {
+                rfid.connect()
+                rfid.setTxPower(27)
+                rfid.startScan()
+            } catch (e: Exception) {
+                Timber.e(e, "RFID connect failed")
+                _state.update { it.copy(isScanning = false, error = "Reader unavailable: ${e.message}") }
+                return@launch
+            }
             rfid.reads.collect { read ->
                 _state.update { s -> s.copy(scannedEpcs = s.scannedEpcs + read.epc) }
             }

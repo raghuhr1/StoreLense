@@ -40,14 +40,16 @@ public class ProductController {
             @RequestParam(defaultValue = "false") boolean sync,
             @PageableDefault(size = 50) Pageable pageable,
             @AuthenticationPrincipal StoreLensePrincipal principal) {
-        // Non-admin users are always scoped to their own store via findByStore().
-        // sync=true is accepted from mobile clients for future use but does not bypass
-        // the store filter — a store manager should only see their own store's catalog.
+        // Non-admin users are always scoped to their own store.
+        // sync=true: mobile offline-catalog download — return ALL active products so the
+        // local Room DB can be populated even before any ERP import or RFID scan.
         // Admins may pass an explicit storeId or omit it to get the full global catalog.
         UUID effective = (principal != null && !principal.isAdmin())
                 ? principal.storeId()
                 : storeId;
-        return ResponseEntity.ok(ApiResponse.ok(productService.listProducts(search, effective, pageable)));
+        return ResponseEntity.ok(ApiResponse.ok(
+                sync ? productService.listAllActive(search, pageable)
+                     : productService.listProducts(search, effective, pageable)));
     }
 
     @GetMapping("/{id}")

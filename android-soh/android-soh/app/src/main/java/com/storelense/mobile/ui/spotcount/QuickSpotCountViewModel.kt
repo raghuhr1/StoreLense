@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.storelense.mobile.data.local.entity.ProductEntity
 import com.storelense.mobile.data.repository.AuthRepository
 import com.storelense.mobile.data.repository.ProductRepository
+import timber.log.Timber
 import com.storelense.mobile.rfid.RfidReader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -47,9 +48,15 @@ class QuickSpotCountViewModel @Inject constructor(
         if (_state.value.phase == SpotPhase.Scanning) return
         _state.update { it.copy(phase = SpotPhase.Scanning, error = null) }
         viewModelScope.launch {
-            rfid.connect()
-            rfid.setTxPower(27)
-            rfid.startScan()
+            try {
+                rfid.connect()
+                rfid.setTxPower(27)
+                rfid.startScan()
+            } catch (e: Exception) {
+                Timber.e(e, "RFID connect failed")
+                _state.update { it.copy(phase = SpotPhase.Paused, error = "Reader unavailable: ${e.message}") }
+                return@launch
+            }
             rfid.reads.collect { read ->
                 if (seenEpcs.add(read.epc)) {
                     val product = productCache.getOrPut(read.epc) { productRepo.getByEpc(read.epc) }

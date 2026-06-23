@@ -87,6 +87,26 @@ fun ScanScreen(
         )
     }
 
+    if (state.showLastDeviceDialog) {
+        ScanAlertDialog(
+            title = "All Zones Scanned",
+            text = "You are the last active device. Complete the session now or keep scanning.",
+            confirmLabel = "Complete Session",
+            onConfirm = vm::completeAsLastDevice,
+            onDismiss = vm::dismissLastDeviceDialog
+        )
+    }
+
+    if (state.showZonePickerDialog) {
+        ScanAlertDialog(
+            title = "Zone Already Taken",
+            text = "Zone \"${state.takenZone}\" is being scanned by another device. Join without a specific zone?",
+            confirmLabel = "Join Without Zone",
+            onConfirm = vm::joinWithoutZone,
+            onDismiss = vm::joinWithoutZone
+        )
+    }
+
     Scaffold(
         containerColor = DeepNavy,
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -207,35 +227,66 @@ fun ScanScreen(
                         }
                     }
                 }
+
+                // Error banner
+                AnimatedVisibility(visible = state.error != null) {
+                    Surface(
+                        color = Color(0xFFFB7185).copy(0.15f),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = state.error ?: "",
+                            modifier = Modifier.padding(12.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFFFB7185),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
             }
 
             // ── Action section — always visible at bottom ────────────────────────
-            if (state.phase == ScanPhase.Uploading) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    CircularProgressIndicator(color = EnergyEmerald)
-                    Spacer(Modifier.height(12.dp))
-                    Text("Syncing audit results…", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            } else {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    // Pause/Resume Button
-                    Surface(
-                        onClick = vm::togglePause,
-                        modifier = Modifier.weight(1f).height(60.dp),
-                        shape = RoundedCornerShape(18.dp),
-                        color = SurfaceSlate
+            when (state.phase) {
+                ScanPhase.Connecting -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = EnergyTeal)
+                        Spacer(Modifier.height(12.dp))
+                        Text("Connecting to reader…", color = MutedText, fontWeight = FontWeight.Bold)
+                    }
+                }
+                ScanPhase.Uploading -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        CircularProgressIndicator(color = EnergyEmerald)
+                        Spacer(Modifier.height(12.dp))
+                        Text("Syncing audit results…", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+                else -> {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        // Pause / Resume
+                        Button(
+                            onClick  = vm::togglePause,
+                            modifier = Modifier.weight(1f).height(60.dp),
+                            shape    = RoundedCornerShape(18.dp),
+                            colors   = ButtonDefaults.buttonColors(containerColor = SurfaceSlate),
+                            enabled  = !state.isZoneDone
+                        ) {
                             Text(
                                 if (state.phase == ScanPhase.Paused) "RESUME" else "PAUSE",
                                 color = Color.White,
@@ -243,21 +294,36 @@ fun ScanScreen(
                                 letterSpacing = 1.sp
                             )
                         }
-                    }
 
-                    // Done Button
-                    Button(
-                        onClick  = vm::markZoneDone,
-                        modifier = Modifier.weight(1.5f).height(60.dp),
-                        shape    = RoundedCornerShape(18.dp),
-                        colors   = ButtonDefaults.buttonColors(containerColor = EnergyEmerald),
-                        enabled  = state.scannedCount > 0 && !state.isZoneDone
-                    ) {
-                        Text(
-                            if (state.isZoneDone) "PENDING…" else "FINISH ZONE",
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 1.sp
-                        )
+                        // Finish Zone / Pending
+                        Button(
+                            onClick  = vm::markZoneDone,
+                            modifier = Modifier.weight(1.5f).height(60.dp),
+                            shape    = RoundedCornerShape(18.dp),
+                            colors   = ButtonDefaults.buttonColors(
+                                containerColor = EnergyEmerald,
+                                disabledContainerColor = SurfaceSlate
+                            ),
+                            enabled  = state.scannedCount > 0 && !state.isZoneDone
+                        ) {
+                            if (state.isZoneDone) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(
+                                        color = MutedText,
+                                        modifier = Modifier.size(14.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("PENDING…", fontWeight = FontWeight.Black, letterSpacing = 1.sp, color = MutedText)
+                                }
+                            } else {
+                                Text(
+                                    if (state.scannedCount == 0) "SCAN FIRST" else "FINISH ZONE",
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 1.sp
+                                )
+                            }
+                        }
                     }
                 }
             }

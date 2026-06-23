@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import timber.log.Timber
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import java.time.Instant
 import javax.inject.Inject
 import kotlin.coroutines.resume
@@ -51,24 +53,36 @@ class ChainwayRfidReader @Inject constructor(
 
     private var uhfReader: RFIDWithUHFUART? = null
 
-    override suspend fun connect() = suspendCoroutine { cont ->
+    override suspend fun connect() = withContext(Dispatchers.IO) {
         try {
             uhfReader = RFIDWithUHFUART.getInstance()
-            // Release any previously stuck state before re-initialising.
-            // Without this, init() returns -1 if the previous session was not cleanly freed.
-            runCatching { uhfReader?.free() }
-            val ok = uhfReader!!.init(context)
-            if (!ok) {
-                cont.resumeWithException(IllegalStateException("Chainway RFID init returned false"))
-                return@suspendCoroutine
+
+            var ok = false
+            var attempts = 0
+            while (!ok && attempts < 3) {
+                attempts++
+                // Release any previously stuck state before re-initialising.
+                // Without this, init() returns -1 if the previous session was not cleanly freed.
+                runCatching { uhfReader?.free() }
+                delay(150) // Give hardware a moment to settle
+
+                ok = uhfReader!!.init(context)
+                if (!ok) {
+                    Timber.w("Chainway RFID init failed (attempt $attempts)")
+                    delay(500)
+                }
             }
+
+            if (!ok) {
+                throw IllegalStateException("Chainway RFID init returned false after $attempts attempts. Please restart the device.")
+            }
+
             _isConnected = true
             _connectionState.value = true
             Timber.d("Chainway RFID reader connected")
-            cont.resume(Unit)
         } catch (e: Exception) {
             Timber.e(e, "Chainway RFID connect failed")
-            cont.resumeWithException(e)
+            throw e
         }
     }
 

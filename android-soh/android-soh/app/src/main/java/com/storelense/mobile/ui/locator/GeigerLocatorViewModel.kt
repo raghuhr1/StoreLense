@@ -11,6 +11,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.storelense.mobile.rfid.RfidReader
+import timber.log.Timber
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
@@ -62,9 +63,15 @@ class GeigerLocatorViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            rfid.connect()
-            rfid.setTxPower(27)
-            rfid.startScan()
+            try {
+                rfid.connect()
+                rfid.setTxPower(27)
+                rfid.startScan()
+            } catch (e: Exception) {
+                Timber.e(e, "RFID connect failed")
+                _state.update { it.copy(isScanning = false) }
+                return@launch
+            }
             _state.update { it.copy(isScanning = true) }
             rfid.reads.collect { read ->
                 if (read.epc != targetEpc) return@collect

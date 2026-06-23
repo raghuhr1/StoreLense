@@ -51,6 +51,14 @@ public class ProductService {
     }
 
     @Transactional(readOnly = true)
+    public PageResponse<ProductResponse> listAllActive(String search, Pageable pageable) {
+        var page = StringUtils.hasText(search)
+                ? productRepository.search(search, pageable)
+                : productRepository.findByActiveTrue(pageable);
+        return PageResponse.from(page.map(productMapper::toResponse));
+    }
+
+    @Transactional(readOnly = true)
     public ProductResponse getProduct(UUID id) {
         return productMapper.toResponse(findOrThrow(id));
     }

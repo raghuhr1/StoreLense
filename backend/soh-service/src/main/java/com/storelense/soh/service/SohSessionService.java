@@ -85,16 +85,32 @@ public class SohSessionService {
         }
         // System-driven fallback: non-sold EPCs already tracked in epc_registry.
         // Covers manual sessions and stores that haven't uploaded an ERP CSV.
+        // When zoneRegion is set (zone-wise scan), filter expected EPCs to that zone.
         try {
-            return jdbcClient.sql("""
-                    SELECT epc FROM inventory.epc_registry
-                    WHERE store_id = :storeId
-                      AND status NOT IN ('sold', 'damaged', 'transferred')
-                    LIMIT 10000
-                    """)
-                    .param("storeId", session.getStoreId())
-                    .query(String.class)
-                    .list();
+            boolean hasZone = session.getZoneRegion() != null && !session.getZoneRegion().isBlank();
+            String sql = hasZone
+                    ? """
+                      SELECT er.epc FROM inventory.epc_registry er
+                      JOIN inventory.inventory_state ist
+                        ON ist.product_id = (
+                             SELECT et.product_id FROM products.epc_tags et
+                             WHERE et.epc = er.epc AND et.is_active = true LIMIT 1
+                           )
+                       AND ist.store_id = er.store_id
+                       AND ist.zone_region = :zoneRegion
+                      WHERE er.store_id = :storeId
+                        AND er.status NOT IN ('sold', 'damaged', 'transferred')
+                      LIMIT 10000
+                      """
+                    : """
+                      SELECT epc FROM inventory.epc_registry
+                      WHERE store_id = :storeId
+                        AND status NOT IN ('sold', 'damaged', 'transferred')
+                      LIMIT 10000
+                      """;
+            var q = jdbcClient.sql(sql).param("storeId", session.getStoreId());
+            if (hasZone) q = q.param("zoneRegion", session.getZoneRegion());
+            return q.query(String.class).list();
         } catch (Exception ex) {
             log.warn("Could not fetch system expected EPCs for session {}: {}", session.getId(), ex.getMessage());
             return List.of();

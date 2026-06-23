@@ -24,6 +24,7 @@ import com.storelense.mobile.ui.locator.GeigerLocatorScreen
 import com.storelense.mobile.ui.locator.ItemLocatorScreen
 import com.storelense.mobile.ui.login.LoginScreen
 import com.storelense.mobile.ui.products.InventoryEpcsScreen
+import com.storelense.mobile.ui.products.ProductFinderScreen
 import com.storelense.mobile.ui.products.ProductSearchScreen
 import com.storelense.mobile.ui.replenish.ReplenishListScreen
 import com.storelense.mobile.ui.exceptions.ExceptionsListScreen
@@ -38,6 +39,7 @@ import com.storelense.mobile.ui.settings.DeviceInfoScreen
 import com.storelense.mobile.ui.settings.ReaderSettingsScreen
 import com.storelense.mobile.ui.settings.SettingsScreen
 import com.storelense.mobile.ui.settings.SyncSettingsScreen
+import com.storelense.mobile.ui.soh.ScanModeScreen
 import com.storelense.mobile.ui.soh.ScanScreen
 import com.storelense.mobile.ui.soh.SessionListScreen
 import com.storelense.mobile.ui.soh.SohResultScreen
@@ -58,9 +60,11 @@ object Routes {
     const val REPLENISH_TASK   = "replenish_task/{taskId}"
     const val REPLENISH_DONE   = "replenish_done/{taskId}"
     const val PRODUCT_SEARCH   = "product_search"
+    const val PRODUCT_FINDER   = "product_finder"
     const val ITEM_LOCATOR     = "item_locator"
     const val ITEM_LOCATOR_EPC = "item_locator/{epc}"
     const val SPOT_COUNT       = "spot_count"
+    const val SCAN_MODE        = "scan_mode"
 
     // ── Block 14 ─────────────────────────────────────────────────────────
     const val GEIGER_LOCATE    = "geiger_locate/{epc}"
@@ -129,12 +133,24 @@ fun AppNavigation() {
                 onReplenish       = { nav.navigate(Routes.REPLENISH_LIST) },
                 onTransferOut     = { nav.navigate(Routes.TRANSFER_OUT) },
                 onExceptions      = { nav.navigate(Routes.EXCEPTIONS) },
-                onProductSearch   = { nav.navigate(Routes.PRODUCT_SEARCH) },
+                onProductSearch   = { nav.navigate(Routes.PRODUCT_FINDER) },
                 onHome            = { nav.navigate(Routes.HOME) { popUpTo(Routes.HOME) { inclusive = true } } },
-                onScan            = { nav.navigate(Routes.SOH_LIST) },
-                onLocate          = { nav.navigate(Routes.ITEM_LOCATOR) },
+                onScan            = { nav.navigate(Routes.SCAN_MODE) },
+                onLocate          = { nav.navigate(Routes.PRODUCT_FINDER) },
                 onSettings        = { nav.navigate(Routes.SETTINGS) },
                 onReaderSettings  = { nav.navigate(Routes.SETTINGS_READER) }
+            )
+        }
+
+        // ── Scan Mode (zone selection → creates session → opens scan) ────
+        composable(Routes.SCAN_MODE) {
+            ScanModeScreen(
+                onBack          = { nav.popBackStack() },
+                onSessionReady  = { sessionId ->
+                    nav.navigate(Routes.sohScan(sessionId)) {
+                        popUpTo(Routes.SCAN_MODE) { inclusive = true }
+                    }
+                }
             )
         }
 
@@ -237,6 +253,12 @@ fun AppNavigation() {
                 onBack     = { nav.popBackStack() },
                 onViewEpcs = { sku -> nav.navigate(Routes.inventoryEpcs(sku)) },
                 onLocate   = { epc -> nav.navigate(Routes.geigerLocate(epc)) }
+            )
+        }
+
+        composable(Routes.PRODUCT_FINDER) {
+            ProductFinderScreen(
+                onBack = { nav.popBackStack() }
             )
         }
 

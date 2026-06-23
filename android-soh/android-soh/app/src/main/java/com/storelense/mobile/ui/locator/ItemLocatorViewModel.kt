@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.storelense.mobile.data.local.entity.ProductEntity
 import com.storelense.mobile.data.repository.ProductRepository
+import timber.log.Timber
 import com.storelense.mobile.rfid.RfidReader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -51,9 +52,15 @@ class ItemLocatorViewModel @Inject constructor(
         rssiWindow.clear()
         productCache.clear()
         viewModelScope.launch {
-            rfid.connect()
-            rfid.setTxPower(27)
-            rfid.startScan()
+            try {
+                rfid.connect()
+                rfid.setTxPower(27)
+                rfid.startScan()
+            } catch (e: Exception) {
+                Timber.e(e, "RFID connect failed")
+                _state.update { it.copy(phase = LocatorPhase.Idle, error = "Reader unavailable: ${e.message}") }
+                return@launch
+            }
             rfid.reads.collect { read ->
                 handleRead(read.epc, read.rssi ?: -90.0)
             }

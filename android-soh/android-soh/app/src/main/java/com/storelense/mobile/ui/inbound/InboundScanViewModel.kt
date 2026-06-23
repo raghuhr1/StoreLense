@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.ExistingWorkPolicy
 import androidx.work.WorkManager
+import timber.log.Timber
 import com.storelense.mobile.data.repository.InboundRepository
 import com.storelense.mobile.data.repository.Result
 import com.storelense.mobile.rfid.RfidReader
@@ -90,7 +91,13 @@ class InboundScanViewModel @Inject constructor(
                     }
                 }
 
-                rfid.connect()
+                try {
+                    rfid.connect()
+                } catch (e: Exception) {
+                    Timber.e(e, "RFID connect failed")
+                    _state.update { it.copy(phase = ScanPhase.Paused, error = "RFID reader unavailable: ${e.message}") }
+                    return@launch
+                }
                 rfid.setTxPower(27)
                 rfid.startScan()
                 _state.update { it.copy(phase = ScanPhase.Scanning) }

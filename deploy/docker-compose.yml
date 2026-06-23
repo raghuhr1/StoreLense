@@ -351,11 +351,11 @@ services:
       - "3000:3000"
     logging: *default-logging
     healthcheck:
-      test:    ["CMD", "wget", "-qO-", "http://localhost:3000"]
+      test:    ["CMD", "wget", "-qO-", "http://localhost:3000/login"]
       interval: 20s
       timeout:  10s
       retries:  5
-      start_period: 30s
+      start_period: 60s
 
 volumes:
   postgres_data:
