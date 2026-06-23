@@ -1,0 +1,33 @@
+package com.storelense.erp.consumer;
+
+import com.storelense.common.event.SohSessionCompletedEvent;
+import com.storelense.common.kafka.KafkaTopics;
+import com.storelense.erp.service.ReconciliationEngine;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.stereotype.Component;
+
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class SohSessionCompletedConsumer {
+
+    private final ReconciliationEngine reconciliationEngine;
+
+    @KafkaListener(topics = KafkaTopics.SOH_SESSION_COMPLETED, groupId = "erp-reconciliation")
+    public void onSohSessionCompleted(SohSessionCompletedEvent event) {
+        log.info("SOH session completed — auto-running reconciliation: sessionId={} storeId={}",
+                event.sessionId(), event.storeId());
+        try {
+            var recon = reconciliationEngine.reconcile(event.sessionId());
+            log.info("Auto-reconciliation complete: sessionId={} matched={} missing={} extra={} accuracy={}%",
+                    event.sessionId(), recon.getMatchedCount(), recon.getMissingCount(),
+                    recon.getExtraCount(), recon.getAccuracyPct());
+        } catch (Exception e) {
+            // Non-fatal: no ERP batch for this store, or session has no ERP import.
+            // The user can still run reconciliation manually via POST /api/reconciliation/sessions/{id}/run
+            log.warn("Auto-reconciliation skipped for session {}: {}", event.sessionId(), e.getMessage());
+        }
+    }
+}

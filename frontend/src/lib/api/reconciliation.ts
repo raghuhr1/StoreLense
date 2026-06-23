@@ -23,4 +23,9 @@ export const reconciliationApi = {
       `/reconciliation/sessions/${sessionId}/result/csv`,
       { responseType: 'blob' }
     ).then(r => r.data),
+
+  run: (sessionId: string) =>
+    client.post<ApiResponse<ReconciliationSession>>(
+      `/reconciliation/sessions/${sessionId}/run`
+    ).then(r => r.data.data),
 }

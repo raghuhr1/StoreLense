@@ -68,12 +68,17 @@ public class EanResolutionService {
 
     private void linkEpcs(ErpSohSnapshot snapshot, List<String> epcs) {
         List<ErpSohSnapshotEpc> matches = epcs.stream()
-                .filter(epc -> snapshot.getEan().equals(Sgtin96Decoder.decode(epc)))
-                .map(epc -> ErpSohSnapshotEpc.builder()
-                        .snapshot(snapshot)
-                        .epc(epc)
-                        .matchedBy("SGTIN96")
-                        .build())
+                .map(epc -> {
+                    // Prefer SGTIN-96 match; fall back to direct product-EPC association
+                    // so plain-text or non-SGTIN-96 EPCs still participate in reconciliation.
+                    String decoded = Sgtin96Decoder.decode(epc);
+                    String method  = snapshot.getEan().equals(decoded) ? "SGTIN96" : "PRODUCT_LINK";
+                    return ErpSohSnapshotEpc.builder()
+                            .snapshot(snapshot)
+                            .epc(epc)
+                            .matchedBy(method)
+                            .build();
+                })
                 .collect(Collectors.toList());
 
         if (!matches.isEmpty()) {

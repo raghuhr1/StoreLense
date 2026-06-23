@@ -20,8 +20,12 @@ public class CcReconciliation {
     @Column(name = "session_id", nullable = false)
     private UUID sessionId;
 
-    @Column(name = "batch_id", nullable = false)
+    @Column(name = "batch_id")
     private UUID batchId;
+
+    @Column(nullable = false, length = 20)
+    @Builder.Default
+    private String mode = "ERP_DRIVEN";   // ERP_DRIVEN | SYSTEM_DRIVEN
 
     @Column(name = "store_id", nullable = false)
     private UUID storeId;

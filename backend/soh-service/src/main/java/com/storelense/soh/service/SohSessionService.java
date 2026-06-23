@@ -65,22 +65,38 @@ public class SohSessionService {
     }
 
     private List<String> fetchExpectedEpcs(SohSession session) {
-        if (!"erp_triggered".equals(session.getSource()) || session.getStartedBy() == null) {
-            return List.of();
+        // ERP-triggered: expected EPCs come from the ERP import snapshot
+        if ("erp_triggered".equals(session.getSource()) && session.getStartedBy() != null) {
+            try {
+                List<String> erpEpcs = jdbcClient.sql("""
+                        SELECT e.epc
+                        FROM erp.erp_soh_snapshot_epcs e
+                        JOIN erp.erp_soh_snapshot s ON s.id = e.snapshot_id
+                        WHERE s.batch_id = :batchId::uuid
+                        LIMIT 10000
+                        """)
+                        .param("batchId", session.getStartedBy().toString())
+                        .query(String.class)
+                        .list();
+                if (!erpEpcs.isEmpty()) return erpEpcs;
+            } catch (Exception ex) {
+                log.warn("Could not fetch ERP expected EPCs for session {}: {}", session.getId(), ex.getMessage());
+            }
         }
+        // System-driven fallback: non-sold EPCs already tracked in epc_registry.
+        // Covers manual sessions and stores that haven't uploaded an ERP CSV.
         try {
             return jdbcClient.sql("""
-                    SELECT e.epc
-                    FROM erp.erp_soh_snapshot_epcs e
-                    JOIN erp.erp_soh_snapshot s ON s.id = e.snapshot_id
-                    WHERE s.batch_id = :batchId::uuid
+                    SELECT epc FROM inventory.epc_registry
+                    WHERE store_id = :storeId
+                      AND status NOT IN ('sold', 'damaged', 'transferred')
                     LIMIT 10000
                     """)
-                    .param("batchId", session.getStartedBy().toString())
+                    .param("storeId", session.getStoreId())
                     .query(String.class)
                     .list();
         } catch (Exception ex) {
-            log.warn("Could not fetch expected EPCs for session {}: {}", session.getId(), ex.getMessage());
+            log.warn("Could not fetch system expected EPCs for session {}: {}", session.getId(), ex.getMessage());
             return List.of();
         }
     }
@@ -181,8 +197,7 @@ public class SohSessionService {
         var items = session.getItems();
         int totalCounted = items.stream().mapToInt(SohSessionItem::getCountedQuantity).sum();
 
-        // Expected quantities live in inventory_state (populated by ERP import via Kafka).
-        // SohSessionItem.expectedQuantity is never set during scanning, so we query directly.
+        // Try ERP-sourced expected quantity first (set by ERP import Kafka consumer)
         int totalExpected = jdbcClient.sql("""
                 SELECT COALESCE(SUM(quantity_expected), 0)
                 FROM inventory.inventory_state
@@ -191,6 +206,22 @@ public class SohSessionService {
                 .param("storeId", session.getStoreId())
                 .query(Integer.class)
                 .single();
+
+        // System-driven fallback: count non-sold EPCs in epc_registry.
+        // Used when no ERP CSV has been imported but EPCs are tracked (e.g. via guard app sales).
+        if (totalExpected == 0) {
+            totalExpected = jdbcClient.sql("""
+                    SELECT COUNT(*)
+                    FROM inventory.epc_registry
+                    WHERE store_id = :storeId
+                      AND status NOT IN ('sold', 'damaged', 'transferred')
+                    """)
+                    .param("storeId", session.getStoreId())
+                    .query(Integer.class)
+                    .single();
+            log.debug("System-driven expected for session {}: {} EPCs from epc_registry",
+                    session.getId(), totalExpected);
+        }
         int varianceCount = (int) items.stream().filter(i -> i.getCountedQuantity() != i.getExpectedQuantity()).count();
         int overcount     = (int) items.stream().filter(i -> i.getCountedQuantity() > i.getExpectedQuantity()).count();
         int undercount    = (int) items.stream().filter(i -> i.getCountedQuantity() < i.getExpectedQuantity()).count();
