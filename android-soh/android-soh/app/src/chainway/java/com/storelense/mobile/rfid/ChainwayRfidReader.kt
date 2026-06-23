@@ -105,15 +105,19 @@ class ChainwayRfidReader @Inject constructor(
         kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob()
     )
 
-    // Chainway SDK uses a pull model: poll getTagInfo() in a loop while scanning.
+    // Chainway SDK uses a pull model: poll readTagFromBuffer() in a loop while scanning.
+    // Cancel any previous job first — startScan() may be called again after auto-reconnect.
     private fun startPollingTags() {
+        pollingJob?.cancel()
         pollingJob = pollingScope.launch {
             while (true) {
                 val tag: UHFTAGInfo? = uhfReader?.readTagFromBuffer()
                 if (tag != null && !tag.epc.isNullOrBlank()) {
+                    // Normalize EPC: uppercase, no spaces or colons — must match the server format
+                    val epc = tag.epc.trim().replace(" ", "").replace(":", "").uppercase()
                     _reads.tryEmit(
                         EpcRead(
-                            epc         = tag.epc,
+                            epc         = epc,
                             rssi        = tag.rssi.toDoubleOrNull(),
                             antennaPort = 1,
                             readAt      = Instant.now().toString()

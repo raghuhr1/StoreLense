@@ -8,6 +8,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -127,89 +129,105 @@ fun ScanScreen(
             )
         }
     ) { padding ->
+        // Outer column: scrollable metrics fill available space; action buttons always pinned at bottom
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // Multi-device banner
-            AnimatedVisibility(visible = state.activeDeviceCount > 1) {
-                Surface(
-                    color = EnergyTeal.copy(0.1f),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Speed, null, tint = EnergyTeal, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "${state.activeDeviceCount} users scanning this session",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = EnergyTeal,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-
-            AuditProgressCard(
-                scannedCount  = state.scannedCount,
-                matchedCount  = state.matchedCount,
-                expectedCount = state.expectedCount,
-                phase         = state.phase
-            )
-
-            // Metrics Grid
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                MetricCard(
-                    label = "Read Rate",
-                    value = "${state.readRate.toInt()}/s",
-                    icon = Icons.Default.Speed,
-                    modifier = Modifier.weight(1f)
-                )
-                MetricCard(
-                    label = "Battery",
-                    value = "${state.batteryPct}%",
-                    icon = Icons.Default.BatteryFull,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            // Signal & Last EPC
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = SurfaceSlate.copy(0.5f),
-                shape = RoundedCornerShape(16.dp)
+            // ── Scrollable content ───────────────────────────────────────────────
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SignalBarsIcon(bars = state.readerSignalBars, modifier = Modifier.size(24.dp, 18.dp))
-                    Spacer(Modifier.width(16.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("LAST READ", style = MaterialTheme.typography.labelSmall, color = MutedText, fontWeight = FontWeight.Bold)
-                        Text(
-                            if (state.lastEpc.isEmpty()) "Wating for tags…" else state.lastEpc,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(0.7f),
-                            maxLines = 1
-                        )
+                // Multi-device banner
+                AnimatedVisibility(visible = state.activeDeviceCount > 1) {
+                    Surface(
+                        color = EnergyTeal.copy(0.1f),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Speed, null, tint = EnergyTeal, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "${state.activeDeviceCount} users scanning this session",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = EnergyTeal,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                AuditProgressCard(
+                    scannedCount  = state.scannedCount,
+                    matchedCount  = state.matchedCount,
+                    expectedCount = state.expectedCount,
+                    phase         = state.phase
+                )
+
+                // Metrics Grid
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    MetricCard(
+                        label = "Read Rate",
+                        value = "${state.readRate.toInt()}/s",
+                        icon = Icons.Default.Speed,
+                        modifier = Modifier.weight(1f)
+                    )
+                    MetricCard(
+                        label = "Battery",
+                        value = "${state.batteryPct}%",
+                        icon = Icons.Default.BatteryFull,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // Signal & Last EPC
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = SurfaceSlate.copy(0.5f),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        SignalBarsIcon(bars = state.readerSignalBars, modifier = Modifier.size(24.dp, 18.dp))
+                        Spacer(Modifier.width(16.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("LAST READ", style = MaterialTheme.typography.labelSmall, color = MutedText, fontWeight = FontWeight.Bold)
+                            Text(
+                                if (state.lastEpc.isEmpty()) "Waiting for tags…" else state.lastEpc,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(0.7f),
+                                maxLines = 1
+                            )
+                        }
                     }
                 }
             }
 
-            Spacer(Modifier.weight(1f))
-
-            // Action Section
+            // ── Action section — always visible at bottom ────────────────────────
             if (state.phase == ScanPhase.Uploading) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     CircularProgressIndicator(color = EnergyEmerald)
                     Spacer(Modifier.height(12.dp))
                     Text("Syncing audit results…", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             } else {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
                     // Pause/Resume Button
                     Surface(
                         onClick = vm::togglePause,
