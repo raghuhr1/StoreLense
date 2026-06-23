@@ -43,14 +43,15 @@ class ProductRepository @Inject constructor(
                     }
             } else emptyMap()
 
-        // Step 2: fetch store-scoped product catalog.
-        // Backend filters by storeId using inventory_state + epc_registry, so only
-        // products belonging to this store are returned.
+        // Step 2: fetch ALL active products.
+        // sync=true bypasses the inventory_state/epc_registry filter on the server so the
+        // full product catalog is returned even before any ERP import or RFID scan has happened.
+        // Store-specific quantities are overlaid in Step 3 using invByProductId.
         var page = 0
         var hasMore = true
         val all = mutableListOf<ProductDto>()
         while (hasMore) {
-            val resp = api.getProducts(storeId = storeId, page = page, size = 200)
+            val resp = api.getProducts(storeId = storeId, page = page, size = 200, sync = true)
             val body = resp.body()
             if (resp.isSuccessful && body?.success == true && body.data != null) {
                 all.addAll(body.data.content)
@@ -59,11 +60,9 @@ class ProductRepository @Inject constructor(
             } else hasMore = false
         }
 
-        // Step 3: attach inventory quantities to each product.
-        // We only keep products that are present in the store's inventory state.
-        // This prevents flooding the view with the entire global catalog for stores
-        // that only own a subset of products.
-        val storeProducts = all.filter { it.id in invByProductId }.map { dto ->
+        // Step 3: save every product; overlay on-hand/expected from inventory_state where available.
+        // Products not yet in inventory_state (no ERP import or scan) default to 0/0 quantities.
+        val storeProducts = all.map { dto ->
             val (onHand, expected) = invByProductId[dto.id] ?: Pair(0, 0)
             dto.toEntity(storeId, onHand, expected)
         }

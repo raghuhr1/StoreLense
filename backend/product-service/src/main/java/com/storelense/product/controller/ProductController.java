@@ -32,14 +32,20 @@ public class ProductController {
     @GetMapping
     @Operation(summary = "List or search products",
                description = "When storeId is supplied returns only products present in that store " +
-                             "(via inventory_state or epc_registry). Omit storeId for the full global catalog (admin use).")
+                             "(via inventory_state or epc_registry). Omit storeId for the full global catalog (admin use). " +
+                             "Pass sync=true for mobile offline-catalog download: bypasses the inventory filter " +
+                             "so all active products are returned regardless of store inventory data.")
     public ResponseEntity<ApiResponse<PageResponse<ProductResponse>>> list(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) UUID storeId,
+            @RequestParam(defaultValue = "false") boolean sync,
             @PageableDefault(size = 50) Pageable pageable,
             @AuthenticationPrincipal StoreLensePrincipal principal) {
-        // Non-admin users are always scoped to their own store regardless of what storeId they pass
-        UUID effective = (principal != null && !principal.isAdmin()) ? principal.storeId() : storeId;
+        // sync=true: mobile catalog download — return all active products, skip inventory filter.
+        // Otherwise non-admin users are scoped to their own store's inventory data.
+        UUID effective = (principal != null && !principal.isAdmin() && !sync)
+                ? principal.storeId()
+                : storeId;
         return ResponseEntity.ok(ApiResponse.ok(productService.listProducts(search, effective, pageable)));
     }
 

@@ -83,8 +83,9 @@ interface ApiService {
     @GET("api/products")
     suspend fun getProducts(
         @Query("storeId") storeId: String,
-        @Query("page")    page: Int = 0,
-        @Query("size")    size: Int = 200
+        @Query("page")    page: Int     = 0,
+        @Query("size")    size: Int     = 200,
+        @Query("sync")    sync: Boolean = false
     ): Response<ApiResponse<PagedData<ProductDto>>>
 
     @GET("api/products/{id}")
