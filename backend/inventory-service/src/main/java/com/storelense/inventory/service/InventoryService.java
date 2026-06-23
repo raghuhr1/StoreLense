@@ -229,7 +229,7 @@ public class InventoryService {
     @Transactional(readOnly = true)
     public SkuInventoryResponse getSkuInventory(String sku, UUID storeId) {
         UUID productId = jdbcClient
-                .sql("SELECT id FROM products.products WHERE sku = :sku AND active = true")
+                .sql("SELECT id FROM products.products WHERE sku = :sku AND is_active = true")
                 .param("sku", sku)
                 .query(UUID.class)
                 .optional()
