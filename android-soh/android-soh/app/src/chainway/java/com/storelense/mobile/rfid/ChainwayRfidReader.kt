@@ -54,6 +54,9 @@ class ChainwayRfidReader @Inject constructor(
     override suspend fun connect() = suspendCoroutine { cont ->
         try {
             uhfReader = RFIDWithUHFUART.getInstance()
+            // Release any previously stuck state before re-initialising.
+            // Without this, init() returns -1 if the previous session was not cleanly freed.
+            runCatching { uhfReader?.free() }
             val ok = uhfReader!!.init(context)
             if (!ok) {
                 cont.resumeWithException(IllegalStateException("Chainway RFID init returned false"))

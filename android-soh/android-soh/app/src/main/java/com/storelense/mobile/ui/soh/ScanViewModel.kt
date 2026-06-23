@@ -20,6 +20,7 @@ import com.storelense.mobile.rfid.RfidReader
 import com.storelense.mobile.work.SohUploadWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import timber.log.Timber
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -163,7 +164,18 @@ class ScanViewModel @Inject constructor(
                 _state.update { it.copy(activeDeviceCount = devices) }
                 startParticipantPolling()
 
-                rfid.connect()
+                try {
+                    rfid.connect()
+                } catch (e: Exception) {
+                    Timber.e(e, "RFID connect failed")
+                    _state.update {
+                        it.copy(
+                            phase = ScanPhase.Paused,
+                            error = "RFID reader unavailable (${e.message}). Restart the device and try again."
+                        )
+                    }
+                    return@launch
+                }
                 rfid.setTxPower(27)
                 rfid.startScan()
                 _state.update { it.copy(phase = ScanPhase.Scanning) }
