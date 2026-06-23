@@ -4,6 +4,7 @@ import com.storelense.common.dto.ApiResponse;
 import com.storelense.common.dto.PageResponse;
 import com.storelense.common.security.StoreLensePrincipal;
 import com.storelense.product.dto.*;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import com.storelense.product.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -35,8 +36,11 @@ public class ProductController {
     public ResponseEntity<ApiResponse<PageResponse<ProductResponse>>> list(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) UUID storeId,
-            @PageableDefault(size = 50) Pageable pageable) {
-        return ResponseEntity.ok(ApiResponse.ok(productService.listProducts(search, storeId, pageable)));
+            @PageableDefault(size = 50) Pageable pageable,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+        // Non-admin users are always scoped to their own store regardless of what storeId they pass
+        UUID effective = (principal != null && !principal.isAdmin()) ? principal.storeId() : storeId;
+        return ResponseEntity.ok(ApiResponse.ok(productService.listProducts(search, effective, pageable)));
     }
 
     @GetMapping("/{id}")

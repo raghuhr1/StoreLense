@@ -33,7 +33,11 @@ public class TransferController {
             @Valid @RequestBody CreateTransferRequest req,
             @AuthenticationPrincipal StoreLensePrincipal principal) {
 
-        TransferResponse response = transferService.createTransfer(req, principal.userId());
+        // Non-admin users can only initiate transfers from their own store
+        UUID effectiveSource = principal.isAdmin() ? req.sourceStoreId() : principal.storeId();
+        CreateTransferRequest enforced = new CreateTransferRequest(
+                effectiveSource, req.destStoreId(), req.type(), req.epcs());
+        TransferResponse response = transferService.createTransfer(enforced, principal.userId());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.ok("Transfer created", response));
     }

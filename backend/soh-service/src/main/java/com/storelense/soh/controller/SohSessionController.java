@@ -56,8 +56,11 @@ public class SohSessionController {
             @Valid @RequestBody StartSessionRequest req,
             @AuthenticationPrincipal StoreLensePrincipal principal) {
 
+        // Non-admin users are locked to their own store regardless of what storeId they send
+        UUID effectiveStore = principal.isAdmin() ? req.storeId() : principal.storeId();
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.ok("Session started", sessionService.startSession(req, principal.userId())));
+                .body(ApiResponse.ok("Session started",
+                        sessionService.startSession(req, principal.userId(), effectiveStore)));
     }
 
     @PostMapping("/{id}/complete")

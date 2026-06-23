@@ -2,6 +2,7 @@ package com.storelense.erp.controller;
 
 import com.storelense.common.dto.ApiResponse;
 import com.storelense.common.dto.PageResponse;
+import com.storelense.common.security.StoreLensePrincipal;
 import com.storelense.erp.domain.entity.CcReconciliation;
 import com.storelense.erp.domain.entity.CcReconciliationItem;
 import com.storelense.erp.domain.repository.CcReconciliationItemRepository;
@@ -12,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.nio.charset.StandardCharsets;
@@ -33,8 +35,10 @@ public class ReconciliationController {
     public ResponseEntity<ApiResponse<PageResponse<CcReconciliation>>> listByStore(
             @RequestParam UUID storeId,
             @RequestParam(defaultValue = "0")  int page,
-            @RequestParam(defaultValue = "50") int size) {
-        var p = engine.listByStore(storeId, PageRequest.of(page, size));
+            @RequestParam(defaultValue = "50") int size,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+        UUID effective = principal.isAdmin() ? storeId : principal.storeId();
+        var p = engine.listByStore(effective, PageRequest.of(page, size));
         return ResponseEntity.ok(ApiResponse.ok(PageResponse.from(p)));
     }
 

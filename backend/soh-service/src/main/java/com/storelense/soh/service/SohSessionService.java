@@ -102,15 +102,15 @@ public class SohSessionService {
     }
 
     @Transactional
-    public SohSessionResponse startSession(StartSessionRequest req, UUID userId) {
+    public SohSessionResponse startSession(StartSessionRequest req, UUID userId, UUID effectiveStoreId) {
         // Prevent concurrent sessions for same store+zone
-        sessionRepository.findActiveSession(req.storeId()).ifPresent(s -> {
+        sessionRepository.findActiveSession(effectiveStoreId).ifPresent(s -> {
             throw new BusinessException("SESSION_ACTIVE",
                     "An active session already exists for this store", HttpStatus.CONFLICT);
         });
 
         SohSession session = SohSession.builder()
-                .storeId(req.storeId())
+                .storeId(effectiveStoreId)
                 .zoneId(req.zoneId())
                 .sessionType(req.sessionType() != null ? req.sessionType() : "manual")
                 .status("in_progress")
