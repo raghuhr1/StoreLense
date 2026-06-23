@@ -40,17 +40,13 @@ public class ProductController {
             @RequestParam(defaultValue = "false") boolean sync,
             @PageableDefault(size = 50) Pageable pageable,
             @AuthenticationPrincipal StoreLensePrincipal principal) {
-        // sync=true: mobile catalog download — null effective skips findByStore() entirely
-        // and calls findByActiveTrue() instead, which has no cross-schema dependency.
-        // Otherwise non-admin users are scoped to their own store's inventory data.
-        UUID effective;
-        if (sync) {
-            effective = null;
-        } else if (principal != null && !principal.isAdmin()) {
-            effective = principal.storeId();
-        } else {
-            effective = storeId;
-        }
+        // Non-admin users are always scoped to their own store via findByStore().
+        // sync=true is accepted from mobile clients for future use but does not bypass
+        // the store filter — a store manager should only see their own store's catalog.
+        // Admins may pass an explicit storeId or omit it to get the full global catalog.
+        UUID effective = (principal != null && !principal.isAdmin())
+                ? principal.storeId()
+                : storeId;
         return ResponseEntity.ok(ApiResponse.ok(productService.listProducts(search, effective, pageable)));
     }
 
