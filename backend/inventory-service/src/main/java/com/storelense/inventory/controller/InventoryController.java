@@ -7,7 +7,10 @@ import com.storelense.inventory.domain.entity.InventoryState;
 import com.storelense.inventory.dto.EpcLedgerRow;
 import com.storelense.inventory.dto.EpcLocationResponse;
 import com.storelense.inventory.dto.EpcsByEanResponse;
+import com.storelense.inventory.dto.InboundEpcRow;
 import com.storelense.inventory.dto.MarkEpcsSoldRequest;
+import com.storelense.inventory.dto.PutawayRequest;
+import com.storelense.inventory.dto.PutawayResponse;
 import com.storelense.inventory.dto.SkuLedgerRow;
 import com.storelense.inventory.dto.SkuInventoryResponse;
 import com.storelense.inventory.dto.UpsertExpectedQtyRequest;
@@ -170,6 +173,32 @@ public class InventoryController {
         UUID storeId = principal.isAdmin() ? req.storeId() : principal.storeId();
         InventoryState result = inventoryService.upsertExpectedQty(
                 storeId, req.productId(), req.zoneId(), req.quantityExpected());
+        return ResponseEntity.ok(ApiResponse.ok(result));
+    }
+
+    @GetMapping("/inbound-pending")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE')")
+    @Operation(summary = "List EPCs awaiting put-away (status = inbound)",
+               description = "Returns all EPCs received at the store dock but not yet assigned to a zone.")
+    public ResponseEntity<ApiResponse<List<InboundEpcRow>>> getInboundPending(
+            @RequestParam UUID storeId,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+
+        UUID effective = principal.isAdmin() ? storeId : principal.storeId();
+        return ResponseEntity.ok(ApiResponse.ok(inventoryService.getInboundPendingEpcs(effective)));
+    }
+
+    @PostMapping("/putaway")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE')")
+    @Operation(summary = "Put away inbound EPCs to a zone",
+               description = "Transitions EPCs from inbound → in_store at the specified zone. " +
+                             "EPCs already in_store or not found are skipped.")
+    public ResponseEntity<ApiResponse<PutawayResponse>> putaway(
+            @Valid @RequestBody PutawayRequest req,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+
+        UUID storeId = principal.isAdmin() ? req.storeId() : principal.storeId();
+        PutawayResponse result = inventoryService.putawayEpcs(storeId, req.zoneId(), req.epcs());
         return ResponseEntity.ok(ApiResponse.ok(result));
     }
 }

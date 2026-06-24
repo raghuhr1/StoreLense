@@ -1,5 +1,8 @@
 import client from './client'
-import type { ApiResponse, EpcLedgerRow, InventoryState, PageResponse, SkuLedgerRow } from '@/types'
+import type {
+  ApiResponse, EpcLedgerRow, InventoryState, InboundEpcRow,
+  PageResponse, PutawayResponse, SkuLedgerRow,
+} from '@/types'
 
 export const inventoryApi = {
   getState: (storeId: string) =>
@@ -22,4 +25,12 @@ export const inventoryApi = {
     client.get<ApiResponse<PageResponse<EpcLedgerRow>>>('/inventory/epc-ledger', {
       params: { storeId, ...(status ? { status } : {}), page, size },
     }).then(r => r.data.data),
+
+  inboundPending: (storeId: string) =>
+    client.get<ApiResponse<InboundEpcRow[]>>('/inventory/inbound-pending', { params: { storeId } })
+      .then(r => r.data.data ?? []),
+
+  putaway: (body: { storeId: string; zoneId: string; epcs: string[] }) =>
+    client.post<ApiResponse<PutawayResponse>>('/inventory/putaway', body)
+      .then(r => r.data.data),
 }

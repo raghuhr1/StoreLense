@@ -63,8 +63,23 @@ export interface InventoryState {
 
 export interface EpcRegistryEntry {
   id: string; epc: string; storeId: string; productId: string | null; zoneId: string | null
-  status: 'in_store' | 'sold' | 'missing' | 'damaged' | 'transferred'
+  status: 'in_store' | 'sold' | 'missing' | 'damaged' | 'transferred' | 'inbound' | 'in_transit' | 'unlocated'
   lastSeenAt: string | null; firstSeenAt: string | null
+}
+
+export interface InboundEpcRow {
+  epc: string; productId: string | null; sku: string | null; productName: string | null
+  firstSeenAt: string | null; lastSeenAt: string | null
+}
+
+export interface PutawayResponse {
+  movedCount: number; skippedCount: number; message: string
+}
+
+export interface InboundShipment {
+  id: string; storeId: string; dcCode: string | null; referenceNumber: string | null
+  status: string; expectedAt: string | null; receivedAt: string | null
+  lineCount: number; notes: string | null; createdAt: string
 }
 
 // ─── SOH / Cycle Count ────────────────────────────────────────────────────────

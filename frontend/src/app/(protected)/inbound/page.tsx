@@ -3,12 +3,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState }  from 'react'
 import { type ColumnDef }     from '@tanstack/react-table'
-import { Plus, Truck }        from 'lucide-react'
+import { Plus, Truck, PackageCheck } from 'lucide-react'
 import Link                   from 'next/link'
 import Header                 from '@/components/layout/Header'
 import DataTable              from '@/components/ui/DataTable'
 import { statusBadge }        from '@/components/ui/Badge'
 import { refillApi }          from '@/lib/api/refill'
+import { inventoryApi }       from '@/lib/api/inventory'
 import { storesApi }          from '@/lib/api/stores'
 import { useAuth }            from '@/lib/auth/AuthContext'
 import { fmtDateTime }        from '@/lib/utils'
@@ -47,6 +48,12 @@ export default function InboundPage() {
     queryFn:  () => refillApi.listTasks(storeId, { size: 100 }),
     enabled:  !!storeId,
     select:   d => d.content.filter(t => t.source === 'erp'),
+  })
+
+  const { data: inboundPending = [] } = useQuery({
+    queryKey: ['inbound-pending', storeId],
+    queryFn:  () => inventoryApi.inboundPending(storeId),
+    enabled:  !!storeId,
   })
 
   const createMut = useMutation({
@@ -146,6 +153,23 @@ export default function InboundPage() {
             <Plus size={16} /> New GRN Receipt
           </button>
         </div>
+
+        {/* Pending put-away alert */}
+        {inboundPending.length > 0 && (
+          <Link href="/inbound/putaway"
+            className="flex items-center justify-between p-4 bg-amber-50 border border-amber-200 rounded-xl hover:bg-amber-100 transition-colors">
+            <div className="flex items-center gap-3">
+              <PackageCheck size={20} className="text-amber-600 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-amber-900">
+                  {inboundPending.length} EPC{inboundPending.length !== 1 ? 's' : ''} awaiting put-away
+                </p>
+                <p className="text-xs text-amber-700">Received at dock — not yet assigned to a zone</p>
+              </div>
+            </div>
+            <span className="text-xs font-semibold text-amber-700 shrink-0">Put Away →</span>
+          </Link>
+        )}
 
         {/* Summary stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

@@ -371,6 +371,85 @@ public class InventoryService {
         return new PageResponse<>(rows, pageNum, pageSize, total, totalPages, (pageNum + 1) >= totalPages);
     }
 
+    /**
+     * Returns all EPCs currently with status='inbound' at the store,
+     * joined with product info. Used by the web put-away screen.
+     */
+    @Transactional(readOnly = true)
+    public List<com.storelense.inventory.dto.InboundEpcRow> getInboundPendingEpcs(UUID storeId) {
+        return jdbcClient.sql("""
+                SELECT
+                    er.epc,
+                    er.product_id,
+                    p.sku,
+                    p.name      AS product_name,
+                    er.first_seen_at,
+                    er.last_seen_at
+                FROM inventory.epc_registry er
+                LEFT JOIN products.products p ON p.id = er.product_id
+                WHERE er.store_id = :storeId
+                  AND er.status   = 'inbound'
+                ORDER BY er.last_seen_at DESC NULLS LAST
+                """)
+                .param("storeId", storeId)
+                .query((rs, n) -> new com.storelense.inventory.dto.InboundEpcRow(
+                        rs.getString("epc"),
+                        rs.getObject("product_id", UUID.class),
+                        rs.getString("sku"),
+                        rs.getString("product_name"),
+                        rs.getTimestamp("first_seen_at") != null
+                                ? rs.getTimestamp("first_seen_at").toInstant().atOffset(ZoneOffset.UTC).toString()
+                                : null,
+                        rs.getTimestamp("last_seen_at") != null
+                                ? rs.getTimestamp("last_seen_at").toInstant().atOffset(ZoneOffset.UTC).toString()
+                                : null
+                ))
+                .list();
+    }
+
+    /**
+     * Transitions a list of EPCs from 'inbound' to 'in_store' in the given zone.
+     * Writes position history for each moved EPC. EPCs not found or not in 'inbound'
+     * status are skipped (counted in skippedCount).
+     */
+    @SuppressWarnings("null")
+    @Transactional
+    public com.storelense.inventory.dto.PutawayResponse putawayEpcs(
+            UUID storeId, UUID zoneId, List<String> epcs) {
+
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        int moved   = 0;
+        int skipped = 0;
+
+        for (String epc : epcs) {
+            var opt = epcRegistryRepository.findByEpcAndStoreId(epc, storeId);
+            if (opt.isEmpty() || !"inbound".equals(opt.get().getStatus())) {
+                skipped++;
+                continue;
+            }
+            EpcRegistry reg = opt.get();
+            epcPositionHistoryRepository.save(EpcPositionHistory.builder()
+                    .epc(epc)
+                    .storeId(storeId)
+                    .productId(reg.getProductId())
+                    .fromZoneId(null)
+                    .toZoneId(zoneId)
+                    .fromStatus("inbound")
+                    .toStatus("in_store")
+                    .triggeredBy("receiving")
+                    .build());
+            reg.setStatus("in_store");
+            reg.setZoneId(zoneId);
+            reg.setLastSeenAt(now);
+            epcRegistryRepository.save(reg);
+            moved++;
+        }
+
+        return new com.storelense.inventory.dto.PutawayResponse(
+                moved, skipped,
+                "Put away " + moved + " EPC(s) to zone " + zoneId);
+    }
+
     private java.math.BigDecimal calcAccuracy(int onHand, int expected) {
         if (expected == 0) return java.math.BigDecimal.valueOf(100);
         return java.math.BigDecimal.valueOf(100.0 * onHand / expected)
