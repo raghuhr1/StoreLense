@@ -8,7 +8,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 public interface SohSessionRepository extends JpaRepository<SohSession, UUID> {
@@ -16,5 +15,5 @@ public interface SohSessionRepository extends JpaRepository<SohSession, UUID> {
     Page<SohSession> findByStoreIdAndStatusInOrderByStartedAtDesc(UUID storeId, List<String> statuses, Pageable pageable);
 
     @Query("SELECT s FROM SohSession s WHERE s.storeId = :storeId AND s.status IN ('created','in_progress') ORDER BY s.startedAt DESC")
-    Optional<SohSession> findActiveSession(@Param("storeId") UUID storeId);
+    List<SohSession> findActiveSessions(@Param("storeId") UUID storeId);
 }

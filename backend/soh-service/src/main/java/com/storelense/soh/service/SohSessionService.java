@@ -119,8 +119,8 @@ public class SohSessionService {
 
     @Transactional
     public SohSessionResponse startSession(StartSessionRequest req, UUID userId, UUID effectiveStoreId) {
-        // Prevent concurrent sessions for same store+zone
-        sessionRepository.findActiveSession(effectiveStoreId).ifPresent(s -> {
+        // Prevent concurrent sessions for same store — take the most recent active one if multiple exist
+        sessionRepository.findActiveSessions(effectiveStoreId).stream().findFirst().ifPresent(s -> {
             throw new BusinessException("SESSION_ACTIVE",
                     "An active session already exists for this store", HttpStatus.CONFLICT);
         });
