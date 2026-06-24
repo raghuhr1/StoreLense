@@ -2,19 +2,20 @@
 
 import { useQuery }     from '@tanstack/react-query'
 import { useMemo, useState }     from 'react'
-import { BarChart3, ScanLine, CheckCircle2, AlertTriangle, PackageOpen }  from 'lucide-react'
+import { BarChart3, ScanLine, CheckCircle2, AlertTriangle, PackageOpen, MapPin, TrendingDown } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid } from 'recharts'
 import Link             from 'next/link'
 import Header           from '@/components/layout/Header'
 import StatCard         from '@/components/ui/StatCard'
-import { reportingApi } from '@/lib/api/reporting'
-import { storesApi }    from '@/lib/api/stores'
-import { sohApi }       from '@/lib/api/soh'
-import { refillApi }    from '@/lib/api/refill'
-import { erpImportApi } from '@/lib/api/erp'
-import { useAuth }      from '@/lib/auth/AuthContext'
+import { reportingApi }       from '@/lib/api/reporting'
+import { storesApi }          from '@/lib/api/stores'
+import { sohApi }             from '@/lib/api/soh'
+import { refillApi }          from '@/lib/api/refill'
+import { erpImportApi }       from '@/lib/api/erp'
+import { zoneIntelligenceApi } from '@/lib/api/inventory'
+import { useAuth }            from '@/lib/auth/AuthContext'
 import { fmtPct, fmtDateTime } from '@/lib/utils'
-import Badge            from '@/components/ui/Badge'
+import Badge                  from '@/components/ui/Badge'
 
 function iso(d: Date) { return d.toISOString().slice(0, 10) }
 
@@ -87,6 +88,17 @@ export default function DashboardPage() {
   const accMin = chartData.length
     ? Math.max(0, Math.floor(Math.min(...chartData.map(d => d.accuracy)) / 10) * 10)
     : 0
+
+  const { data: zoneHealth = [] } = useQuery({
+    queryKey: ['zone-health', storeId],
+    queryFn:  () => zoneIntelligenceApi.zoneHealth(storeId),
+    enabled:  !!storeId,
+  })
+
+  const zoneTotals = useMemo(() => ({
+    critical: zoneHealth.reduce((s, z) => s + z.criticalCount, 0),
+    low:      zoneHealth.reduce((s, z) => s + z.lowCount,      0),
+  }), [zoneHealth])
 
   const sessionCount = kpi?.reduce((s, k) => s + k.sohSessionsCount, 0) ?? 0
   const selectedStore = allStores?.content.find(s => s.id === storeId)
@@ -222,6 +234,74 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
+
+        {/* Zone Health Widget */}
+        {zoneHealth.length > 0 && (
+          <div className="card">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <MapPin size={16} className="text-amber-500" />
+                <h3 className="text-sm font-semibold text-gray-700">Zone Stock Health (live)</h3>
+              </div>
+              <Link href="/reports/zone-intelligence" className="text-xs text-brand-600 hover:underline">
+                Full intelligence →
+              </Link>
+            </div>
+
+            {(zoneTotals.critical > 0 || zoneTotals.low > 0) ? (
+              <div className="flex items-center gap-4 mb-4 p-3 bg-amber-50 border border-amber-100 rounded-xl">
+                {zoneTotals.critical > 0 && (
+                  <div className="flex items-center gap-1.5 text-red-700">
+                    <AlertTriangle size={15} />
+                    <span className="text-sm font-bold">{zoneTotals.critical}</span>
+                    <span className="text-xs">critical</span>
+                  </div>
+                )}
+                {zoneTotals.low > 0 && (
+                  <div className="flex items-center gap-1.5 text-amber-700">
+                    <TrendingDown size={15} />
+                    <span className="text-sm font-bold">{zoneTotals.low}</span>
+                    <span className="text-xs">low stock</span>
+                  </div>
+                )}
+                <Link href="/replenishment/auto" className="ml-auto text-xs font-semibold text-amber-700 hover:underline">
+                  Auto-trigger refill →
+                </Link>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 mb-4 p-3 bg-green-50 border border-green-100 rounded-xl text-green-700 text-sm">
+                <CheckCircle2 size={15} />
+                All zones at or above par level
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {zoneHealth.slice(0, 8).map(z => {
+                const hasIssue = z.criticalCount > 0 || z.lowCount > 0
+                return (
+                  <div key={z.zoneId} className={`rounded-xl p-3 border ${
+                    z.criticalCount > 0 ? 'border-red-200 bg-red-50'
+                    : z.lowCount > 0    ? 'border-amber-200 bg-amber-50'
+                    : 'border-gray-100 bg-gray-50'
+                  }`}>
+                    <p className="text-xs font-medium text-gray-700 truncate">{z.zoneName ?? z.zoneId}</p>
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      {z.criticalCount > 0 && (
+                        <span className="text-xs font-bold text-red-600">{z.criticalCount}⚠</span>
+                      )}
+                      {z.lowCount > 0 && (
+                        <span className="text-xs font-semibold text-amber-600">{z.lowCount}↓</span>
+                      )}
+                      {!hasIssue && (
+                        <span className="text-xs text-green-600 font-medium">✓ OK</span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Recent sessions + pending tasks + ERP import */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

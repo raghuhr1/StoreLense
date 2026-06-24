@@ -95,6 +95,21 @@ export interface ReplenishmentRule {
   priority: number; active: boolean; createdAt: string; updatedAt: string
 }
 
+export interface ZoneHealthSummary {
+  zoneId: string; zoneName: string | null
+  criticalCount: number; lowCount: number; okCount: number; surplusCount: number
+  totalProducts: number
+}
+
+export interface ProductFrequencyRow {
+  productId: string; sku: string | null; productName: string | null
+  refillCount: number; totalUnitsRequested: number; lastRefillAt: string | null
+}
+
+export interface ZoneTrendPoint {
+  day: string; criticalCount: number; lowCount: number; okCount: number; surplusCount: number
+}
+
 export interface ReplenishmentSuggestion {
   storeId: string; zoneId: string; zoneName: string | null
   productId: string; sku: string | null; productName: string | null

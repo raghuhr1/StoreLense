@@ -9,7 +9,7 @@ import {
 } from 'recharts'
 import {
   Download, BarChart3, Package, Truck, RefreshCw,
-  ShoppingCart, TrendingDown, Loader2, CheckCircle2, MapPin,
+  ShoppingCart, TrendingDown, Loader2, CheckCircle2, MapPin, Zap,
 } from 'lucide-react'
 import Link                from 'next/link'
 import Header              from '@/components/layout/Header'
@@ -478,6 +478,22 @@ export default function ReportsPage() {
                   Live RFID scan counts vs par levels — see critical, low, ok and surplus zones at a glance
                 </p>
                 <p className="text-xs font-medium text-brand-600 mt-2">Open live view →</p>
+              </div>
+            </Link>
+
+            <Link href="/reports/zone-intelligence"
+              className="card flex items-start gap-3 hover:shadow-md transition-shadow group cursor-pointer">
+              <div className="w-9 h-9 rounded-lg bg-purple-50 flex items-center justify-center shrink-0">
+                <Zap size={18} className="text-purple-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-semibold text-gray-900 group-hover:text-brand-700">
+                  Zone Intelligence
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Zone health cards, trend chart over time, top chronic under-stockers by refill frequency
+                </p>
+                <p className="text-xs font-medium text-brand-600 mt-2">Open intelligence →</p>
               </div>
             </Link>
           </div>

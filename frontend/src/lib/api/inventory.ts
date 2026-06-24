@@ -1,8 +1,10 @@
 import client from './client'
 import type {
   ApiResponse, EpcLedgerRow, InventoryState, InboundEpcRow,
-  PageResponse, PutawayResponse, ReplenishmentRule, ReplenishmentSuggestion,
-  SkuLedgerRow, ZoneParLevel, ZoneScanRollupRow,
+  PageResponse, ProductFrequencyRow, PutawayResponse,
+  ReplenishmentRule, ReplenishmentSuggestion,
+  SkuLedgerRow, ZoneHealthSummary, ZoneParLevel, ZoneScanRollupRow,
+  ZoneTrendPoint,
 } from '@/types'
 
 export const inventoryApi = {
@@ -48,6 +50,22 @@ export const parLevelsApi = {
 
   delete: (id: string, storeId: string) =>
     client.delete(`/par-levels/${id}`, { params: { storeId } }),
+}
+
+export const zoneIntelligenceApi = {
+  zoneHealth: (storeId: string) =>
+    client.get<ApiResponse<ZoneHealthSummary[]>>('/zone-intelligence/zone-health', { params: { storeId } })
+      .then(r => r.data.data ?? []),
+
+  productFrequency: (storeId: string, days = 30, limit = 20) =>
+    client.get<ApiResponse<ProductFrequencyRow[]>>('/zone-intelligence/product-frequency', {
+      params: { storeId, days, limit },
+    }).then(r => r.data.data ?? []),
+
+  zoneTrend: (storeId: string, zoneId?: string, days = 30) =>
+    client.get<ApiResponse<ZoneTrendPoint[]>>('/zone-intelligence/zone-trend', {
+      params: { storeId, days, ...(zoneId ? { zoneId } : {}) },
+    }).then(r => r.data.data ?? []),
 }
 
 export const replenishmentRulesApi = {
