@@ -1,0 +1,20 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.storelense.c66.app-mergeDebugResources-56:/values-v31/values-v31.xml",
+            "map": [
+                {
+                    "source": "C:\\Users\\Admin\\.gradle\\caches\\9.3.0\\transforms\\db928334779e9f0d32fab9531b4d93e5\\workspace\\transformed\\jetified-core-splashscreen-1.0.1\\res\\values-v31\\values-v31.xml",
+                    "from": {
+                        "startLines": "2,9",
+                        "startColumns": "4,4",
+                        "startOffsets": "55,473",
+                        "endLines": "8,13",
+                        "endColumns": "12,12",
+                        "endOffsets": "468,697"
+                    }
+                }
+            ]
+        }
+    ]
+}

@@ -12,6 +12,7 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface SohMapper {
     @Mapping(target = "expectedEpcs", ignore = true)
+    @Mapping(target = "result", ignore = true)
     SohSessionResponse toResponse(SohSession session);
 
     @Mapping(target = "sessionId", source = "session.id")

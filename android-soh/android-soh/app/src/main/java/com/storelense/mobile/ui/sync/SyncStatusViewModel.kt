@@ -39,7 +39,7 @@ class SyncStatusViewModel @Inject constructor(
     }
 
     private fun observeWorkers() {
-        workManager.getWorkInfosForUniqueWorkLiveData(ProductSyncWorker.WORK_NAME)
+        workManager.getWorkInfosForUniqueWorkLiveData(ProductSyncWorker.WORK_NAME_PERIODIC)
             .asFlow()
             .onEach { infos ->
                 val running = infos.any { it.state == WorkInfo.State.RUNNING }

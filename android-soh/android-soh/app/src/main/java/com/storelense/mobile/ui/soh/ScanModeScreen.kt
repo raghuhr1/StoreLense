@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.storelense.mobile.data.remote.dto.SohSessionDto
 import com.storelense.mobile.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -33,7 +35,6 @@ fun ScanModeScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    // Navigate when session is created
     LaunchedEffect(Unit) {
         viewModel.sessionCreated.collect { sessionId ->
             onSessionReady(sessionId)
@@ -46,7 +47,7 @@ fun ScanModeScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Select Scan Mode",
+                        "Inventory Audit",
                         fontWeight = FontWeight.Black,
                         color      = Color.White
                     )
@@ -66,27 +67,33 @@ fun ScanModeScreen(
                 .padding(padding)
                 .padding(horizontal = 20.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(4.dp))
 
-            // Header text
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    "Choose the area you want to count",
-                    style      = MaterialTheme.typography.bodyMedium,
-                    color      = MutedText
-                )
-                Text(
-                    "A scan session will be created and you can start scanning immediately.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MutedText.copy(0.7f)
+            // ── Active sessions section ───────────────────────────────────────
+            if (state.activeSessions.isNotEmpty()) {
+                SectionLabel("ACTIVE SCAN SESSIONS", EnergyEmerald)
+
+                state.activeSessions.forEach { session ->
+                    ActiveSessionCard(
+                        session = session,
+                        onResume = { viewModel.resumeSession(session.id) }
+                    )
+                }
+
+                HorizontalDivider(
+                    color = Color.White.copy(0.06f),
+                    modifier = Modifier.padding(vertical = 4.dp)
                 )
             }
 
-            Spacer(Modifier.height(4.dp))
+            // ── Start new scan section ────────────────────────────────────────
+            SectionLabel(
+                label = if (state.activeSessions.isEmpty()) "SELECT SCAN AREA" else "START NEW SCAN",
+                color = MutedText
+            )
 
-            // Zone option cards
             viewModel.zoneOptions.forEachIndexed { index, zone ->
                 ZoneOptionCard(
                     zone      = zone,
@@ -163,20 +170,107 @@ fun ScanModeScreen(
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
 
-            // Session list hint
-            TextButton(
-                onClick  = onBack,
-                modifier = Modifier.align(Alignment.CenterHorizontally)
+@Composable
+private fun SectionLabel(label: String, color: Color) {
+    Text(
+        label,
+        style       = MaterialTheme.typography.labelSmall,
+        color       = color,
+        fontWeight  = FontWeight.Bold,
+        letterSpacing = 1.sp
+    )
+}
+
+@Composable
+private fun ActiveSessionCard(
+    session: SohSessionDto,
+    onResume: () -> Unit
+) {
+    val isErp = session.source == "erp_triggered"
+    val title = when {
+        isErp                              -> "ERP SOH Audit"
+        session.sessionType == "full_store" -> "Full Store Count"
+        session.zoneRegion != null          -> "${session.zoneRegion!!.replace("_", " ")} Count"
+        else                               -> "Scan Session"
+    }
+    val zoneLabel = session.zoneRegion?.replace("_", " ")
+    val dateLabel = session.startedAt?.take(10) ?: ""
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape    = RoundedCornerShape(20.dp),
+        colors   = CardDefaults.cardColors(containerColor = EnergyEmerald.copy(0.08f)),
+        border   = BorderStroke(1.dp, EnergyEmerald.copy(0.25f))
+    ) {
+        Row(
+            modifier          = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Pulsing active dot
+            Box(
+                modifier         = Modifier
+                    .size(44.dp)
+                    .background(EnergyEmerald.copy(0.15f), CircleShape),
+                contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.List, null, tint = MutedText, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    "View existing sessions instead",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MutedText
+                Box(
+                    Modifier
+                        .size(12.dp)
+                        .background(EnergyEmerald, CircleShape)
                 )
+            }
+
+            Spacer(Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(title, fontWeight = FontWeight.Bold, color = Color.White, fontSize = 15.sp)
+                    if (isErp) {
+                        Surface(
+                            color = SoftAmber.copy(0.15f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                "ERP",
+                                modifier  = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                style     = MaterialTheme.typography.labelSmall,
+                                color     = SoftAmber,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment     = Alignment.CenterVertically
+                ) {
+                    if (zoneLabel != null) {
+                        Text(zoneLabel, style = MaterialTheme.typography.labelSmall, color = EnergyTeal)
+                        Text("·", style = MaterialTheme.typography.labelSmall, color = MutedText)
+                    }
+                    Text(dateLabel, style = MaterialTheme.typography.labelSmall, color = MutedText)
+                }
+            }
+
+            Spacer(Modifier.width(8.dp))
+
+            Button(
+                onClick = onResume,
+                shape   = RoundedCornerShape(12.dp),
+                colors  = ButtonDefaults.buttonColors(containerColor = EnergyEmerald),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Text("RESUME", fontWeight = FontWeight.Black, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                Spacer(Modifier.width(4.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, null, modifier = Modifier.size(12.dp))
             }
         }
     }
@@ -206,7 +300,6 @@ private fun ZoneOptionCard(
             modifier          = Modifier.padding(20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Icon badge
             Box(
                 modifier         = Modifier
                     .size(52.dp)
@@ -276,8 +369,8 @@ private fun zoneIcon(index: Int): ImageVector = when (index) {
 }
 
 private fun zoneColor(index: Int): Color = when (index) {
-    0    -> Color(0xFF22C55E)  // green — full store
-    1    -> Color(0xFF3B82F6)  // blue  — sales floor
-    2    -> Color(0xFFF59E0B)  // amber — back room
-    else -> Color(0xFFA855F7)  // purple — fitting room
+    0    -> Color(0xFF22C55E)
+    1    -> Color(0xFF3B82F6)
+    2    -> Color(0xFFF59E0B)
+    else -> Color(0xFFA855F7)
 }

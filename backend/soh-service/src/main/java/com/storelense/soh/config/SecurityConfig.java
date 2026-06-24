@@ -9,6 +9,7 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
@@ -32,6 +33,9 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health", "/v3/api-docs/**", "/swagger-ui/**").permitAll()
+                        // Internal service-to-service: erp-integration reads session + EPCs for reconciliation
+                        .requestMatchers(HttpMethod.GET, "/api/soh/sessions/*/epcs").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/soh/sessions/*").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtFilter(), UsernamePasswordAuthenticationFilter.class)

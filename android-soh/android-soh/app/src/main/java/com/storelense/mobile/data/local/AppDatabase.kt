@@ -22,7 +22,7 @@ import com.storelense.mobile.data.local.entity.*
         ExceptionCacheEntity::class,
         GhostAnalysisEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -86,6 +86,21 @@ abstract class AppDatabase : RoomDatabase() {
 
                 // Fix 3: Add sourceStoreId to transfers_out for store-scoped transfer queries.
                 db.execSQL("ALTER TABLE transfers_out ADD COLUMN sourceStoreId TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Reconcile index names: old migrations used "idx_products_*" prefix but
+                // Room @Entity generates "index_products_*" — drop all old variants and
+                // recreate with the names Room expects.
+                db.execSQL("DROP INDEX IF EXISTS idx_products_sku")
+                db.execSQL("DROP INDEX IF EXISTS index_products_sku")   // drop unique remnant
+                db.execSQL("DROP INDEX IF EXISTS idx_products_erpCode")
+                db.execSQL("DROP INDEX IF EXISTS idx_products_storeId")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_products_sku ON products(sku)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_products_erpCode ON products(erpCode)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_products_storeId ON products(storeId)")
             }
         }
 

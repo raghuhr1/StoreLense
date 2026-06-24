@@ -11,5 +11,6 @@ public record SohSessionResponse(
         OffsetDateTime completedAt,
         int totalEpcReads, int uniqueEpcCount,
         String notes, String source, String zoneRegion,
-        List<String> expectedEpcs
+        List<String> expectedEpcs,
+        SohResultResponse result
 ) {}

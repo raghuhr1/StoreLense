@@ -53,6 +53,9 @@ public class SohSessionService {
         SohSession session = findOrThrow(sessionId);
         SohSessionResponse base = sohMapper.toResponse(session);
         List<String> expectedEpcs = fetchExpectedEpcs(session);
+        SohResultResponse result = session.getResult() != null
+                ? sohMapper.toResultResponse(session.getResult())
+                : null;
         return new SohSessionResponse(
                 base.id(), base.storeId(), base.zoneId(),
                 base.sessionType(), base.status(),
@@ -60,7 +63,8 @@ public class SohSessionService {
                 base.completedAt(),
                 base.totalEpcReads(), base.uniqueEpcCount(),
                 base.notes(), base.source(), base.zoneRegion(),
-                expectedEpcs
+                expectedEpcs,
+                result
         );
     }
 
@@ -212,6 +216,28 @@ public class SohSessionService {
     private SohResult calculateResult(SohSession session) {
         var items = session.getItems();
         int totalCounted = items.stream().mapToInt(SohSessionItem::getCountedQuantity).sum();
+
+        // If no session items yet (Kafka processing lag or no product-EPC mapping), fall back
+        // to counting raw EPC reads seen during the session window from epc_registry.
+        if (totalCounted == 0 && session.getTotalEpcReads() > 0) {
+            try {
+                Integer rawCount = jdbcClient.sql("""
+                        SELECT COUNT(DISTINCT epc)
+                        FROM inventory.epc_registry
+                        WHERE store_id = :storeId
+                          AND last_seen_at >= :start
+                          AND (:end::timestamptz IS NULL OR last_seen_at <= :end::timestamptz)
+                        """)
+                        .param("storeId", session.getStoreId())
+                        .param("start", session.getStartedAt())
+                        .param("end", session.getCompletedAt())
+                        .query(Integer.class).optional().orElse(0);
+                totalCounted = rawCount != null ? rawCount : 0;
+                log.debug("Fallback EPC count for session {}: {} raw EPCs scanned", session.getId(), totalCounted);
+            } catch (Exception ex) {
+                log.warn("Could not compute fallback EPC count for session {}: {}", session.getId(), ex.getMessage());
+            }
+        }
 
         // Try ERP-sourced expected quantity first (set by ERP import Kafka consumer)
         int totalExpected = jdbcClient.sql("""

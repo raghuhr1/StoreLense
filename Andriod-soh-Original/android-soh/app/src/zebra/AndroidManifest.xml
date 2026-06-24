@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Zebra EMDK permission — required for RFID/barcode hardware access -->
+    <uses-permission android:name="com.symbol.emdk.permission.EMDK" />
+
+    <application>
+        <!-- EMDK system library — required=false allows sideload on non-Zebra devices -->
+        <uses-library android:name="com.symbol.emdk" android:required="false" />
+    </application>
+
+</manifest>

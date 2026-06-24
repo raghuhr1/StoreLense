@@ -17,7 +17,7 @@ object DatabaseModule {
     @Provides @Singleton
     fun provideDatabase(@ApplicationContext ctx: Context): AppDatabase =
         Room.databaseBuilder(ctx, AppDatabase::class.java, "storelense.db")
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7)
             .build()
 
     @Provides fun provideEpcReadDao(db: AppDatabase)         = db.epcReadDao()

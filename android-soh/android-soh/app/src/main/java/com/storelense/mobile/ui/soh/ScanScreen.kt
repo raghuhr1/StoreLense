@@ -476,11 +476,22 @@ private fun AuditProgressCard(
             }
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                ScanStatItem("Scanned", scannedCount.toString(), Color.White)
+                val variance = expectedCount - matchedCount
+                val varianceColor = when {
+                    variance == 0 -> EnergyEmerald
+                    variance > 0  -> Color(0xFFFB7185)  // items still missing
+                    else          -> SoftAmber           // overcounted
+                }
+                val varianceLabel = when {
+                    variance > 0  -> "-$variance"
+                    variance < 0  -> "+${-variance}"
+                    else          -> "0"
+                }
+                ScanStatItem("Expected", expectedCount.toString(), Color.White)
                 Box(Modifier.width(1.dp).height(32.dp).background(Color.White.copy(0.1f)))
-                ScanStatItem("Missing", maxOf(0, expectedCount - matchedCount).toString(), Color(0xFFFB7185))
+                ScanStatItem("Variance", varianceLabel, varianceColor)
                 Box(Modifier.width(1.dp).height(32.dp).background(Color.White.copy(0.1f)))
-                ScanStatItem("Matched", matchedCount.toString(), EnergyEmerald)
+                ScanStatItem("Found", matchedCount.toString(), EnergyEmerald)
             }
         }
     }

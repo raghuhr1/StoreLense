@@ -25,21 +25,31 @@ public class SohServiceClient {
     }
 
     public SohSessionInfo getSession(UUID sessionId) {
-        ApiResponse<Map<String, Object>> response = sohRestClient.get()
-                .uri("/api/soh/sessions/{id}", sessionId)
-                .retrieve()
-                .body(new ParameterizedTypeReference<>() {});
+        try {
+            ApiResponse<Map<String, Object>> response = sohRestClient.get()
+                    .uri("/api/soh/sessions/{id}", sessionId)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<>() {});
 
-        if (response == null || response.getData() == null) {
-            throw new IllegalStateException("Session " + sessionId + " not found in soh-service");
+            if (response == null || response.getData() == null) {
+                throw new IllegalStateException("Session " + sessionId + " not found in soh-service");
+            }
+            Map<String, Object> d = response.getData();
+            return new SohSessionInfo(
+                    UUID.fromString((String) d.get("id")),
+                    UUID.fromString((String) d.get("storeId")),
+                    (String) d.get("zoneRegion"),
+                    (String) d.get("status")
+            );
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Could not reach soh-service for session {}: {}. " +
+                      "Check SOH_SERVICE_TOKEN and SOH_SERVICE_URL configuration.", sessionId, e.getMessage());
+            throw new IllegalStateException(
+                    "soh-service unreachable or returned an error for session " + sessionId +
+                    ". Ensure SOH_SERVICE_TOKEN is configured. Cause: " + e.getMessage(), e);
         }
-        Map<String, Object> d = response.getData();
-        return new SohSessionInfo(
-                UUID.fromString((String) d.get("id")),
-                UUID.fromString((String) d.get("storeId")),
-                (String) d.get("zoneRegion"),
-                (String) d.get("status")
-        );
     }
 
     /**

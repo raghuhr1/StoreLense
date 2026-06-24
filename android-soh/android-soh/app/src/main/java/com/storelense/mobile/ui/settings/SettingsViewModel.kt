@@ -70,7 +70,7 @@ class SettingsViewModel @Inject constructor(
     private fun applyWorkSchedule(settings: SyncSettings) {
         if (settings.autoSync) {
             workManager.enqueueUniquePeriodicWork(
-                ProductSyncWorker.WORK_NAME,
+                ProductSyncWorker.WORK_NAME_PERIODIC,
                 ExistingPeriodicWorkPolicy.REPLACE,
                 PeriodicWorkRequestBuilder<ProductSyncWorker>(
                     settings.intervalMinutes.toLong(), TimeUnit.MINUTES
@@ -79,7 +79,7 @@ class SettingsViewModel @Inject constructor(
                     .build()
             )
         } else {
-            workManager.cancelUniqueWork(ProductSyncWorker.WORK_NAME)
+            workManager.cancelUniqueWork(ProductSyncWorker.WORK_NAME_PERIODIC)
             workManager.cancelUniqueWork("refill_sync")
         }
     }

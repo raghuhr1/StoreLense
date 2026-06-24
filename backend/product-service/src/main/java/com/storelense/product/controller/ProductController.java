@@ -51,9 +51,12 @@ public class ProductController {
         OffsetDateTime sinceDate = since != null
                 ? OffsetDateTime.ofInstant(Instant.ofEpochMilli(since), ZoneOffset.UTC)
                 : null;
+        // sync=true is mobile offline-catalog download; admins get the full global catalog,
+        // store users always get only their own store's products regardless of sync flag
+        boolean globalSync = sync && (principal == null || principal.isAdmin());
         return ResponseEntity.ok(ApiResponse.ok(
-                sync ? productService.listAllActive(search, pageable)
-                     : productService.listProducts(search, effective, sinceDate, pageable)));
+                globalSync ? productService.listAllActive(search, pageable)
+                           : productService.listProducts(search, effective, sinceDate, pageable)));
     }
 
     @GetMapping("/{id}")

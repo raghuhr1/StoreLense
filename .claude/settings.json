@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(adb devices -l)",
+      "Bash(git add *)"
+    ]
+  }
+}

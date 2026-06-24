@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.storelense.mobile.data.remote.ApiService
 import com.storelense.mobile.data.remote.dto.CreateSohSessionRequest
+import com.storelense.mobile.data.remote.dto.SohSessionDto
 import com.storelense.mobile.data.repository.AuthRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -16,7 +17,8 @@ import javax.inject.Inject
 
 data class ScanModeState(
     val isLoading: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val activeSessions: List<SohSessionDto> = emptyList()
 )
 
 data class ZoneOption(
@@ -37,6 +39,25 @@ class ScanModeViewModel @Inject constructor(
 
     private val _sessionCreated = MutableSharedFlow<String>()
     val sessionCreated = _sessionCreated.asSharedFlow()
+
+    init {
+        loadActiveSessions()
+    }
+
+    private fun loadActiveSessions() {
+        val storeId = auth.storeId ?: return
+        viewModelScope.launch {
+            try {
+                val resp = api.getSohSessions(storeId = storeId, status = "in_progress", page = 0, size = 10)
+                val sessions = resp.body()?.data?.content ?: emptyList()
+                _state.update { it.copy(activeSessions = sessions) }
+            } catch (_: Exception) { /* non-fatal */ }
+        }
+    }
+
+    fun resumeSession(sessionId: String) {
+        viewModelScope.launch { _sessionCreated.emit(sessionId) }
+    }
 
     val zoneOptions = listOf(
         ZoneOption(
