@@ -71,14 +71,15 @@ class SohRepository @Inject constructor(
         }
     }
 
-    suspend fun bufferEpc(sessionId: String, epc: String, rssi: Double?, antenna: Int?) {
+    suspend fun bufferEpc(sessionId: String, epc: String, rssi: Double?, antenna: Int?, zoneId: String? = null) {
         epcReadDao.insert(
             EpcReadEntity(
                 sessionId   = sessionId,
                 epc         = epc,
                 rssi        = rssi,
                 antennaPort = antenna,
-                scannedAt   = Instant.now().toString()
+                scannedAt   = Instant.now().toString(),
+                zoneId      = zoneId
             )
         )
     }
@@ -146,7 +147,7 @@ class SohRepository @Inject constructor(
                     rfidSessionId = sessionId,
                     storeId       = storeId,
                     deviceId      = deviceId,
-                    reads         = chunk.map { RfidReadDto(it.epc, it.rssi, it.antennaPort, it.scannedAt) }
+                    reads         = chunk.map { RfidReadDto(it.epc, it.rssi, it.antennaPort, it.scannedAt, it.zoneId) }
                 )
                 val resp = api.ingestRfidBatch(req)
                 if (!resp.isSuccessful) return Result.Error("Upload failed at chunk $i")

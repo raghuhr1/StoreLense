@@ -11,7 +11,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.ExistingWorkPolicy
 import androidx.work.WorkManager
+import com.storelense.mobile.data.remote.dto.ZoneDto
 import com.storelense.mobile.data.repository.AuthRepository
+import com.storelense.mobile.data.repository.StoreRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import com.storelense.mobile.data.repository.Result
@@ -64,7 +66,13 @@ data class ScanState(
     val showZonePickerDialog: Boolean        = false,
     val takenZone: String?                   = null,
     val isZoneDone: Boolean                  = false,
-    val showLastDeviceDialog: Boolean        = false
+    val showLastDeviceDialog: Boolean        = false,
+    // Zone attribution — user picks which zone they are scanning in
+    val availableZones: List<ZoneDto>        = emptyList(),
+    val showZoneSelectorSheet: Boolean       = false,
+    val selectedZoneId: String?              = null,
+    val selectedZoneName: String?            = null,
+    val isLoadingZones: Boolean              = false
 )
 
 enum class ScanPhase { Connecting, Scanning, Paused, Uploading, Done }
@@ -76,7 +84,8 @@ class ScanViewModel @Inject constructor(
     private val soh: SohRepository,
     private val auth: AuthRepository,
     private val rfid: RfidReader,
-    private val workManager: WorkManager          // Fix #2 / #7
+    private val workManager: WorkManager,
+    private val storeRepository: StoreRepository
 ) : ViewModel() {
 
     private val sessionId: String = savedState["sessionId"] ?: ""
@@ -164,23 +173,8 @@ class ScanViewModel @Inject constructor(
                 _state.update { it.copy(activeDeviceCount = devices) }
                 startParticipantPolling()
 
-                try {
-                    rfid.connect()
-                } catch (e: Exception) {
-                    Timber.e(e, "RFID connect failed")
-                    _state.update {
-                        it.copy(
-                            phase = ScanPhase.Paused,
-                            error = "RFID reader unavailable (${e.message}). Restart the device and try again."
-                        )
-                    }
-                    return@launch
-                }
-                rfid.setTxPower(27)
-                rfid.startScan()
-                _state.update { it.copy(phase = ScanPhase.Scanning) }
-                collectConnectionState()   // Fix #8: watch for hardware drop
-                collectReads()
+                // Load zones then show selector — RFID connect is deferred until user picks.
+                loadZonesAndShowSelector()
             }
             is Result.Error -> {
                 val notFound = r.message?.contains("not found", ignoreCase = true) == true
@@ -195,6 +189,66 @@ class ScanViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    // Fetch zones from the server. If zones exist, show the selector.
+    // If the store has no zones configured, skip straight to RFID connect.
+    private fun loadZonesAndShowSelector() = viewModelScope.launch {
+        _state.update { it.copy(isLoadingZones = true) }
+        when (val r = storeRepository.getZones(storeId)) {
+            is Result.Success -> {
+                if (r.data.isEmpty()) {
+                    _state.update { it.copy(isLoadingZones = false) }
+                    connectAndStartScan()
+                } else {
+                    _state.update {
+                        it.copy(
+                            availableZones       = r.data,
+                            showZoneSelectorSheet = true,
+                            isLoadingZones       = false
+                        )
+                    }
+                }
+            }
+            is Result.Error -> {
+                // Non-fatal — proceed without zone attribution
+                Timber.w("Could not load zones: ${r.message}. Continuing without zone selection.")
+                _state.update { it.copy(isLoadingZones = false) }
+                connectAndStartScan()
+            }
+        }
+    }
+
+    // Called by the zone selector sheet when the user taps a zone or "Full Store".
+    fun selectZone(zoneId: String?, zoneName: String?) = viewModelScope.launch {
+        _state.update {
+            it.copy(
+                selectedZoneId       = zoneId,
+                selectedZoneName     = zoneName,
+                showZoneSelectorSheet = false
+            )
+        }
+        connectAndStartScan()
+    }
+
+    private suspend fun connectAndStartScan() {
+        try {
+            rfid.connect()
+        } catch (e: Exception) {
+            Timber.e(e, "RFID connect failed")
+            _state.update {
+                it.copy(
+                    phase = ScanPhase.Paused,
+                    error = "RFID reader unavailable (${e.message}). Restart the device and try again."
+                )
+            }
+            return
+        }
+        rfid.setTxPower(30)
+        rfid.startScan()
+        _state.update { it.copy(phase = ScanPhase.Scanning) }
+        collectConnectionState()
+        collectReads()
     }
 
     private fun collectReads() = viewModelScope.launch {
@@ -219,7 +273,7 @@ class ScanViewModel @Inject constructor(
             } ?: _state.value.readerSignalBars
 
             if (scannedSet.add(read.epc)) {
-                soh.bufferEpc(sessionId, read.epc, read.rssi, read.antennaPort)
+                soh.bufferEpc(sessionId, read.epc, read.rssi, read.antennaPort, _state.value.selectedZoneId)
                 _state.update { s ->
                     s.copy(
                         scannedCount     = scannedSet.size,

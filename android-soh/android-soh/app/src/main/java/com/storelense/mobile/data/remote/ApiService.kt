@@ -86,7 +86,8 @@ interface ApiService {
         @Query("search")  search: String?  = null,
         @Query("page")    page: Int        = 0,
         @Query("size")    size: Int        = 200,
-        @Query("sync")    sync: Boolean    = false
+        @Query("sync")    sync: Boolean    = false,
+        @Query("since")   since: Long?     = null
     ): Response<ApiResponse<PagedData<ProductDto>>>
 
     @GET("api/products/{id}")
@@ -126,13 +127,18 @@ interface ApiService {
         @Query("days")    days: Int = 7
     ): Response<ApiResponse<DashboardSummaryDto>>
 
-    // ── Stores ────────────────────────────────────────────────────────────────
+    // ── Stores & Zones ────────────────────────────────────────────────────────
 
     @GET("api/stores")
     suspend fun getStores(
         @Query("page") page: Int = 0,
         @Query("size") size: Int = 200
     ): Response<ApiResponse<PagedData<StoreDto>>>
+
+    @GET("api/stores/{storeId}/zones")
+    suspend fun getZones(
+        @Path("storeId") storeId: String
+    ): Response<ApiResponse<List<ZoneDto>>>
 
     // ── Transfers ─────────────────────────────────────────────────────────────
 

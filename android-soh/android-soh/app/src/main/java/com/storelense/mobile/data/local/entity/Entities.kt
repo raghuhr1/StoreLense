@@ -16,7 +16,8 @@ data class EpcReadEntity(
     val rssi: Double? = null,
     val antennaPort: Int? = null,
     val scannedAt: String,
-    val uploaded: Boolean = false
+    val uploaded: Boolean = false,
+    val zoneId: String? = null
 )
 
 @Entity(tableName = "soh_sessions")

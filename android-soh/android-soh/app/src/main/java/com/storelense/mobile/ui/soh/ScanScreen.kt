@@ -8,6 +8,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -16,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -107,6 +110,73 @@ fun ScanScreen(
         )
     }
 
+    // Zone selector — shown after session load, before RFID connect.
+    // User picks which zone they are physically scanning in.
+    if (state.showZoneSelectorSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { vm.selectZone(null, null) },
+            containerColor   = SurfaceSlate,
+            dragHandle       = {
+                BottomSheetDefaults.DragHandle(color = MutedText)
+            }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 32.dp)
+            ) {
+                Text(
+                    "Select Your Zone",
+                    style      = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Black,
+                    color      = Color.White
+                )
+                Text(
+                    "Scan attribution tracks where items are found",
+                    style  = MaterialTheme.typography.bodySmall,
+                    color  = MutedText,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)
+                )
+
+                // Full store option
+                ZoneOptionRow(
+                    name      = "Full Store",
+                    zoneType  = null,
+                    onClick   = { vm.selectZone(null, null) }
+                )
+
+                HorizontalDivider(color = Color.White.copy(0.05f), modifier = Modifier.padding(vertical = 4.dp))
+
+                LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
+                    items(state.availableZones) { zone ->
+                        ZoneOptionRow(
+                            name     = zone.name,
+                            zoneType = zone.zoneType,
+                            onClick  = { vm.selectZone(zone.id, zone.name) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // Zone loading indicator — shown while fetching zone list after session connects.
+    if (state.isLoadingZones) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(0.5f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(color = EnergyTeal)
+                Spacer(Modifier.height(12.dp))
+                Text("Loading zones…", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+
     Scaffold(
         containerColor = DeepNavy,
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -117,7 +187,7 @@ fun ScanScreen(
                     Column {
                         Text("Inventory Audit", fontWeight = FontWeight.Black, color = Color.White)
                         Text(
-                            text = state.zoneRegion ?: "Full Store",
+                            text = state.selectedZoneName ?: state.zoneRegion ?: "Full Store",
                             style = MaterialTheme.typography.labelSmall,
                             color = EnergyTeal,
                             fontWeight = FontWeight.Bold
@@ -453,6 +523,40 @@ private fun ScanAlertDialog(
             }
         }
     )
+}
+
+@Composable
+private fun ZoneOptionRow(
+    name: String,
+    zoneType: String?,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 14.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Icon(
+            Icons.Default.LocationOn,
+            contentDescription = null,
+            tint     = EnergyTeal,
+            modifier = Modifier.size(20.dp)
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(name, color = Color.White, fontWeight = FontWeight.SemiBold)
+            if (zoneType != null) {
+                Text(
+                    zoneType.replace("_", " ").lowercase()
+                        .replaceFirstChar { it.uppercase() },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MutedText
+                )
+            }
+        }
+    }
 }
 
 @Composable

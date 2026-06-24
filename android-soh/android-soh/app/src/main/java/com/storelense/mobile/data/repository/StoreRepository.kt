@@ -3,6 +3,7 @@ package com.storelense.mobile.data.repository
 import com.storelense.mobile.data.local.dao.StoreDao
 import com.storelense.mobile.data.local.entity.StoreEntity
 import com.storelense.mobile.data.remote.ApiService
+import com.storelense.mobile.data.remote.dto.ZoneDto
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -34,4 +35,16 @@ class StoreRepository @Inject constructor(
     }
 
     suspend fun count(): Int = storeDao.count()
+
+    suspend fun getZones(storeId: String): Result<List<ZoneDto>> = try {
+        val resp = api.getZones(storeId)
+        val body = resp.body()
+        if (resp.isSuccessful && body?.success == true && body.data != null) {
+            Result.Success(body.data.filter { it.active }.sortedBy { it.displayOrder })
+        } else {
+            Result.Error(body?.message ?: "Failed to load zones")
+        }
+    } catch (e: Exception) {
+        Result.Error(e.message ?: "Network error")
+    }
 }

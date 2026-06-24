@@ -4,8 +4,10 @@ import com.storelense.common.dto.PageResponse;
 import com.storelense.common.event.SohUpdatedEvent;
 import com.storelense.common.exception.ResourceNotFoundException;
 import com.storelense.common.kafka.KafkaTopics;
+import com.storelense.inventory.domain.entity.EpcPositionHistory;
 import com.storelense.inventory.domain.entity.EpcRegistry;
 import com.storelense.inventory.domain.entity.InventoryState;
+import com.storelense.inventory.domain.repository.EpcPositionHistoryRepository;
 import com.storelense.inventory.domain.repository.EpcRegistryRepository;
 import com.storelense.inventory.domain.repository.InventoryStateRepository;
 import com.storelense.inventory.dto.EpcLedgerRow;
@@ -24,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 @Slf4j
@@ -31,9 +34,10 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class InventoryService {
 
-    private final InventoryStateRepository inventoryStateRepository;
-    private final EpcRegistryRepository    epcRegistryRepository;
-    private final JdbcClient              jdbcClient;
+    private final InventoryStateRepository    inventoryStateRepository;
+    private final EpcRegistryRepository       epcRegistryRepository;
+    private final EpcPositionHistoryRepository epcPositionHistoryRepository;
+    private final JdbcClient                  jdbcClient;
 
     @KafkaListener(topics = KafkaTopics.RFID_SOH_UPDATED, groupId = "inventory-service")
     @Transactional
@@ -42,19 +46,49 @@ public class InventoryService {
 
         OffsetDateTime seenAt = OffsetDateTime.ofInstant(event.processedAt(), ZoneOffset.UTC);
 
-        // Upsert EPC registry — marks the EPC as seen at this store+zone
+        // Upsert EPC registry and write position history when zone or status changes.
         epcRegistryRepository.findByEpcAndStoreId(event.epc(), event.storeId())
                 .ifPresentOrElse(
-                        existing -> epcRegistryRepository.updateSighting(
-                                event.epc(), event.storeId(), "in_store", seenAt, event.zoneId(), null),
-                        () -> epcRegistryRepository.save(EpcRegistry.builder()
-                                .epc(event.epc())
-                                .storeId(event.storeId())
-                                .productId(event.productId())
-                                .zoneId(event.zoneId())
-                                .status("in_store")
-                                .lastSeenAt(seenAt)
-                                .build())
+                        existing -> {
+                            boolean zoneChanged = !Objects.equals(existing.getZoneId(), event.zoneId());
+                            if (zoneChanged) {
+                                epcPositionHistoryRepository.save(EpcPositionHistory.builder()
+                                        .epc(event.epc())
+                                        .storeId(event.storeId())
+                                        .productId(event.productId())
+                                        .fromZoneId(existing.getZoneId())
+                                        .toZoneId(event.zoneId())
+                                        .fromStatus(existing.getStatus())
+                                        .toStatus("in_store")
+                                        .triggeredBy("scan_session")
+                                        .sessionId(event.sohSessionId())
+                                        .build());
+                            }
+                            epcRegistryRepository.updateSighting(
+                                    event.epc(), event.storeId(), "in_store", seenAt, event.zoneId(), null);
+                        },
+                        () -> {
+                            epcRegistryRepository.save(EpcRegistry.builder()
+                                    .epc(event.epc())
+                                    .storeId(event.storeId())
+                                    .productId(event.productId())
+                                    .zoneId(event.zoneId())
+                                    .status("in_store")
+                                    .lastSeenAt(seenAt)
+                                    .build());
+                            // First sighting — record the initial position.
+                            epcPositionHistoryRepository.save(EpcPositionHistory.builder()
+                                    .epc(event.epc())
+                                    .storeId(event.storeId())
+                                    .productId(event.productId())
+                                    .fromZoneId(null)
+                                    .toZoneId(event.zoneId())
+                                    .fromStatus(null)
+                                    .toStatus("in_store")
+                                    .triggeredBy("scan_session")
+                                    .sessionId(event.sohSessionId())
+                                    .build());
+                        }
                 );
 
         // Increment on-hand count in inventory_state

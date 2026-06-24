@@ -77,7 +77,8 @@ data class RfidReadDto(
     val epc: String,
     val rssi: Double?,
     val antennaPort: Int?,
-    val readAt: String?
+    val readAt: String?,
+    val zoneId: String? = null
 )
 
 // ── Inbound ───────────────────────────────────────────────────────────────────
@@ -174,12 +175,22 @@ data class DashboardSummaryDto(
     val pendingTransfers: Int = 0
 )
 
-// ── Stores ────────────────────────────────────────────────────────────────────
+// ── Stores & Zones ────────────────────────────────────────────────────────────
 
 data class StoreDto(
     val id: String,
     val name: String,
     @SerializedName("store_code") val code: String?
+)
+
+data class ZoneDto(
+    val id: String,
+    val storeId: String,
+    val name: String,
+    val zoneCode: String?,
+    val zoneType: String?,
+    val displayOrder: Int = 0,
+    val active: Boolean = true
 )
 
 // ── Transfers ─────────────────────────────────────────────────────────────────
