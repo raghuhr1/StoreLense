@@ -139,8 +139,8 @@ data class ProductDto(
     val name: String,
     val description: String?,
     val brand: String?,
-    val category: String?,
-    @SerializedName("erp_code") val erpCode: String?,
+    @SerializedName("categoryId") val category: String?,   // backend sends UUID as categoryId
+    @SerializedName("erpProductCode") val erpCode: String?, // backend field name is erpProductCode
     val storeId: String?,
     val onHandQty: Int = 0,
     val expectedQty: Int = 0,

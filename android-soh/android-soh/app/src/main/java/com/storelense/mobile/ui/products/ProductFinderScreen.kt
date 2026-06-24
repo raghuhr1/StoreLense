@@ -124,6 +124,7 @@ fun ProductFinderScreen(
                 Box(modifier = Modifier.fillMaxSize()) {
                     when {
                         state.isSearchingLocal -> LoadingPanel("Searching catalog…")
+                        state.results.isEmpty() && state.isSearchingOnline -> LoadingPanel("Checking online catalog…")
                         state.query.isBlank()  -> FinderSearchHint(state.catalogCount)
                         state.results.isEmpty() -> FinderNoResults(state.query)
                         else -> FinderProductList(

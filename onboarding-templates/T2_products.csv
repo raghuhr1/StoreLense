@@ -1,0 +1,62 @@
+SKU,Name,Description,Brand,Category,EAN,ERP_Code,Unit_Of_Measure,Weight_Grams,RFID_Enabled,Active,Image_URL,Notes
+PANT-DEN-BLU-28,Denim Jeans Blue - 28W,Slim Fit Mid-Rise Blue Denim Jeans Waist 28,Pantaloons,APPAREL_BOTTOMS,8901234560001,ERP-PANT-001,EACH,650,TRUE,TRUE,,
+PANT-DEN-BLU-30,Denim Jeans Blue - 30W,Slim Fit Mid-Rise Blue Denim Jeans Waist 30,Pantaloons,APPAREL_BOTTOMS,8901234560002,ERP-PANT-002,EACH,670,TRUE,TRUE,,
+PANT-DEN-BLU-32,Denim Jeans Blue - 32W,Slim Fit Mid-Rise Blue Denim Jeans Waist 32,Pantaloons,APPAREL_BOTTOMS,8901234560003,ERP-PANT-003,EACH,690,TRUE,TRUE,,
+PANT-DEN-BLU-34,Denim Jeans Blue - 34W,Slim Fit Mid-Rise Blue Denim Jeans Waist 34,Pantaloons,APPAREL_BOTTOMS,8901234560004,ERP-PANT-004,EACH,710,TRUE,TRUE,,
+PANT-DEN-BLK-30,Denim Jeans Black - 30W,Slim Fit Mid-Rise Black Denim Jeans Waist 30,Pantaloons,APPAREL_BOTTOMS,8901234560005,ERP-PANT-005,EACH,670,TRUE,TRUE,,
+PANT-DEN-BLK-32,Denim Jeans Black - 32W,Slim Fit Mid-Rise Black Denim Jeans Waist 32,Pantaloons,APPAREL_BOTTOMS,8901234560006,ERP-PANT-006,EACH,690,TRUE,TRUE,,
+PANT-DEN-BLK-34,Denim Jeans Black - 34W,Slim Fit Mid-Rise Black Denim Jeans Waist 34,Pantaloons,APPAREL_BOTTOMS,8901234560007,ERP-PANT-007,EACH,710,TRUE,TRUE,,
+TROP-CHI-KHA-30,Chinos Khaki - 30W,Regular Fit Chino Trouser Khaki 30W,Pantaloons,APPAREL_BOTTOMS,8901234560008,ERP-PANT-008,EACH,520,TRUE,TRUE,,
+TROP-CHI-KHA-32,Chinos Khaki - 32W,Regular Fit Chino Trouser Khaki 32W,Pantaloons,APPAREL_BOTTOMS,8901234560009,ERP-PANT-009,EACH,540,TRUE,TRUE,,
+TROP-CHI-NAV-30,Chinos Navy - 30W,Regular Fit Chino Trouser Navy 30W,Pantaloons,APPAREL_BOTTOMS,8901234560010,ERP-PANT-010,EACH,520,TRUE,TRUE,,
+TROP-CHI-NAV-32,Chinos Navy - 32W,Regular Fit Chino Trouser Navy 32W,Pantaloons,APPAREL_BOTTOMS,8901234560011,ERP-PANT-011,EACH,540,TRUE,TRUE,,
+SHRT-FRM-WHT-S,Formal Shirt White - S,Full Sleeve Formal Shirt White Small,Pantaloons,APPAREL_TOPS,8901234560012,ERP-PANT-012,EACH,230,TRUE,TRUE,,
+SHRT-FRM-WHT-M,Formal Shirt White - M,Full Sleeve Formal Shirt White Medium,Pantaloons,APPAREL_TOPS,8901234560013,ERP-PANT-013,EACH,240,TRUE,TRUE,,
+SHRT-FRM-WHT-L,Formal Shirt White - L,Full Sleeve Formal Shirt White Large,Pantaloons,APPAREL_TOPS,8901234560014,ERP-PANT-014,EACH,250,TRUE,TRUE,,
+SHRT-FRM-WHT-XL,Formal Shirt White - XL,Full Sleeve Formal Shirt White XL,Pantaloons,APPAREL_TOPS,8901234560015,ERP-PANT-015,EACH,265,TRUE,TRUE,,
+SHRT-FRM-BLU-M,Formal Shirt Blue - M,Full Sleeve Formal Shirt Blue Medium,Pantaloons,APPAREL_TOPS,8901234560016,ERP-PANT-016,EACH,240,TRUE,TRUE,,
+SHRT-FRM-BLU-L,Formal Shirt Blue - L,Full Sleeve Formal Shirt Blue Large,Pantaloons,APPAREL_TOPS,8901234560017,ERP-PANT-017,EACH,250,TRUE,TRUE,,
+TSHRT-CRW-WHT-S,T-Shirt Crew White - S,Cotton Crew Neck T-Shirt White Small,Pantaloons,APPAREL_TOPS,8901234560018,ERP-PANT-018,EACH,180,TRUE,TRUE,,
+TSHRT-CRW-WHT-M,T-Shirt Crew White - M,Cotton Crew Neck T-Shirt White Medium,Pantaloons,APPAREL_TOPS,8901234560019,ERP-PANT-019,EACH,190,TRUE,TRUE,,
+TSHRT-CRW-WHT-L,T-Shirt Crew White - L,Cotton Crew Neck T-Shirt White Large,Pantaloons,APPAREL_TOPS,8901234560020,ERP-PANT-020,EACH,200,TRUE,TRUE,,
+TSHRT-CRW-BLK-M,T-Shirt Crew Black - M,Cotton Crew Neck T-Shirt Black Medium,Pantaloons,APPAREL_TOPS,8901234560021,ERP-PANT-021,EACH,190,TRUE,TRUE,,
+TSHRT-CRW-BLK-L,T-Shirt Crew Black - L,Cotton Crew Neck T-Shirt Black Large,Pantaloons,APPAREL_TOPS,8901234560022,ERP-PANT-022,EACH,200,TRUE,TRUE,,
+TSHRT-CRW-NVY-M,T-Shirt Crew Navy - M,Cotton Crew Neck T-Shirt Navy Medium,Pantaloons,APPAREL_TOPS,8901234560023,ERP-PANT-023,EACH,190,TRUE,TRUE,,
+POLO-SLM-WHT-M,Polo Shirt White - M,Slim Fit Polo Shirt White Medium,Pantaloons,APPAREL_TOPS,8901234560024,ERP-PANT-024,EACH,270,TRUE,TRUE,,
+POLO-SLM-WHT-L,Polo Shirt White - L,Slim Fit Polo Shirt White Large,Pantaloons,APPAREL_TOPS,8901234560025,ERP-PANT-025,EACH,280,TRUE,TRUE,,
+POLO-SLM-BLU-M,Polo Shirt Blue - M,Slim Fit Polo Shirt Blue Medium,Pantaloons,APPAREL_TOPS,8901234560026,ERP-PANT-026,EACH,270,TRUE,TRUE,,
+KURTA-CTN-WHT-M,Kurta Cotton White - M,Cotton Straight Kurta White Medium,Pantaloons,APPAREL_TOPS,8901234560027,ERP-PANT-027,EACH,310,TRUE,TRUE,,
+KURTA-CTN-WHT-L,Kurta Cotton White - L,Cotton Straight Kurta White Large,Pantaloons,APPAREL_TOPS,8901234560028,ERP-PANT-028,EACH,325,TRUE,TRUE,,
+KURTA-CTN-BEI-M,Kurta Cotton Beige - M,Cotton Straight Kurta Beige Medium,Pantaloons,APPAREL_TOPS,8901234560029,ERP-PANT-029,EACH,310,TRUE,TRUE,,
+KURTA-CTN-BEI-L,Kurta Cotton Beige - L,Cotton Straight Kurta Beige Large,Pantaloons,APPAREL_TOPS,8901234560030,ERP-PANT-030,EACH,325,TRUE,TRUE,,
+DRESS-FLR-BLU-S,Floral Dress Blue - S,Floral Print A-Line Dress Blue Small,Pantaloons,APPAREL_TOPS,8901234560031,ERP-PANT-031,EACH,380,TRUE,TRUE,,Women
+DRESS-FLR-BLU-M,Floral Dress Blue - M,Floral Print A-Line Dress Blue Medium,Pantaloons,APPAREL_TOPS,8901234560032,ERP-PANT-032,EACH,395,TRUE,TRUE,,Women
+DRESS-FLR-RED-S,Floral Dress Red - S,Floral Print A-Line Dress Red Small,Pantaloons,APPAREL_TOPS,8901234560033,ERP-PANT-033,EACH,380,TRUE,TRUE,,Women
+DRESS-FLR-RED-M,Floral Dress Red - M,Floral Print A-Line Dress Red Medium,Pantaloons,APPAREL_TOPS,8901234560034,ERP-PANT-034,EACH,395,TRUE,TRUE,,Women
+TOP-CSS-PNK-S,Casual Top Pink - S,Casual Fit Round Neck Top Pink Small,Pantaloons,APPAREL_TOPS,8901234560035,ERP-PANT-035,EACH,165,TRUE,TRUE,,Women
+TOP-CSS-PNK-M,Casual Top Pink - M,Casual Fit Round Neck Top Pink Medium,Pantaloons,APPAREL_TOPS,8901234560036,ERP-PANT-036,EACH,175,TRUE,TRUE,,Women
+TOP-CSS-WHT-M,Casual Top White - M,Casual Fit Round Neck Top White Medium,Pantaloons,APPAREL_TOPS,8901234560037,ERP-PANT-037,EACH,175,TRUE,TRUE,,Women
+LEGG-STD-BLK-S,Leggings Black - S,Standard Fit Cotton Leggings Black Small,Pantaloons,APPAREL_BOTTOMS,8901234560038,ERP-PANT-038,EACH,210,TRUE,TRUE,,Women
+LEGG-STD-BLK-M,Leggings Black - M,Standard Fit Cotton Leggings Black Medium,Pantaloons,APPAREL_BOTTOMS,8901234560039,ERP-PANT-039,EACH,220,TRUE,TRUE,,Women
+LEGG-STD-NVY-M,Leggings Navy - M,Standard Fit Cotton Leggings Navy Medium,Pantaloons,APPAREL_BOTTOMS,8901234560040,ERP-PANT-040,EACH,220,TRUE,TRUE,,Women
+SHOE-CAS-WHT-7,Casual Sneaker White - 7,Canvas Casual Sneaker White UK7,Pantaloons,FOOTWEAR_CASUAL,8901234560041,ERP-PANT-041,PAIR,480,TRUE,TRUE,,
+SHOE-CAS-WHT-8,Casual Sneaker White - 8,Canvas Casual Sneaker White UK8,Pantaloons,FOOTWEAR_CASUAL,8901234560042,ERP-PANT-042,PAIR,495,TRUE,TRUE,,
+SHOE-CAS-WHT-9,Casual Sneaker White - 9,Canvas Casual Sneaker White UK9,Pantaloons,FOOTWEAR_CASUAL,8901234560043,ERP-PANT-043,PAIR,510,TRUE,TRUE,,
+SHOE-CAS-BLK-8,Casual Sneaker Black - 8,Canvas Casual Sneaker Black UK8,Pantaloons,FOOTWEAR_CASUAL,8901234560044,ERP-PANT-044,PAIR,495,TRUE,TRUE,,
+SHOE-FRM-BRN-8,Formal Oxford Brown - 8,Leather Oxford Formal Shoe Brown UK8,Pantaloons,FOOTWEAR_FORMAL,8901234560045,ERP-PANT-045,PAIR,820,TRUE,TRUE,,
+SHOE-FRM-BRN-9,Formal Oxford Brown - 9,Leather Oxford Formal Shoe Brown UK9,Pantaloons,FOOTWEAR_FORMAL,8901234560046,ERP-PANT-046,PAIR,840,TRUE,TRUE,,
+SHOE-FRM-BLK-8,Formal Oxford Black - 8,Leather Oxford Formal Shoe Black UK8,Pantaloons,FOOTWEAR_FORMAL,8901234560047,ERP-PANT-047,PAIR,820,TRUE,TRUE,,
+SHOE-FRM-BLK-9,Formal Oxford Black - 9,Leather Oxford Formal Shoe Black UK9,Pantaloons,FOOTWEAR_FORMAL,8901234560048,ERP-PANT-048,PAIR,840,TRUE,TRUE,,
+ACC-BELT-BLK-S,Leather Belt Black - S,Genuine Leather Belt Black Small,Pantaloons,ACCESSORIES,8901234560049,ERP-PANT-049,EACH,145,TRUE,TRUE,,
+ACC-BELT-BLK-M,Leather Belt Black - M,Genuine Leather Belt Black Medium,Pantaloons,ACCESSORIES,8901234560050,ERP-PANT-050,EACH,150,TRUE,TRUE,,
+ACC-BELT-BRN-M,Leather Belt Brown - M,Genuine Leather Belt Brown Medium,Pantaloons,ACCESSORIES,8901234560051,ERP-PANT-051,EACH,150,TRUE,TRUE,,
+ACC-SCARF-BLU,Scarf Blue,Woven Cotton Scarf Blue,Pantaloons,ACCESSORIES,8901234560052,ERP-PANT-052,EACH,95,TRUE,TRUE,,
+ACC-SCARF-RED,Scarf Red,Woven Cotton Scarf Red,Pantaloons,ACCESSORIES,8901234560053,ERP-PANT-053,EACH,95,TRUE,TRUE,,
+ACC-WALLET-BLK,Wallet Black,Leather Bi-Fold Wallet Black,Pantaloons,ACCESSORIES,8901234560054,ERP-PANT-054,EACH,120,TRUE,TRUE,,
+ACC-WALLET-BRN,Wallet Brown,Leather Bi-Fold Wallet Brown,Pantaloons,ACCESSORIES,8901234560055,ERP-PANT-055,EACH,120,TRUE,TRUE,,
+JACK-DEN-BLU-M,Denim Jacket Blue - M,Classic Denim Jacket Blue Medium,Pantaloons,APPAREL_OUTERWEAR,8901234560056,ERP-PANT-056,EACH,780,TRUE,TRUE,,
+JACK-DEN-BLU-L,Denim Jacket Blue - L,Classic Denim Jacket Blue Large,Pantaloons,APPAREL_OUTERWEAR,8901234560057,ERP-PANT-057,EACH,800,TRUE,TRUE,,
+JACK-WIN-BLK-M,Windbreaker Black - M,Lightweight Windbreaker Black Medium,Pantaloons,APPAREL_OUTERWEAR,8901234560058,ERP-PANT-058,EACH,420,TRUE,TRUE,,
+JACK-WIN-BLK-L,Windbreaker Black - L,Lightweight Windbreaker Black Large,Pantaloons,APPAREL_OUTERWEAR,8901234560059,ERP-PANT-059,EACH,440,TRUE,TRUE,,
+SOCK-CTN-WHT-M,Cotton Socks White - M,Ankle Length Cotton Socks White Medium,Pantaloons,APPAREL_UNDERWEAR,8901234560060,ERP-PANT-060,PACK,85,TRUE,TRUE,,"Pack of 3"
+SUNGL-DEMO-001,Sunglasses Demo Tag,Demo RFID tag for testing - Sunglass series,Demo,ACCESSORIES,8901234560099,ERP-DEMO-001,EACH,45,TRUE,TRUE,,Demo tag assigned to sunglass SKU

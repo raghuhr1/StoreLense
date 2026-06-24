@@ -1,0 +1,13 @@
+store_code,reader_code,reader_type,device_model,serial_number,mac_address,ip_address,zone_code,location_description,is_active,notes
+LK001,C72-LK001-001,chainway_c72,Chainway C72,HC720E191000001,AA:BB:CC:DD:01:01,192.168.1.101,SALES_FLOOR,Associate device 1 - Sales Floor,TRUE,Primary scanning device
+LK001,C72-LK001-002,chainway_c72,Chainway C72,HC720E191000002,AA:BB:CC:DD:01:02,192.168.1.102,BACK_ROOM,Associate device 2 - Back Room,TRUE,Backup device
+LK002,C72-LK002-001,chainway_c72,Chainway C72,HC720E191000003,AA:BB:CC:DD:02:01,192.168.1.101,SALES_FLOOR,Associate device 1 - Sales Floor,TRUE,
+LK003,C72-LK003-001,chainway_c72,Chainway C72,HC720E191000004,AA:BB:CC:DD:03:01,192.168.1.101,SALES_FLOOR,Associate device 1 - Sales Floor,TRUE,
+LK003,C72-LK003-002,chainway_c72,Chainway C72,HC720E191000005,AA:BB:CC:DD:03:02,192.168.1.102,FITTING_ROOM,Associate device 2 - Fitting Room,TRUE,
+LK004,C72-LK004-001,chainway_c72,Chainway C72,HC720E191000006,AA:BB:CC:DD:04:01,192.168.1.101,SALES_FLOOR,Associate device 1 - Sales Floor,TRUE,
+LK005,C72-LK005-001,chainway_c72,Chainway C72,HC720E191000007,AA:BB:CC:DD:05:01,192.168.1.101,SALES_FLOOR,Associate device 1 - Sales Floor,TRUE,
+LK006,C72-LK006-001,chainway_c72,Chainway C72,HC720E191000008,AA:BB:CC:DD:06:01,192.168.1.101,SALES_FLOOR,Associate device 1 - Sales Floor,TRUE,
+LK007,C72-LK007-001,chainway_c72,Chainway C72,HC720E191000009,AA:BB:CC:DD:07:01,192.168.1.101,SALES_FLOOR,Associate device 1 - Sales Floor,TRUE,
+LK008,C72-LK008-001,chainway_c72,Chainway C72,HC720E191000010,AA:BB:CC:DD:08:01,192.168.1.101,SALES_FLOOR,Associate device 1 - Sales Floor,TRUE,
+LK009,C72-LK009-001,chainway_c72,Chainway C72,HC720E191000011,AA:BB:CC:DD:09:01,192.168.1.101,SALES_FLOOR,Associate device 1 - Sales Floor,TRUE,
+LK010,C72-LK010-001,chainway_c72,Chainway C72,HC720E191000012,AA:BB:CC:DD:10:01,192.168.1.101,SALES_FLOOR,Associate device 1 - Sales Floor,TRUE,

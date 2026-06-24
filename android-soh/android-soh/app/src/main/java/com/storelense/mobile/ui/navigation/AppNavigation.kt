@@ -115,10 +115,10 @@ fun AppNavigation() {
         composable(Routes.HOME) {
             // Switch to ExpertHomeScreen for a better UX, or keep HomeScreen for the old version
             ExpertHomeScreen(
-                onSoh         = { nav.navigate(Routes.SOH_LIST) },
+                onSoh         = { nav.navigate(Routes.SCAN_MODE) },
                 onReplenish   = { nav.navigate(Routes.REPLENISH_LIST) },
                 onTransferOut = { nav.navigate(Routes.TRANSFER_OUT) },
-                onItemLocator = { nav.navigate(Routes.ITEM_LOCATOR) },
+                onItemLocator = { nav.navigate(Routes.PRODUCT_FINDER) },
                 onExceptions  = { nav.navigate(Routes.EXCEPTIONS) },
                 onSettings    = { nav.navigate(Routes.SETTINGS) },
                 onWorkflows   = { nav.navigate(Routes.WORKFLOWS) }
@@ -128,7 +128,7 @@ fun AppNavigation() {
         // ── Workflows / Tasks hub ─────────────────────────────────────────
         composable(Routes.WORKFLOWS) {
             WorkflowsScreen(
-                onSoh             = { nav.navigate(Routes.SOH_LIST) },
+                onSoh             = { nav.navigate(Routes.SCAN_MODE) },
                 onInbound         = { nav.navigate(Routes.INBOUND_LIST) },
                 onReplenish       = { nav.navigate(Routes.REPLENISH_LIST) },
                 onTransferOut     = { nav.navigate(Routes.TRANSFER_OUT) },

@@ -98,7 +98,7 @@ class InboundScanViewModel @Inject constructor(
                     _state.update { it.copy(phase = ScanPhase.Paused, error = "RFID reader unavailable: ${e.message}") }
                     return@launch
                 }
-                rfid.setTxPower(27)
+                rfid.setTxPower(30)
                 rfid.startScan()
                 _state.update { it.copy(phase = ScanPhase.Scanning) }
 

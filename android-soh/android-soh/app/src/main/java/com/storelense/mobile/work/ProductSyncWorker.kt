@@ -20,17 +20,25 @@ class ProductSyncWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         val storeId = auth.storeId ?: return Result.success()
-        Timber.d("ProductSyncWorker: syncing catalog for store $storeId")
-        return when (val r = repo.syncProducts(storeId)) {
-            is com.storelense.mobile.data.repository.Result.Success ->
-                { Timber.d("ProductSyncWorker: synced ${r.data} products"); Result.success() }
-            is com.storelense.mobile.data.repository.Result.Error ->
-                { Timber.w("ProductSyncWorker: ${r.message}"); Result.retry() }
+        val forceFull = inputData.getBoolean("forceFull", false)
+        
+        Timber.d("ProductSyncWorker: starting sync for store $storeId (forceFull=$forceFull)")
+        return when (val r = repo.syncProducts(storeId, forceFull)) {
+            is com.storelense.mobile.data.repository.Result.Success -> {
+                Timber.i("ProductSyncWorker: successfully synced ${r.data} products")
+                Result.success()
+            }
+            is com.storelense.mobile.data.repository.Result.Error -> {
+                Timber.e("ProductSyncWorker failed: ${r.message}")
+                // If it's a "Products API error: 404", don't retry indefinitely
+                if (r.message.contains("404")) Result.failure() else Result.retry()
+            }
         }
     }
 
     companion object {
-        const val WORK_NAME = "product_catalog_sync"
+        const val WORK_NAME_PERIODIC = "product_catalog_sync_periodic"
+        const val WORK_NAME_MANUAL   = "product_catalog_sync_manual"
 
         fun buildPeriodic(): PeriodicWorkRequest =
             PeriodicWorkRequestBuilder<ProductSyncWorker>(6, TimeUnit.HOURS)
@@ -38,8 +46,9 @@ class ProductSyncWorker @AssistedInject constructor(
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .build()
 
-        fun buildOneTime(): OneTimeWorkRequest =
+        fun buildOneTime(forceFull: Boolean = false): OneTimeWorkRequest =
             OneTimeWorkRequestBuilder<ProductSyncWorker>()
+                .setInputData(workDataOf("forceFull" to forceFull))
                 .setConstraints(Constraints(requiredNetworkType = NetworkType.CONNECTED))
                 .build()
     }

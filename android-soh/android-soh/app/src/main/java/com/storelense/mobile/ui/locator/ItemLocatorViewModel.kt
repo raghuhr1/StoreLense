@@ -3,6 +3,7 @@ package com.storelense.mobile.ui.locator
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.storelense.mobile.data.local.entity.ProductEntity
+import com.storelense.mobile.data.repository.AuthRepository
 import com.storelense.mobile.data.repository.ProductRepository
 import timber.log.Timber
 import com.storelense.mobile.rfid.RfidReader
@@ -36,7 +37,8 @@ enum class LocatorPhase { Idle, Scanning, Found }
 @HiltViewModel
 class ItemLocatorViewModel @Inject constructor(
     private val rfid: RfidReader,
-    private val productRepo: ProductRepository
+    private val productRepo: ProductRepository,
+    private val auth: AuthRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ItemLocatorState())
@@ -54,7 +56,7 @@ class ItemLocatorViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 rfid.connect()
-                rfid.setTxPower(27)
+                rfid.setTxPower(30)
                 rfid.startScan()
             } catch (e: Exception) {
                 Timber.e(e, "RFID connect failed")
@@ -78,7 +80,8 @@ class ItemLocatorViewModel @Inject constructor(
     fun setTargetEpc(epc: String) {
         _state.update { it.copy(targetEpc = epc) }
         viewModelScope.launch {
-            val product = productRepo.getByEpc(epc)
+            val storeId = auth.storeId ?: return@launch
+            val product = productRepo.getByEpc(epc, storeId)
             _state.update { it.copy(targetProduct = product) }
         }
     }
@@ -93,8 +96,9 @@ class ItemLocatorViewModel @Inject constructor(
         val isTarget = epc == _state.value.targetEpc
 
         viewModelScope.launch {
+            val storeId = auth.storeId ?: return@launch
             if (!productCache.containsKey(epc)) {
-                productCache[epc] = productRepo.getByEpc(epc)
+                productCache[epc] = productRepo.getByEpc(epc, storeId)
             }
             val product = productCache[epc]
             val tag = LocatorTag(epc = epc, rssi = smoothed, proximity = proximity, product = product)

@@ -78,16 +78,38 @@ class ScanModeViewModel @Inject constructor(
                 )
                 val resp = api.createSohSession(req)
                 val body = resp.body()
-                if (resp.isSuccessful && body?.success == true && body.data != null) {
-                    _state.update { it.copy(isLoading = false) }
-                    _sessionCreated.emit(body.data.id)
-                } else {
-                    val msg = body?.message ?: "Failed to create scan session (${resp.code()})"
-                    _state.update { it.copy(isLoading = false, error = msg) }
+                when {
+                    resp.isSuccessful && body?.success == true && body.data != null -> {
+                        _state.update { it.copy(isLoading = false) }
+                        _sessionCreated.emit(body.data.id)
+                    }
+                    resp.code() == 409 -> {
+                        // Active session exists — resume it instead of showing an error
+                        resumeActiveSession(storeId)
+                    }
+                    else -> {
+                        val msg = body?.message ?: "Failed to create scan session (${resp.code()})"
+                        _state.update { it.copy(isLoading = false, error = msg) }
+                    }
                 }
             } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false, error = e.message ?: "Network error") }
             }
+        }
+    }
+
+    private suspend fun resumeActiveSession(storeId: String) {
+        try {
+            val resp = api.getSohSessions(storeId = storeId, status = "in_progress", page = 0, size = 1)
+            val sessionId = resp.body()?.data?.content?.firstOrNull()?.id
+            if (sessionId != null) {
+                _state.update { it.copy(isLoading = false) }
+                _sessionCreated.emit(sessionId)
+            } else {
+                _state.update { it.copy(isLoading = false, error = "Active session found but could not be loaded") }
+            }
+        } catch (e: Exception) {
+            _state.update { it.copy(isLoading = false, error = e.message ?: "Network error") }
         }
     }
 

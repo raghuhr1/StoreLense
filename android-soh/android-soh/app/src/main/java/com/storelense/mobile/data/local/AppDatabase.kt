@@ -22,7 +22,7 @@ import com.storelense.mobile.data.local.entity.*
         ExceptionCacheEntity::class,
         GhostAnalysisEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -71,6 +71,21 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE epc_reads ADD COLUMN zoneId TEXT")
+            }
+        }
+
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Fix 1: Remove UNIQUE constraint on products.sku — same SKU can appear in
+                // multiple stores. The unique index silently deleted cross-store products on upsert.
+                db.execSQL("DROP INDEX IF EXISTS idx_products_sku")
+                db.execSQL("CREATE INDEX IF NOT EXISTS idx_products_sku ON products(sku)")
+
+                // Fix 2: Add storeId to exception_cache so exceptions are store-scoped.
+                db.execSQL("ALTER TABLE exception_cache ADD COLUMN storeId TEXT NOT NULL DEFAULT ''")
+
+                // Fix 3: Add sourceStoreId to transfers_out for store-scoped transfer queries.
+                db.execSQL("ALTER TABLE transfers_out ADD COLUMN sourceStoreId TEXT NOT NULL DEFAULT ''")
             }
         }
 

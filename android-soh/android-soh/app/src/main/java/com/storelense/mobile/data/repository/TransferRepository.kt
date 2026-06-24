@@ -17,7 +17,8 @@ class TransferRepository @Inject constructor(
     private val api: ApiService,
     private val transferDao: TransferDao
 ) {
-    fun transfersFlow(): Flow<List<TransferOutEntity>> = transferDao.getAll()
+    fun transfersFlow(sourceStoreId: String): Flow<List<TransferOutEntity>> =
+        transferDao.getForStore(sourceStoreId)
 
     suspend fun createTransfer(
         sourceStoreId: String,
@@ -30,12 +31,13 @@ class TransferRepository @Inject constructor(
         // Buffer offline before network call so no scan data is lost
         transferDao.insert(
             TransferOutEntity(
-                id           = localId,
-                destStoreId  = destStoreId,
-                transferType = transferType,
-                epcsText     = epcs.joinToString("|"),
-                status       = "PENDING",
-                createdAt    = System.currentTimeMillis()
+                id            = localId,
+                sourceStoreId = sourceStoreId,
+                destStoreId   = destStoreId,
+                transferType  = transferType,
+                epcsText      = epcs.joinToString("|"),
+                status        = "PENDING",
+                createdAt     = System.currentTimeMillis()
             )
         )
 

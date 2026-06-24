@@ -5,9 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.storelense.mobile.data.remote.ApiService
 import com.storelense.mobile.data.repository.AuthRepository
 import com.storelense.mobile.data.repository.InboundRepository
+import com.storelense.mobile.data.repository.ProductRepository
 import com.storelense.mobile.data.repository.SohRepository
 import com.storelense.mobile.data.repository.StoreRepository
 import com.storelense.mobile.data.repository.TransferRepository
+import com.storelense.mobile.work.ProductSyncWorker
+import androidx.work.ExistingWorkPolicy
+import androidx.work.WorkManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -48,7 +52,9 @@ class DashboardViewModel @Inject constructor(
     private val soh: SohRepository,
     private val stores: StoreRepository,
     private val inbound: InboundRepository,
-    private val transfers: TransferRepository
+    private val transfers: TransferRepository,
+    private val products: ProductRepository,
+    private val workManager: WorkManager
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(DashboardState(username = auth.username ?: "User"))
@@ -90,17 +96,25 @@ class DashboardViewModel @Inject constructor(
                 }
             }
 
-            // Transfers — count not yet submitted
+            // Transfers — count not yet submitted, scoped to this store
             viewModelScope.launch {
-                transfers.transfersFlow().collect { list ->
+                transfers.transfersFlow(storeId).collect { list ->
                     _state.update { it.copy(pendingTransfers = list.count { t -> t.status == "PENDING" }) }
                 }
             }
         }
     }
 
-    fun refresh() {
+    fun refresh(forceFull: Boolean = false) {
         val storeId = auth.storeId ?: return
+        
+        // Trigger background catalog sync
+        workManager.enqueueUniqueWork(
+            ProductSyncWorker.WORK_NAME_MANUAL,
+            ExistingWorkPolicy.REPLACE,
+            ProductSyncWorker.buildOneTime(forceFull)
+        )
+
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             try {

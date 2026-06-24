@@ -93,7 +93,7 @@ data class RefillTaskItemEntity(
 @Entity(
     tableName = "products",
     indices = [
-        Index(value = ["sku"], unique = true),
+        Index(value = ["sku"]),          // not unique — same SKU can exist across stores
         Index(value = ["erpCode"]),
         Index(value = ["storeId"])
     ]
@@ -128,6 +128,7 @@ data class StoreEntity(
 @Entity(tableName = "transfers_out")
 data class TransferOutEntity(
     @PrimaryKey val id: String,
+    val sourceStoreId: String = "",
     val destStoreId: String,
     val transferType: String,
     val epcsText: String,          // pipe-joined EPC list: "EPC1|EPC2|EPC3"
@@ -154,6 +155,7 @@ data class TransferManifestEntity(
 )
 data class ExceptionCacheEntity(
     @PrimaryKey val epc: String,
+    val storeId: String = "",
     val type: String,              // MISSING_EPC | GHOST_TAG | READ_MISS | UNDER_REVIEW
     val confidence: Int = 0,
     val classification: String?,   // READ_MISS_LIKELY | ACTUALLY_MISSING | GHOST_SUSPECTED | null

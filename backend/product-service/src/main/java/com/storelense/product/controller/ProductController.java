@@ -17,6 +17,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
@@ -33,23 +36,24 @@ public class ProductController {
                description = "When storeId is supplied returns only products present in that store " +
                              "(via inventory_state or epc_registry). Omit storeId for the full global catalog (admin use). " +
                              "Pass sync=true for mobile offline-catalog download: bypasses the inventory filter " +
-                             "so all active products are returned regardless of store inventory data.")
+                             "so all active products are returned regardless of store inventory data. " +
+                             "Pass since (epoch millis) for delta sync: only products updated after that timestamp.")
     public ResponseEntity<ApiResponse<PageResponse<ProductResponse>>> list(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) UUID storeId,
             @RequestParam(defaultValue = "false") boolean sync,
+            @RequestParam(required = false) Long since,
             @PageableDefault(size = 50) Pageable pageable,
             @AuthenticationPrincipal StoreLensePrincipal principal) {
-        // Non-admin users are always scoped to their own store.
-        // sync=true: mobile offline-catalog download — return ALL active products so the
-        // local Room DB can be populated even before any ERP import or RFID scan.
-        // Admins may pass an explicit storeId or omit it to get the full global catalog.
         UUID effective = (principal != null && !principal.isAdmin())
                 ? principal.storeId()
                 : storeId;
+        OffsetDateTime sinceDate = since != null
+                ? OffsetDateTime.ofInstant(Instant.ofEpochMilli(since), ZoneOffset.UTC)
+                : null;
         return ResponseEntity.ok(ApiResponse.ok(
                 sync ? productService.listAllActive(search, pageable)
-                     : productService.listProducts(search, effective, pageable)));
+                     : productService.listProducts(search, effective, sinceDate, pageable)));
     }
 
     @GetMapping("/{id}")

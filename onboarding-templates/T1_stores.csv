@@ -1,0 +1,11 @@
+store_code,name,address_line1,address_line2,city,state_province,postal_code,country_code,timezone,erp_store_code,zone_SALES_FLOOR,zone_BACK_ROOM,zone_FITTING_ROOM,is_active,notes
+LK001,Pantaloons Lajpat Nagar,Shop 12 Central Market,Lajpat Nagar II,New Delhi,Delhi,110024,IN,Asia/Kolkata,LK001,TRUE,TRUE,TRUE,TRUE,Flagship Delhi store
+LK002,Pantaloons Connaught Place,Block A Inner Circle,Connaught Place,New Delhi,Delhi,110001,IN,Asia/Kolkata,LK002,TRUE,TRUE,FALSE,TRUE,No fitting room zone
+LK003,Pantaloons Bandra,Linking Road,Bandra West,Mumbai,Maharashtra,400050,IN,Asia/Kolkata,LK003,TRUE,TRUE,TRUE,TRUE,
+LK004,Pantaloons Andheri,Infiniti Mall Level 2,Andheri West,Mumbai,Maharashtra,400053,IN,Asia/Kolkata,LK004,TRUE,TRUE,TRUE,TRUE,Mall location
+LK005,Pantaloons Koramangala,Forum Mall 3rd Floor,Koramangala,Bangalore,Karnataka,560095,IN,Asia/Kolkata,LK005,TRUE,TRUE,TRUE,TRUE,
+LK006,Pantaloons Indiranagar,100 Feet Road,Indiranagar,Bangalore,Karnataka,560038,IN,Asia/Kolkata,LK006,TRUE,TRUE,FALSE,TRUE,Street store
+LK007,Pantaloons T Nagar,Usman Road,T Nagar,Chennai,Tamil Nadu,600017,IN,Asia/Kolkata,LK007,TRUE,TRUE,TRUE,TRUE,
+LK008,Pantaloons Ameerpet,SR Nagar Main Road,Ameerpet,Hyderabad,Telangana,500016,IN,Asia/Kolkata,LK008,TRUE,TRUE,TRUE,TRUE,
+LK009,Pantaloons Salt Lake,Sector V City Centre,Salt Lake,Kolkata,West Bengal,700091,IN,Asia/Kolkata,LK009,TRUE,TRUE,TRUE,TRUE,
+LK010,Pantaloons CG Road,CG Road,Navrangpura,Ahmedabad,Gujarat,380009,IN,Asia/Kolkata,LK010,TRUE,TRUE,FALSE,TRUE,No fitting room

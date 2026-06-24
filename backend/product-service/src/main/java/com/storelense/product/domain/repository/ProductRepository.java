@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -21,9 +22,11 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
 
     // Store-scoped queries: return only products that belong to a specific store,
     // determined by inventory_state (ERP-imported) or epc_registry (RFID-tracked).
+    // since: if non-null, only return products updated after that timestamp (delta sync).
     @Query(value = """
             SELECT DISTINCT p.* FROM products.products p
             WHERE p.is_active = true
+              AND (:since IS NULL OR p.updated_at > :since)
               AND p.id IN (
                   SELECT product_id FROM inventory.inventory_state
                    WHERE store_id = :storeId::uuid
@@ -36,6 +39,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
             countQuery = """
             SELECT COUNT(DISTINCT p.id) FROM products.products p
             WHERE p.is_active = true
+              AND (:since IS NULL OR p.updated_at > :since)
               AND p.id IN (
                   SELECT product_id FROM inventory.inventory_state
                    WHERE store_id = :storeId::uuid
@@ -46,11 +50,14 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
               )
             """,
             nativeQuery = true)
-    Page<Product> findByStore(@Param("storeId") String storeId, Pageable pageable);
+    Page<Product> findByStore(@Param("storeId") String storeId,
+                              @Param("since") OffsetDateTime since,
+                              Pageable pageable);
 
     @Query(value = """
             SELECT DISTINCT p.* FROM products.products p
             WHERE p.is_active = true
+              AND (:since IS NULL OR p.updated_at > :since)
               AND p.id IN (
                   SELECT product_id FROM inventory.inventory_state
                    WHERE store_id = :storeId::uuid
@@ -65,6 +72,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
             countQuery = """
             SELECT COUNT(DISTINCT p.id) FROM products.products p
             WHERE p.is_active = true
+              AND (:since IS NULL OR p.updated_at > :since)
               AND p.id IN (
                   SELECT product_id FROM inventory.inventory_state
                    WHERE store_id = :storeId::uuid
@@ -77,5 +85,8 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
                 OR LOWER(p.sku)  LIKE LOWER(CONCAT('%',:q,'%')))
             """,
             nativeQuery = true)
-    Page<Product> searchByStore(@Param("q") String query, @Param("storeId") String storeId, Pageable pageable);
+    Page<Product> searchByStore(@Param("q") String query,
+                                @Param("storeId") String storeId,
+                                @Param("since") OffsetDateTime since,
+                                Pageable pageable);
 }

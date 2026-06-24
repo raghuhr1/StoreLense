@@ -1,0 +1,28 @@
+store_code,zone_code,zone_name,zone_type,description,is_active
+LK001,SALES_FLOOR,Sales Floor,floor,Main shopping area with display racks,TRUE
+LK001,BACK_ROOM,Back Room,backroom,Storage and receiving area,TRUE
+LK001,FITTING_ROOM,Fitting Rooms,fitting_room,Customer trial rooms,TRUE
+LK002,SALES_FLOOR,Sales Floor,floor,Main shopping area with display racks,TRUE
+LK002,BACK_ROOM,Back Room,backroom,Storage and receiving area,TRUE
+LK003,SALES_FLOOR,Sales Floor,floor,Main shopping area with display racks,TRUE
+LK003,BACK_ROOM,Back Room,backroom,Storage and receiving area,TRUE
+LK003,FITTING_ROOM,Fitting Rooms,fitting_room,Customer trial rooms,TRUE
+LK004,SALES_FLOOR,Sales Floor,floor,Main shopping area - Mall Level 2,TRUE
+LK004,BACK_ROOM,Back Room,backroom,Storage and receiving area,TRUE
+LK004,FITTING_ROOM,Fitting Rooms,fitting_room,Customer trial rooms,TRUE
+LK005,SALES_FLOOR,Sales Floor,floor,Main shopping area - Forum Mall,TRUE
+LK005,BACK_ROOM,Back Room,backroom,Storage and receiving area,TRUE
+LK005,FITTING_ROOM,Fitting Rooms,fitting_room,Customer trial rooms,TRUE
+LK006,SALES_FLOOR,Sales Floor,floor,Main shopping area - Street store,TRUE
+LK006,BACK_ROOM,Back Room,backroom,Storage and receiving area,TRUE
+LK007,SALES_FLOOR,Sales Floor,floor,Main shopping area with display racks,TRUE
+LK007,BACK_ROOM,Back Room,backroom,Storage and receiving area,TRUE
+LK007,FITTING_ROOM,Fitting Rooms,fitting_room,Customer trial rooms,TRUE
+LK008,SALES_FLOOR,Sales Floor,floor,Main shopping area with display racks,TRUE
+LK008,BACK_ROOM,Back Room,backroom,Storage and receiving area,TRUE
+LK008,FITTING_ROOM,Fitting Rooms,fitting_room,Customer trial rooms,TRUE
+LK009,SALES_FLOOR,Sales Floor,floor,Main shopping area - City Centre,TRUE
+LK009,BACK_ROOM,Back Room,backroom,Storage and receiving area,TRUE
+LK009,FITTING_ROOM,Fitting Rooms,fitting_room,Customer trial rooms,TRUE
+LK010,SALES_FLOOR,Sales Floor,floor,Main shopping area - CG Road,TRUE
+LK010,BACK_ROOM,Back Room,backroom,Storage and receiving area,TRUE

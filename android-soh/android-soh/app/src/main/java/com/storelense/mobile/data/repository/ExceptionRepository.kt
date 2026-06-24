@@ -16,8 +16,8 @@ class ExceptionRepository @Inject constructor(
     private val exceptionCacheDao: ExceptionCacheDao,
     private val ghostAnalysisDao: GhostAnalysisDao
 ) {
-    fun exceptionsByTypeFlow(type: String): Flow<List<ExceptionCacheEntity>> =
-        exceptionCacheDao.getByType(type)
+    fun exceptionsByTypeFlow(type: String, storeId: String): Flow<List<ExceptionCacheEntity>> =
+        exceptionCacheDao.getByType(type, storeId)
 
     suspend fun getSummary(storeId: String): Result<ExceptionSummaryDto> = try {
         val resp = api.getExceptionsSummary(storeId)
@@ -40,14 +40,14 @@ class ExceptionRepository @Inject constructor(
         val body = resp.body()
         if (resp.isSuccessful && body?.success == true && body.data != null) {
             val items = body.data.content
-            exceptionCacheDao.upsertAll(items.map { it.toEntity() })
+            exceptionCacheDao.upsertAll(items.map { it.toEntity(storeId) })
             Result.Success(items)
         } else {
             Result.Error(body?.message ?: "Failed to load exceptions")
         }
     } catch (e: Exception) {
         // Serve cached rows when offline
-        val cached = exceptionCacheDao.getByTypeSync(type).map { it.toDto() }
+        val cached = exceptionCacheDao.getByTypeSync(type, storeId).map { it.toDto() }
         if (cached.isNotEmpty()) Result.Success(cached)
         else Result.Error(e.message ?: "No cached exceptions available")
     }
@@ -141,8 +141,9 @@ class ExceptionRepository @Inject constructor(
 
     // ── Mapping helpers ───────────────────────────────────────────────────────
 
-    private fun ExceptionItemDto.toEntity() = ExceptionCacheEntity(
+    private fun ExceptionItemDto.toEntity(storeId: String) = ExceptionCacheEntity(
         epc            = epc,
+        storeId        = storeId,
         type           = type,
         confidence     = confidence,
         classification = classification,

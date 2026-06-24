@@ -50,16 +50,17 @@ class QuickSpotCountViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 rfid.connect()
-                rfid.setTxPower(27)
+                rfid.setTxPower(30)
                 rfid.startScan()
             } catch (e: Exception) {
                 Timber.e(e, "RFID connect failed")
                 _state.update { it.copy(phase = SpotPhase.Paused, error = "Reader unavailable: ${e.message}") }
                 return@launch
             }
+            val storeId = auth.storeId ?: ""
             rfid.reads.collect { read ->
                 if (seenEpcs.add(read.epc)) {
-                    val product = productCache.getOrPut(read.epc) { productRepo.getByEpc(read.epc) }
+                    val product = productCache.getOrPut(read.epc) { productRepo.getByEpc(read.epc, storeId) }
                     val item = SpotCountItem(
                         epc       = read.epc,
                         product   = product,

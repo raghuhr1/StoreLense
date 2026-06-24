@@ -70,7 +70,7 @@ fun ExpertHomeScreen(
                         )
                     } else {
                         IconButton(
-                            onClick = { vm.refresh() },
+                            onClick = { vm.refresh(false) },
                             modifier = Modifier.background(SurfaceSlate, CircleShape)
                         ) {
                             Icon(Icons.Default.Refresh, "Sync", tint = Color.White)

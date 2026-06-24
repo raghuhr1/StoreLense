@@ -65,7 +65,7 @@ class GeigerLocatorViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 rfid.connect()
-                rfid.setTxPower(27)
+                rfid.setTxPower(30)
                 rfid.startScan()
             } catch (e: Exception) {
                 Timber.e(e, "RFID connect failed")

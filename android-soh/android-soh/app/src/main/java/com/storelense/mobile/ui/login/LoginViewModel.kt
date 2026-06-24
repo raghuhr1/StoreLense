@@ -53,7 +53,7 @@ class LoginViewModel @Inject constructor(
                 is Result.Success -> {
                     // kick off a one-time product catalog sync after login
                     WorkManager.getInstance(appContext).enqueueUniqueWork(
-                        "product_sync_on_login",
+                        ProductSyncWorker.WORK_NAME_MANUAL,
                         ExistingWorkPolicy.REPLACE,
                         ProductSyncWorker.buildOneTime()
                     )

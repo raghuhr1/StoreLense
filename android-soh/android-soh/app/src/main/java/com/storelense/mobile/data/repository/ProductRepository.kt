@@ -21,57 +21,84 @@ class ProductRepository @Inject constructor(
         return productDao.search(query.trim(), storeId)
     }
 
-    suspend fun getByEpc(epc: String): ProductEntity? = productDao.getByEpc(epc)
+    suspend fun getByEpc(epc: String, storeId: String): ProductEntity? = productDao.getByEpc(epc, storeId)
 
     suspend fun getById(id: String): ProductEntity? = productDao.getById(id)
 
-    suspend fun syncProducts(storeId: String): Result<Int> = try {
-        // Step 1: get store-specific inventory quantities and the set of relevant productIds.
-        // inventory/state is populated by ERP imports (quantityExpected) and RFID scans
-        // (quantityOnHand), so it correctly reflects what is actually in this store.
-        val invResp = api.getInventoryState(storeId)
-        val invByProductId: Map<String, Pair<Int, Int>> =
-            if (invResp.isSuccessful && invResp.body()?.success == true) {
-                val rows = invResp.body()?.data ?: emptyList()
-                // Aggregate across zones: sum quantities per product
-                rows.groupBy { it.productId }
-                    .mapValues { (_, zoneRows) ->
-                        Pair(
-                            zoneRows.sumOf { it.quantityOnHand },
-                            zoneRows.sumOf { it.quantityExpected }
-                        )
-                    }
-            } else emptyMap()
+    suspend fun syncProducts(storeId: String, forceFull: Boolean = false): Result<Int> {
+        return try {
+            // Step 1: get store-specific inventory quantities.
+            val invResp = try {
+                api.getInventoryState(storeId)
+            } catch (e: Exception) {
+                return Result.Error("Inventory API failed: ${e.message}")
+            }
 
-        // Step 2: fetch ALL active products.
-        // sync=true bypasses the inventory_state/epc_registry filter on the server so the
-        // full product catalog is returned even before any ERP import or RFID scan has happened.
-        // Store-specific quantities are overlaid in Step 3 using invByProductId.
-        var page = 0
-        var hasMore = true
-        val all = mutableListOf<ProductDto>()
-        while (hasMore) {
-            val resp = api.getProducts(storeId = storeId, page = page, size = 200, sync = true)
-            val body = resp.body()
-            if (resp.isSuccessful && body?.success == true && body.data != null) {
-                all.addAll(body.data.content)
-                hasMore = page < body.data.totalPages - 1
-                page++
-            } else hasMore = false
+            val invByProductId: Map<String, Pair<Int, Int>> =
+                if (invResp.isSuccessful && invResp.body()?.success == true) {
+                    val rows = invResp.body()?.data ?: emptyList()
+                    rows.groupBy { it.productId }
+                        .mapValues { (_, zoneRows) ->
+                            Pair(
+                                zoneRows.sumOf { it.quantityOnHand },
+                                zoneRows.sumOf { it.quantityExpected }
+                            )
+                        }
+                } else {
+                    return Result.Error("Inventory API error: ${invResp.code()} ${invResp.message()}")
+                }
+
+            // Step 2: Determine if we should do a delta sync (only new/updated since last time)
+            val lastSync = if (forceFull) null else productDao.getMaxLastSynced(storeId)
+
+            // Step 3: fetch products from server.
+            // sync=false lets the server handle the storeId filtering to prevent global catalog issues.
+            var page = 0
+            var hasMore = true
+            val incoming = mutableListOf<ProductDto>()
+            while (hasMore) {
+                val resp = try {
+                    api.getProducts(
+                        storeId = storeId, 
+                        page    = page, 
+                        size    = 200, 
+                        sync    = false, 
+                        since   = lastSync
+                    )
+                } catch (e: Exception) {
+                    return Result.Error("Products API failed at page $page: ${e.message}")
+                }
+
+                val body = resp.body()
+                if (resp.isSuccessful && body?.success == true && body.data != null) {
+                    incoming.addAll(body.data.content)
+                    hasMore = page < body.data.totalPages - 1
+                    page++
+                } else {
+                    return Result.Error("Products API error: ${resp.code()} ${body?.message}")
+                }
+            }
+
+            // Step 4: Map all server-returned products to entities. The server already
+            // store-scoped the results, so no further filtering is needed. Supplement with
+            // inventory quantities where available (products visible only via epc_registry
+            // will have zero inventory counts, which is correct).
+            val storeProducts = incoming.map { dto ->
+                val (onHand, expected) = invByProductId[dto.id] ?: Pair(0, 0)
+                dto.toEntity(storeId, onHand, expected)
+            }
+
+            // Step 5: Update database
+            if (storeProducts.isNotEmpty()) {
+                if (forceFull || lastSync == null) {
+                    productDao.deleteForStore(storeId)
+                }
+                productDao.upsertAll(storeProducts)
+            }
+            Result.Success(storeProducts.size)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Sync error")
         }
-
-        // Step 3: save every product; overlay on-hand/expected from inventory_state where available.
-        // Products not yet in inventory_state (no ERP import or scan) default to 0/0 quantities.
-        val storeProducts = all.map { dto ->
-            val (onHand, expected) = invByProductId[dto.id] ?: Pair(0, 0)
-            dto.toEntity(storeId, onHand, expected)
-        }
-
-        productDao.deleteForStore(storeId)
-        productDao.upsertAll(storeProducts)
-        Result.Success(storeProducts.size)
-    } catch (e: Exception) {
-        Result.Error(e.message ?: "Sync error")
     }
 
     suspend fun catalogCount(storeId: String): Int = productDao.countForStore(storeId)

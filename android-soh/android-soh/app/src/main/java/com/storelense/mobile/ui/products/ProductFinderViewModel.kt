@@ -59,7 +59,7 @@ data class ProductFinderState(
     val soundEnabled: Boolean = true,
     val vibrateEnabled: Boolean = true
 ) {
-    val results: List<ProductEntity> get() = if (localResults.isNotEmpty()) localResults else onlineResults
+    val results: List<ProductEntity> get() = localResults + onlineResults
     val isSearching: Boolean get() = isSearchingLocal || isSearchingOnline
 }
 
@@ -116,11 +116,11 @@ class ProductFinderViewModel @Inject constructor(
         queryFlow.value = ""
     }
 
-    fun triggerSync() {
+    fun triggerSync(forceFull: Boolean = false) {
         val storeId = auth.storeId ?: return
         _state.update { it.copy(isSyncing = true, lastSyncError = null) }
         viewModelScope.launch {
-            when (val r = repo.syncProducts(storeId)) {
+            when (val r = repo.syncProducts(storeId, forceFull)) {
                 is Result.Success -> {
                     loadCatalogCount()
                     _state.update { it.copy(isSyncing = false) }
@@ -195,7 +195,7 @@ class ProductFinderViewModel @Inject constructor(
         rfidJob = viewModelScope.launch {
             try {
                 rfid.connect()
-                rfid.setTxPower(27)
+                rfid.setTxPower(30) // Use max power for item location
                 rfid.startScan()
             } catch (e: Exception) {
                 Timber.e(e, "RFID connect failed in ProductFinder")
@@ -289,9 +289,10 @@ class ProductFinderViewModel @Inject constructor(
             if (local.size < 3 && q.length >= 2) {
                 _state.update { it.copy(isSearchingOnline = true) }
                 try {
-                    val resp = api.getProducts(storeId = storeId, search = q, page = 0, size = 20)
+                    // Search store-scoped catalog with sync=false to stay within the user's store
+                    val resp = api.getProducts(storeId = storeId, search = q, page = 0, size = 20, sync = false)
                     val online = resp.body()?.data?.content
-                        ?.filter { dto -> local.none { it.id == dto.id } }
+                        ?.filter { dto -> local.none { it.id == dto.id || it.sku == dto.sku } }
                         ?.map { dto ->
                             ProductEntity(
                                 id          = dto.id,

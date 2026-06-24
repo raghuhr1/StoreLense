@@ -25,7 +25,7 @@ class StoreLenseApp : Application(), Configuration.Provider {
     private fun scheduleBackgroundWork() {
         val wm = WorkManager.getInstance(this)
         wm.enqueueUniquePeriodicWork(
-            ProductSyncWorker.WORK_NAME,
+            ProductSyncWorker.WORK_NAME_PERIODIC,
             ExistingPeriodicWorkPolicy.KEEP,
             ProductSyncWorker.buildPeriodic()
         )

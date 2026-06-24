@@ -86,7 +86,7 @@ interface ProductDao {
 
     @Query("""
         SELECT * FROM products
-        WHERE (storeId = :storeId OR :storeId = '')
+        WHERE storeId = :storeId
           AND (name LIKE '%' || :query || '%'
             OR sku LIKE '%' || :query || '%'
             OR brand LIKE '%' || :query || '%'
@@ -102,11 +102,14 @@ interface ProductDao {
     """)
     suspend fun search(query: String, storeId: String): List<ProductEntity>
 
-    @Query("SELECT * FROM products WHERE sku = :epc OR erpCode = :epc LIMIT 1")
-    suspend fun getByEpc(epc: String): ProductEntity?
+    @Query("SELECT * FROM products WHERE (sku = :epc OR erpCode = :epc) AND storeId = :storeId LIMIT 1")
+    suspend fun getByEpc(epc: String, storeId: String): ProductEntity?
 
     @Query("SELECT COUNT(*) FROM products WHERE storeId = :storeId")
     suspend fun countForStore(storeId: String): Int
+
+    @Query("SELECT MAX(lastSyncedAt) FROM products WHERE storeId = :storeId")
+    suspend fun getMaxLastSynced(storeId: String): Long?
 
     @Query("DELETE FROM products WHERE storeId = :storeId")
     suspend fun deleteForStore(storeId: String)
@@ -173,8 +176,8 @@ interface TransferDao {
     @Query("SELECT * FROM transfers_out WHERE id = :id")
     suspend fun getById(id: String): TransferOutEntity?
 
-    @Query("SELECT * FROM transfers_out ORDER BY createdAt DESC")
-    fun getAll(): Flow<List<TransferOutEntity>>
+    @Query("SELECT * FROM transfers_out WHERE sourceStoreId = :storeId ORDER BY createdAt DESC")
+    fun getForStore(storeId: String): Flow<List<TransferOutEntity>>
 
     @Query("UPDATE transfers_out SET status = :status, uploadedAt = :uploadedAt WHERE id = :id")
     suspend fun updateStatus(id: String, status: String, uploadedAt: Long? = null)
@@ -202,11 +205,11 @@ interface ExceptionCacheDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: ExceptionCacheEntity)
 
-    @Query("SELECT * FROM exception_cache WHERE type = :type ORDER BY confidence DESC")
-    fun getByType(type: String): Flow<List<ExceptionCacheEntity>>
+    @Query("SELECT * FROM exception_cache WHERE type = :type AND storeId = :storeId ORDER BY confidence DESC")
+    fun getByType(type: String, storeId: String): Flow<List<ExceptionCacheEntity>>
 
-    @Query("SELECT * FROM exception_cache WHERE type = :type ORDER BY confidence DESC")
-    suspend fun getByTypeSync(type: String): List<ExceptionCacheEntity>
+    @Query("SELECT * FROM exception_cache WHERE type = :type AND storeId = :storeId ORDER BY confidence DESC")
+    suspend fun getByTypeSync(type: String, storeId: String): List<ExceptionCacheEntity>
 
     @Query("SELECT * FROM exception_cache WHERE epc = :epc")
     suspend fun getByEpc(epc: String): ExceptionCacheEntity?
