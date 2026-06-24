@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState }  from 'react'
 import { type ColumnDef }     from '@tanstack/react-table'
-import { Plus, ArrowRight }   from 'lucide-react'
+import { Plus, ArrowRight, Zap } from 'lucide-react'
 import Link                   from 'next/link'
 import Header                 from '@/components/layout/Header'
 import DataTable              from '@/components/ui/DataTable'
@@ -238,6 +238,9 @@ export default function ReplenishmentPage() {
             )}
           </div>
 
+          <Link href="/replenishment/auto" className="btn-secondary">
+            <Zap size={16} /> Auto-Trigger
+          </Link>
           <button onClick={() => setCreating(true)} className="btn-primary" disabled={!storeId}>
             <Plus size={16} /> New Task
           </button>

@@ -90,6 +90,18 @@ export interface ZoneParLevel {
 
 export type RollupStatus = 'critical' | 'low' | 'ok' | 'surplus'
 
+export interface ReplenishmentRule {
+  id: string; storeId: string; triggerStatus: 'low' | 'critical'
+  priority: number; active: boolean; createdAt: string; updatedAt: string
+}
+
+export interface ReplenishmentSuggestion {
+  storeId: string; zoneId: string; zoneName: string | null
+  productId: string; sku: string | null; productName: string | null
+  scannedQty: number; parQty: number; shortage: number
+  status: 'critical' | 'low'; priority: number; hasOpenTask: boolean
+}
+
 export interface ZoneScanRollupRow {
   id: string | null; storeId: string; zoneId: string; zoneName: string | null
   productId: string; sku: string | null; productName: string | null

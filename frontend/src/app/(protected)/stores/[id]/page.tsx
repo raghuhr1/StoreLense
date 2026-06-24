@@ -5,12 +5,13 @@ import { use, useMemo, useState }  from 'react'
 import { useForm }        from 'react-hook-form'
 import { zodResolver }    from '@hookform/resolvers/zod'
 import { z }              from 'zod'
-import { Plus, Trash2 }   from 'lucide-react'
+import { Plus, Trash2, Zap } from 'lucide-react'
 import Header             from '@/components/layout/Header'
 import { storesApi }      from '@/lib/api/stores'
 import { productsApi }    from '@/lib/api/products'
-import { parLevelsApi }   from '@/lib/api/inventory'
+import { parLevelsApi, replenishmentRulesApi } from '@/lib/api/inventory'
 import { statusBadge }    from '@/components/ui/Badge'
+import type { ReplenishmentRule } from '@/types'
 
 // ── Zone create form schema ────────────────────────────────────────────────
 const zoneSchema = z.object({
@@ -41,6 +42,10 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
   const { data: zones }   = useQuery({ queryKey: ['zones', id],       queryFn: () => storesApi.zones(id) })
   const { data: readers } = useQuery({ queryKey: ['readers', id],     queryFn: () => storesApi.readers(id) })
   const { data: parLvls } = useQuery({ queryKey: ['par-levels', id],  queryFn: () => parLevelsApi.list(id) })
+  const { data: rules }   = useQuery<ReplenishmentRule[]>({
+    queryKey: ['replenishment-rules', id],
+    queryFn:  () => replenishmentRulesApi.list(id),
+  })
   const { data: productsPage } = useQuery({
     queryKey: ['products-store', id],
     queryFn:  () => productsApi.list({ storeId: id, size: 200 }),
@@ -67,6 +72,17 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
     mutationFn: (v: ParForm) =>
       parLevelsApi.upsert({ storeId: id, zoneId: v.zoneId, productId: v.productId, parQty: v.parQty, minQty: v.minQty }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['par-levels', id] }); setParOpen(false); parReset() },
+  })
+
+  // Replenishment rule mutations
+  const ruleUpsertMut = useMutation({
+    mutationFn: (body: { triggerStatus: 'low' | 'critical'; priority: number }) =>
+      replenishmentRulesApi.upsert({ storeId: id, ...body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['replenishment-rules', id] }),
+  })
+  const ruleDelMut = useMutation({
+    mutationFn: (ruleId: string) => replenishmentRulesApi.delete(ruleId, id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['replenishment-rules', id] }),
   })
 
   // Par level delete
@@ -287,6 +303,90 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
                 </tbody>
               </table>
             </div>
+          )}
+        </div>
+
+        {/* Replenishment Rules */}
+        <div className="card">
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                <Zap size={14} className="text-amber-500" />
+                Replenishment Auto-Trigger Rules ({rules?.length ?? 0} / 2)
+              </h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                When a zone scan shows stock below par, automatically suggest refill tasks.
+                &lsquo;low&rsquo; fires for both low and critical; &lsquo;critical&rsquo; fires only for critical.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            {(['low', 'critical'] as const).map(status => {
+              const existing = rules?.find(r => r.triggerStatus === status)
+              return (
+                <div key={status} className={`p-4 rounded-xl border ${
+                  existing ? 'border-green-200 bg-green-50' : 'border-gray-100 bg-gray-50'
+                }`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900 capitalize">{status} Stock Rule</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {status === 'low'
+                          ? 'Triggers for low + critical zones'
+                          : 'Triggers only for critical zones'}
+                      </p>
+                    </div>
+                    {existing && (
+                      <button
+                        onClick={() => ruleDelMut.mutate(existing.id)}
+                        disabled={ruleDelMut.isPending}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                        title="Remove rule"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
+                  {existing ? (
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-gray-500">Priority</span>
+                      <input
+                        type="number" min={1} max={10}
+                        defaultValue={existing.priority}
+                        onBlur={e => ruleUpsertMut.mutate({
+                          triggerStatus: status,
+                          priority: Number(e.target.value),
+                        })}
+                        className="w-16 text-sm border border-gray-200 rounded-lg px-2 py-1 text-center font-mono"
+                      />
+                      <span className="text-xs text-gray-400">(1 = urgent, 10 = low)</span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => ruleUpsertMut.mutate({
+                        triggerStatus: status,
+                        priority: status === 'critical' ? 3 : 6,
+                      })}
+                      disabled={ruleUpsertMut.isPending}
+                      className="btn-primary text-xs py-1.5 w-full"
+                    >
+                      <Plus size={12} /> Enable Rule
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {(rules?.length ?? 0) > 0 && (
+            <p className="text-xs text-gray-400">
+              Once rules are active, go to{' '}
+              <a href="/replenishment/auto" className="text-brand-600 hover:underline font-medium">
+                Replenishment → Auto-Trigger
+              </a>{' '}
+              to review and create tasks.
+            </p>
           )}
         </div>
 

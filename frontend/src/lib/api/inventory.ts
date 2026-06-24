@@ -1,8 +1,8 @@
 import client from './client'
 import type {
   ApiResponse, EpcLedgerRow, InventoryState, InboundEpcRow,
-  PageResponse, PutawayResponse, SkuLedgerRow, ZoneParLevel,
-  ZoneScanRollupRow,
+  PageResponse, PutawayResponse, ReplenishmentRule, ReplenishmentSuggestion,
+  SkuLedgerRow, ZoneParLevel, ZoneScanRollupRow,
 } from '@/types'
 
 export const inventoryApi = {
@@ -48,6 +48,23 @@ export const parLevelsApi = {
 
   delete: (id: string, storeId: string) =>
     client.delete(`/par-levels/${id}`, { params: { storeId } }),
+}
+
+export const replenishmentRulesApi = {
+  list: (storeId: string) =>
+    client.get<ApiResponse<ReplenishmentRule[]>>('/replenishment-rules', { params: { storeId } })
+      .then(r => r.data.data ?? []),
+
+  upsert: (body: { storeId: string; triggerStatus: 'low' | 'critical'; priority: number }) =>
+    client.post<ApiResponse<ReplenishmentRule>>('/replenishment-rules', body)
+      .then(r => r.data.data),
+
+  delete: (id: string, storeId: string) =>
+    client.delete(`/replenishment-rules/${id}`, { params: { storeId } }),
+
+  suggest: (storeId: string) =>
+    client.get<ApiResponse<ReplenishmentSuggestion[]>>('/replenishment-rules/suggest', { params: { storeId } })
+      .then(r => r.data.data ?? []),
 }
 
 export const scanRollupApi = {
