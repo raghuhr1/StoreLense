@@ -88,6 +88,16 @@ export interface ZoneParLevel {
   createdAt: string; updatedAt: string
 }
 
+export type RollupStatus = 'critical' | 'low' | 'ok' | 'surplus'
+
+export interface ZoneScanRollupRow {
+  id: string | null; storeId: string; zoneId: string; zoneName: string | null
+  productId: string; sku: string | null; productName: string | null
+  sessionId: string | null
+  scannedQty: number; parQty: number; minQty: number; variance: number
+  status: RollupStatus; computedAt: string
+}
+
 // ─── SOH / Cycle Count ────────────────────────────────────────────────────────
 export type SessionStatus = 'created' | 'in_progress' | 'completed' | 'cancelled' | 'failed'
 export type SessionType   = 'manual' | 'scheduled' | 'full_store' | 'spot_check'

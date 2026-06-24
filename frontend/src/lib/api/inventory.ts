@@ -2,6 +2,7 @@ import client from './client'
 import type {
   ApiResponse, EpcLedgerRow, InventoryState, InboundEpcRow,
   PageResponse, PutawayResponse, SkuLedgerRow, ZoneParLevel,
+  ZoneScanRollupRow,
 } from '@/types'
 
 export const inventoryApi = {
@@ -47,4 +48,21 @@ export const parLevelsApi = {
 
   delete: (id: string, storeId: string) =>
     client.delete(`/par-levels/${id}`, { params: { storeId } }),
+}
+
+export const scanRollupApi = {
+  live: (storeId: string, zoneId?: string) =>
+    client.get<ApiResponse<ZoneScanRollupRow[]>>('/scan-rollup/live', {
+      params: { storeId, ...(zoneId ? { zoneId } : {}) },
+    }).then(r => r.data.data ?? []),
+
+  compute: (storeId: string, sessionId?: string) =>
+    client.post<ApiResponse<ZoneScanRollupRow[]>>('/scan-rollup/compute', null, {
+      params: { storeId, ...(sessionId ? { sessionId } : {}) },
+    }).then(r => r.data.data ?? []),
+
+  getBySession: (storeId: string, sessionId: string) =>
+    client.get<ApiResponse<ZoneScanRollupRow[]>>('/scan-rollup', {
+      params: { storeId, sessionId },
+    }).then(r => r.data.data ?? []),
 }
