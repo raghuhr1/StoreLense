@@ -1,7 +1,7 @@
 import client from './client'
 import type {
   ApiResponse, EpcLedgerRow, InventoryState, InboundEpcRow,
-  PageResponse, PutawayResponse, SkuLedgerRow,
+  PageResponse, PutawayResponse, SkuLedgerRow, ZoneParLevel,
 } from '@/types'
 
 export const inventoryApi = {
@@ -33,4 +33,18 @@ export const inventoryApi = {
   putaway: (body: { storeId: string; zoneId: string; epcs: string[] }) =>
     client.post<ApiResponse<PutawayResponse>>('/inventory/putaway', body)
       .then(r => r.data.data),
+}
+
+export const parLevelsApi = {
+  list: (storeId: string, zoneId?: string) =>
+    client.get<ApiResponse<ZoneParLevel[]>>('/par-levels', {
+      params: { storeId, ...(zoneId ? { zoneId } : {}) },
+    }).then(r => r.data.data ?? []),
+
+  upsert: (body: { storeId: string; zoneId: string; productId: string; parQty: number; minQty: number }) =>
+    client.post<ApiResponse<ZoneParLevel>>('/par-levels', body)
+      .then(r => r.data.data),
+
+  delete: (id: string, storeId: string) =>
+    client.delete(`/par-levels/${id}`, { params: { storeId } }),
 }

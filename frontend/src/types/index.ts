@@ -82,6 +82,12 @@ export interface InboundShipment {
   lineCount: number; notes: string | null; createdAt: string
 }
 
+export interface ZoneParLevel {
+  id: string; storeId: string; zoneId: string; productId: string
+  parQty: number; minQty: number; active: boolean
+  createdAt: string; updatedAt: string
+}
+
 // ─── SOH / Cycle Count ────────────────────────────────────────────────────────
 export type SessionStatus = 'created' | 'in_progress' | 'completed' | 'cancelled' | 'failed'
 export type SessionType   = 'manual' | 'scheduled' | 'full_store' | 'spot_check'
