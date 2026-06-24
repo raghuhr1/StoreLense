@@ -39,6 +39,7 @@ public class InventoryService {
     private final EpcPositionHistoryRepository epcPositionHistoryRepository;
     private final JdbcClient                  jdbcClient;
 
+    @SuppressWarnings("null")
     @KafkaListener(topics = KafkaTopics.RFID_SOH_UPDATED, groupId = "inventory-service")
     @Transactional
     public void onSohUpdated(SohUpdatedEvent event) {
@@ -91,15 +92,25 @@ public class InventoryService {
                         }
                 );
 
-        // Increment on-hand count in inventory_state
+        // Increment on-hand count in inventory_state; create row if first scan for this product+zone
         inventoryStateRepository.findByStoreIdAndProductIdAndZoneId(
                 event.storeId(), event.productId(), event.zoneId())
-                .ifPresent(state -> {
+                .map(state -> {
                     state.setQuantityOnHand(state.getQuantityOnHand() + 1);
                     state.setLastCountedAt(seenAt);
                     state.setLastSohSessionId(event.sohSessionId());
-                    inventoryStateRepository.save(state);
-                });
+                    return inventoryStateRepository.save(state);
+                })
+                .orElseGet(() -> inventoryStateRepository.save(
+                        InventoryState.builder()
+                                .storeId(event.storeId())
+                                .productId(event.productId())
+                                .zoneId(event.zoneId())
+                                .quantityOnHand(1)
+                                .quantityExpected(0)
+                                .lastCountedAt(seenAt)
+                                .lastSohSessionId(event.sohSessionId())
+                                .build()));
     }
 
     @Transactional(readOnly = true)
@@ -442,6 +453,23 @@ public class InventoryService {
             reg.setZoneId(zoneId);
             reg.setLastSeenAt(now);
             epcRegistryRepository.save(reg);
+
+            // Reflect put-away in inventory_state quantity
+            inventoryStateRepository.findByStoreIdAndProductIdAndZoneId(storeId, reg.getProductId(), zoneId)
+                    .map(state -> {
+                        state.setQuantityOnHand(state.getQuantityOnHand() + 1);
+                        state.setLastCountedAt(now);
+                        return inventoryStateRepository.save(state);
+                    })
+                    .orElseGet(() -> inventoryStateRepository.save(
+                            InventoryState.builder()
+                                    .storeId(storeId)
+                                    .productId(reg.getProductId())
+                                    .zoneId(zoneId)
+                                    .quantityOnHand(1)
+                                    .quantityExpected(0)
+                                    .lastCountedAt(now)
+                                    .build()));
             moved++;
         }
 

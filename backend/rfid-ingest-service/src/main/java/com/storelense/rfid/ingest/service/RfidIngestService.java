@@ -46,7 +46,8 @@ public class RfidIngestService {
                     entry.rssi(),
                     entry.antennaPort(),
                     entry.readAt() != null ? entry.readAt() : Instant.now(),
-                    correlationId
+                    correlationId,
+                    entry.zoneId()   // worker-selected zone (null for fixed readers)
             );
 
             // Fire-and-forget: log failures asynchronously but don't block the response

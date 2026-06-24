@@ -244,7 +244,7 @@ class ScanViewModel @Inject constructor(
             }
             return
         }
-        rfid.setTxPower(30)
+        rfid.setTxPower(28)
         rfid.startScan()
         _state.update { it.copy(phase = ScanPhase.Scanning) }
         collectConnectionState()
@@ -313,7 +313,7 @@ class ScanViewModel @Inject constructor(
                     delay(5_000L)
                     try {
                         rfid.connect()
-                        rfid.setTxPower(27)
+                        rfid.setTxPower(28)
                         rfid.startScan()
                         _state.update { it.copy(phase = ScanPhase.Scanning, error = null) }
                     } catch (_: Exception) {
@@ -417,10 +417,11 @@ class ScanViewModel @Inject constructor(
         doComplete()
     }
 
-    // Phase 5: zone conflict on join — re-join without claiming a specific zone
+    // Phase 5: zone conflict on join — re-join without claiming a specific zone then start scan
     fun joinWithoutZone() = viewModelScope.launch {
         _state.update { it.copy(showZonePickerDialog = false, takenZone = null) }
-        soh.joinSession(sessionId, deviceId, null)   // fire-and-forget; non-fatal if still fails
+        soh.joinSession(sessionId, deviceId, null)
+        connectAndStartScan()
     }
 
     // Fix #13: kept for backward compat; superseded by zone-done flow in Phase 5

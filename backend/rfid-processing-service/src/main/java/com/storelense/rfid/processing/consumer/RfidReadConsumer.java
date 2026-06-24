@@ -78,8 +78,10 @@ public class RfidReadConsumer {
                 return;
             }
 
-            // 4. Resolve reader → zone
-            Optional<UUID> zoneId = zoneMappingService.resolveZone(event.readerId());
+            // 4. Zone: prefer worker-selected zone from handheld; fall back to reader→zone mapping
+            Optional<UUID> zoneId = event.zoneId() != null
+                    ? Optional.of(event.zoneId())
+                    : zoneMappingService.resolveZone(event.readerId());
 
             // 5. Publish rfid.soh.updated
             SohUpdatedEvent sohEvent = new SohUpdatedEvent(

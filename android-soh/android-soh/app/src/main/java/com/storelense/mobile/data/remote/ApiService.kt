@@ -109,7 +109,7 @@ interface ApiService {
     @GET("api/refill/tasks/{id}")
     suspend fun getRefillTask(@Path("id") id: String): Response<ApiResponse<RefillTaskDto>>
 
-    @POST("api/refill/tasks/{taskId}/items/{itemId}/fulfil")
+    @PATCH("api/refill/tasks/{taskId}/items/{itemId}/fulfil")
     suspend fun fulfilItem(
         @Path("taskId") taskId: String,
         @Path("itemId") itemId: String,

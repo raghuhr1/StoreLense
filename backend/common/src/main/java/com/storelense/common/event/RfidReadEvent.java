@@ -13,5 +13,6 @@ public record RfidReadEvent(
         BigDecimal rssi,
         Integer antennaPort,
         Instant readAt,
-        String  correlationId
+        String  correlationId,
+        UUID    zoneId       // worker-selected zone from handheld; null for fixed readers
 ) {}

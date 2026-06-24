@@ -250,7 +250,7 @@ export interface EpcLedgerRow {
   sku:         string | null
   productName: string | null
   zoneName:    string | null
-  status:      'in_store' | 'sold' | 'missing' | 'damaged' | 'transferred'
+  status:      'in_store' | 'sold' | 'missing' | 'damaged' | 'transferred' | 'inbound' | 'in_transit' | 'unlocated'
   lastSeenAt:  string | null
   firstSeenAt: string | null
 }
