@@ -44,7 +44,6 @@ public class SohSessionController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE')")
     public ResponseEntity<ApiResponse<SohSessionResponse>> get(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.ok(sessionService.getSession(id)));
     }
@@ -106,7 +105,6 @@ public class SohSessionController {
     }
 
     @GetMapping("/{id}/epcs")
-    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER')")
     @Operation(summary = "Get all EPCs scanned during a SOH session")
     public ResponseEntity<ApiResponse<List<String>>> getEpcs(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.ok(sessionService.getSessionEpcs(id)));
