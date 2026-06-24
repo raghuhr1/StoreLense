@@ -29,7 +29,11 @@ COPY erp-integration-service/pom.xml erp-integration-service/
 COPY notification-service/pom.xml    notification-service/
 
 ARG SERVICE_NAME
-RUN mvn dependency:go-offline -pl "common,${SERVICE_NAME}" -am -q
+RUN mvn dependency:go-offline -pl "common,${SERVICE_NAME}" -am -q \
+    -Dmaven.wagon.http.connectionTimeout=20000 \
+    -Dmaven.wagon.http.readTimeout=30000 \
+    -Dmaven.wagon.httpconnectionManager.ttlSeconds=25 \
+    -Dmaven.wagon.http.retryHandler.count=5
 
 # ── Stage 2: compile & package ────────────────────────────────────────────────
 FROM deps AS build
