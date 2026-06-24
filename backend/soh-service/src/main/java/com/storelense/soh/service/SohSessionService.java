@@ -217,41 +217,30 @@ public class SohSessionService {
         var items = session.getItems();
         int totalCounted = items.stream().mapToInt(SohSessionItem::getCountedQuantity).sum();
 
-        // If no session items yet (Kafka processing lag or no product-EPC mapping), fall back
-        // to counting raw EPC reads seen during the session window from epc_registry.
-        if (totalCounted == 0 && session.getTotalEpcReads() > 0) {
+        // Fallback when session items are empty (EPC→product mapping not yet populated):
+        // use raw rfid_reads, which are always persisted by rfid-processing-service regardless
+        // of whether the EPC resolved to a product. This ensures counted > 0 even when
+        // epc_tags is unpopulated, so accuracy is not incorrectly shown as 0%.
+        if (totalCounted == 0) {
             try {
                 Integer rawCount = jdbcClient.sql("""
                         SELECT COUNT(DISTINCT epc)
-                        FROM inventory.epc_registry
-                        WHERE store_id = :storeId
-                          AND last_seen_at >= :start
-                          AND (:end::timestamptz IS NULL OR last_seen_at <= :end::timestamptz)
+                        FROM rfid.rfid_reads
+                        WHERE rfid_session_id = :sessionId::uuid
                         """)
-                        .param("storeId", session.getStoreId())
-                        .param("start", session.getStartedAt())
-                        .param("end", session.getCompletedAt())
+                        .param("sessionId", session.getId().toString())
                         .query(Integer.class).optional().orElse(0);
                 totalCounted = rawCount != null ? rawCount : 0;
-                log.debug("Fallback EPC count for session {}: {} raw EPCs scanned", session.getId(), totalCounted);
+                log.debug("Fallback rfid_reads count for session {}: {} raw EPCs scanned", session.getId(), totalCounted);
             } catch (Exception ex) {
                 log.warn("Could not compute fallback EPC count for session {}: {}", session.getId(), ex.getMessage());
             }
         }
 
-        // Try ERP-sourced expected quantity first (set by ERP import Kafka consumer)
-        int totalExpected = jdbcClient.sql("""
-                SELECT COALESCE(SUM(quantity_expected), 0)
-                FROM inventory.inventory_state
-                WHERE store_id = :storeId
-                """)
-                .param("storeId", session.getStoreId())
-                .query(Integer.class)
-                .single();
-
-        // System-driven fallback: count non-sold EPCs in epc_registry.
-        // Used when no ERP CSV has been imported but EPCs are tracked (e.g. via guard app sales).
-        if (totalExpected == 0) {
+        // Expected = non-sold EPCs registered for this store (same source as live scan UI expected count).
+        // Falls back to inventory_state if epc_registry has no data.
+        int totalExpected = 0;
+        try {
             totalExpected = jdbcClient.sql("""
                     SELECT COUNT(*)
                     FROM inventory.epc_registry
@@ -261,8 +250,19 @@ public class SohSessionService {
                     .param("storeId", session.getStoreId())
                     .query(Integer.class)
                     .single();
-            log.debug("System-driven expected for session {}: {} EPCs from epc_registry",
-                    session.getId(), totalExpected);
+        } catch (Exception ex) {
+            log.warn("Could not count epc_registry for session {}: {}", session.getId(), ex.getMessage());
+        }
+        if (totalExpected == 0) {
+            totalExpected = jdbcClient.sql("""
+                    SELECT COALESCE(SUM(quantity_expected), 0)
+                    FROM inventory.inventory_state
+                    WHERE store_id = :storeId
+                    """)
+                    .param("storeId", session.getStoreId())
+                    .query(Integer.class)
+                    .single();
+            log.debug("ERP expected for session {}: {} units from inventory_state", session.getId(), totalExpected);
         }
         int varianceCount = (int) items.stream().filter(i -> i.getCountedQuantity() != i.getExpectedQuantity()).count();
         int overcount     = (int) items.stream().filter(i -> i.getCountedQuantity() > i.getExpectedQuantity()).count();
@@ -287,6 +287,21 @@ public class SohSessionService {
     @Transactional(readOnly = true)
     public List<String> getSessionEpcs(UUID sessionId) {
         findOrThrow(sessionId); // 404 if session missing
+
+        // Primary: raw rfid_reads are always persisted by rfid-processing-service regardless of
+        // whether the EPC resolved to a product. This gives accurate scanned EPCs even when
+        // epc_tags is unpopulated (no product-EPC mapping yet).
+        List<String> fromRfid = jdbcClient.sql("""
+                SELECT DISTINCT epc FROM rfid.rfid_reads
+                WHERE rfid_session_id = :sessionId::uuid
+                """)
+                .param("sessionId", sessionId.toString())
+                .query(String.class)
+                .list();
+
+        if (!fromRfid.isEmpty()) return fromRfid;
+
+        // Fallback: epc_registry last_seen_at window (used when rfid-processing updates inventory)
         return jdbcClient.sql("""
                 SELECT DISTINCT er.epc
                 FROM inventory.epc_registry er
