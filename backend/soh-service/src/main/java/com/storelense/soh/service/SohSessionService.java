@@ -49,10 +49,10 @@ public class SohSessionService {
     }
 
     @Transactional(readOnly = true)
-    public SohSessionResponse getSession(UUID sessionId) {
+    public SohSessionResponse getSession(UUID sessionId, boolean includeEpcs) {
         SohSession session = findOrThrow(sessionId);
         SohSessionResponse base = sohMapper.toResponse(session);
-        List<String> expectedEpcs = fetchExpectedEpcs(session);
+        List<String> expectedEpcs = includeEpcs ? fetchExpectedEpcs(session) : null;
         SohResultResponse result = session.getResult() != null
                 ? sohMapper.toResultResponse(session.getResult())
                 : null;

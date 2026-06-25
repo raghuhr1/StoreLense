@@ -28,7 +28,13 @@ interface ApiService {
     ): Response<ApiResponse<PagedData<SohSessionDto>>>
 
     @GET("api/soh/sessions/{id}")
-    suspend fun getSohSession(@Path("id") id: String): Response<ApiResponse<SohSessionDto>>
+    suspend fun getSohSession(
+        @Path("id") id: String,
+        @Query("includeEpcs") includeEpcs: Boolean = false
+    ): Response<ApiResponse<SohSessionDto>>
+
+    @GET("api/soh/sessions/{id}/epcs")
+    suspend fun getSohSessionEpcs(@Path("id") id: String): Response<ApiResponse<List<String>>>
 
     @POST("api/soh/sessions")
     suspend fun createSohSession(@Body req: CreateSohSessionRequest): Response<ApiResponse<SohSessionDto>>

@@ -44,8 +44,10 @@ public class SohSessionController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<SohSessionResponse>> get(@PathVariable UUID id) {
-        return ResponseEntity.ok(ApiResponse.ok(sessionService.getSession(id)));
+    public ResponseEntity<ApiResponse<SohSessionResponse>> get(
+            @PathVariable UUID id,
+            @RequestParam(defaultValue = "false") boolean includeEpcs) {
+        return ResponseEntity.ok(ApiResponse.ok(sessionService.getSession(id, includeEpcs)));
     }
 
     @PostMapping

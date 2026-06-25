@@ -43,13 +43,27 @@ class SohRepository @Inject constructor(
 
     suspend fun getSession(id: String): Result<SohSessionDto> {
         return try {
-            val resp = api.getSohSession(id)
+            val resp = api.getSohSession(id, includeEpcs = false)
             val body = resp.body()
             if (resp.isSuccessful && body?.success == true && body.data != null) {
                 body.data.let { sessionDao.upsert(it.toEntity()) }
                 Result.Success(body.data)
             } else {
                 Result.Error(body?.message ?: "Session not found")
+            }
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Network error")
+        }
+    }
+
+    suspend fun getSessionEpcs(id: String): Result<List<String>> {
+        return try {
+            val resp = api.getSohSessionEpcs(id)
+            val body = resp.body()
+            if (resp.isSuccessful && body?.success == true && body.data != null) {
+                Result.Success(body.data)
+            } else {
+                Result.Error(body?.message ?: "Failed to fetch EPCs")
             }
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")

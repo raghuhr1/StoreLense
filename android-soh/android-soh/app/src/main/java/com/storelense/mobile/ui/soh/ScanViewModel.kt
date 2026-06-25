@@ -133,13 +133,22 @@ class ScanViewModel @Inject constructor(
         _state.update { it.copy(phase = ScanPhase.Connecting) }
         when (val r = soh.getSession(sessionId)) {
             is Result.Success -> {
-                r.data.expectedEpcs?.let { expectedSet.addAll(it) }
                 _state.update {
                     it.copy(
-                        expectedCount  = expectedSet.size,
-                        zoneRegion     = r.data.zoneRegion,                        // Fix #10
-                        isErpTriggered = r.data.source == "erp_triggered"          // Fix #10
+                        zoneRegion     = r.data.zoneRegion,
+                        isErpTriggered = r.data.source == "erp_triggered"
                     )
+                }
+                // Fetch expected EPCs asynchronously — scanning starts without waiting
+                viewModelScope.launch {
+                    when (val epcs = soh.getSessionEpcs(sessionId)) {
+                        is Result.Success -> {
+                            expectedSet.addAll(epcs.data)
+                            val matched = scannedSet.count { it in expectedSet }
+                            _state.update { it.copy(expectedCount = expectedSet.size, matchedCount = matched) }
+                        }
+                        is Result.Error -> Timber.w("Could not load expected EPCs: ${epcs.message}")
+                    }
                 }
 
                 // Fix #3: Restore any EPCs buffered locally from a previous interrupted run.
