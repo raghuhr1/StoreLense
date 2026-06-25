@@ -4,6 +4,7 @@ import com.storelense.mobile.data.local.dao.ProductDao
 import com.storelense.mobile.data.local.entity.ProductEntity
 import com.storelense.mobile.data.remote.ApiService
 import com.storelense.mobile.data.remote.dto.ProductDto
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -30,6 +31,8 @@ class ProductRepository @Inject constructor(
             // Step 1: get store-specific inventory quantities.
             val invResp = try {
                 api.getInventoryState(storeId)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 return Result.Error("Inventory API failed: ${e.message}")
             }
@@ -59,12 +62,14 @@ class ProductRepository @Inject constructor(
             while (hasMore) {
                 val resp = try {
                     api.getProducts(
-                        storeId = storeId, 
-                        page    = page, 
-                        size    = 200, 
-                        sync    = false, 
+                        storeId = storeId,
+                        page    = page,
+                        size    = 200,
+                        sync    = false,
                         since   = lastSync
                     )
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     return Result.Error("Products API failed at page $page: ${e.message}")
                 }
@@ -96,6 +101,8 @@ class ProductRepository @Inject constructor(
                 productDao.upsertAll(storeProducts)
             }
             Result.Success(storeProducts.size)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.Error(e.message ?: "Sync error")
         }
