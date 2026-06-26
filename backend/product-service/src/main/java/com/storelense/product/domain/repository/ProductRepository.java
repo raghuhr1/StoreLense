@@ -29,11 +29,11 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
               AND (:since IS NULL OR p.updated_at > :since)
               AND p.id IN (
                   SELECT product_id FROM inventory.inventory_state
-                   WHERE store_id = :storeId::uuid
+                   WHERE store_id = CAST(:storeId AS uuid)
                   UNION
                   SELECT et.product_id FROM inventory.epc_registry er
                   JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
-                   WHERE er.store_id = :storeId::uuid
+                   WHERE er.store_id = CAST(:storeId AS uuid)
               )
             """,
             countQuery = """
@@ -42,11 +42,11 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
               AND (:since IS NULL OR p.updated_at > :since)
               AND p.id IN (
                   SELECT product_id FROM inventory.inventory_state
-                   WHERE store_id = :storeId::uuid
+                   WHERE store_id = CAST(:storeId AS uuid)
                   UNION
                   SELECT et.product_id FROM inventory.epc_registry er
                   JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
-                   WHERE er.store_id = :storeId::uuid
+                   WHERE er.store_id = CAST(:storeId AS uuid)
               )
             """,
             nativeQuery = true)
@@ -60,11 +60,11 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
               AND (:since IS NULL OR p.updated_at > :since)
               AND p.id IN (
                   SELECT product_id FROM inventory.inventory_state
-                   WHERE store_id = :storeId::uuid
+                   WHERE store_id = CAST(:storeId AS uuid)
                   UNION
                   SELECT et.product_id FROM inventory.epc_registry er
                   JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
-                   WHERE er.store_id = :storeId::uuid
+                   WHERE er.store_id = CAST(:storeId AS uuid)
               )
               AND (LOWER(p.name) LIKE LOWER(CONCAT('%',:q,'%'))
                 OR LOWER(p.sku)  LIKE LOWER(CONCAT('%',:q,'%')))
@@ -75,11 +75,11 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
               AND (:since IS NULL OR p.updated_at > :since)
               AND p.id IN (
                   SELECT product_id FROM inventory.inventory_state
-                   WHERE store_id = :storeId::uuid
+                   WHERE store_id = CAST(:storeId AS uuid)
                   UNION
                   SELECT et.product_id FROM inventory.epc_registry er
                   JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
-                   WHERE er.store_id = :storeId::uuid
+                   WHERE er.store_id = CAST(:storeId AS uuid)
               )
               AND (LOWER(p.name) LIKE LOWER(CONCAT('%',:q,'%'))
                 OR LOWER(p.sku)  LIKE LOWER(CONCAT('%',:q,'%')))
