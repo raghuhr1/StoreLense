@@ -280,16 +280,44 @@ public class InventoryService {
                 .optional()
                 .orElseThrow(() -> new ResourceNotFoundException("Product", sku));
 
-        List<InventoryState> states = inventoryStateRepository.findByStoreIdAndProductId(storeId, productId);
-        int total = states.stream().mapToInt(InventoryState::getQuantityOnHand).sum();
+        // Quantities split by zone type — ERP imports have zone_id=NULL, treated as floor
+        int onFloor = Objects.requireNonNullElse(jdbcClient.sql("""
+                SELECT COALESCE(SUM(s.quantity_on_hand), 0)::int
+                FROM inventory.inventory_state s
+                LEFT JOIN stores.zones z ON z.id = s.zone_id
+                WHERE s.store_id = CAST(:storeId AS uuid)
+                  AND s.product_id = CAST(:productId AS uuid)
+                  AND COALESCE(z.zone_type, 'floor') IN ('floor','display','fitting_room','entrance')
+                """)
+                .param("storeId", storeId.toString())
+                .param("productId", productId.toString())
+                .query(Integer.class).single(), 0);
 
-        List<String> epcs = epcRegistryRepository
-                .findByStoreIdAndProductIdAndStatus(storeId, productId, "in_store")
-                .stream()
-                .map(EpcRegistry::getEpc)
-                .toList();
+        int inBackroom = Objects.requireNonNullElse(jdbcClient.sql("""
+                SELECT COALESCE(SUM(s.quantity_on_hand), 0)::int
+                FROM inventory.inventory_state s
+                JOIN stores.zones z ON z.id = s.zone_id
+                WHERE s.store_id = CAST(:storeId AS uuid)
+                  AND s.product_id = CAST(:productId AS uuid)
+                  AND z.zone_type IN ('backroom','stockroom')
+                """)
+                .param("storeId", storeId.toString())
+                .param("productId", productId.toString())
+                .query(Integer.class).single(), 0);
 
-        return new SkuInventoryResponse(sku, productId, storeId, total, 0, total, epcs);
+        int total = onFloor + inBackroom;
+
+        // Use epc_tags (all registered RFID tags for this product) so the Geiger locator
+        // can find items even if they haven't been scanned in this store yet
+        List<String> epcs = jdbcClient.sql("""
+                SELECT epc FROM products.epc_tags
+                WHERE product_id = CAST(:productId AS uuid) AND is_active = true
+                """)
+                .param("productId", productId.toString())
+                .query(String.class)
+                .list();
+
+        return new SkuInventoryResponse(sku, productId, storeId, onFloor, inBackroom, total, epcs);
     }
 
     /**
