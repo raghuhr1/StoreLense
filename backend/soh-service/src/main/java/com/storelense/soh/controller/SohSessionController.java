@@ -112,6 +112,12 @@ public class SohSessionController {
         return ResponseEntity.ok(ApiResponse.ok(sessionService.getSessionEpcs(id)));
     }
 
+    @GetMapping("/{id}/expected-epcs")
+    @Operation(summary = "Get expected inventory EPCs for a store (Android scan expected set)")
+    public ResponseEntity<ApiResponse<List<String>>> getExpectedEpcs(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(sessionService.getExpectedEpcs(id)));
+    }
+
     @PostMapping("/{id}/cancel")
     @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE')")
     @Operation(summary = "Cancel a SOH session")

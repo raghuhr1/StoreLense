@@ -35,6 +35,7 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/v3/api-docs/**", "/swagger-ui/**").permitAll()
                         // Internal service-to-service: erp-integration reads session + EPCs for reconciliation
                         .requestMatchers(HttpMethod.GET, "/api/soh/sessions/*/epcs").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/soh/sessions/*/expected-epcs").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/soh/sessions/*").permitAll()
                         .anyRequest().authenticated()
                 )

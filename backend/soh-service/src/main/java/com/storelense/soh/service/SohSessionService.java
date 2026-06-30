@@ -288,9 +288,7 @@ public class SohSessionService {
     public List<String> getSessionEpcs(UUID sessionId) {
         findOrThrow(sessionId); // 404 if session missing
 
-        // Primary: raw rfid_reads are always persisted by rfid-processing-service regardless of
-        // whether the EPC resolved to a product. This gives accurate scanned EPCs even when
-        // epc_tags is unpopulated (no product-EPC mapping yet).
+        // Returns EPCs that were actually scanned during this session (used by reconciliation engine).
         List<String> fromRfid = jdbcClient.sql("""
                 SELECT DISTINCT epc FROM rfid.rfid_reads
                 WHERE rfid_session_id = :sessionId::uuid
@@ -301,7 +299,7 @@ public class SohSessionService {
 
         if (!fromRfid.isEmpty()) return fromRfid;
 
-        // Fallback: epc_registry last_seen_at window (used when rfid-processing updates inventory)
+        // Fallback: epc_registry last_seen_at window
         return jdbcClient.sql("""
                 SELECT DISTINCT er.epc
                 FROM inventory.epc_registry er
@@ -312,6 +310,21 @@ public class SohSessionService {
                 AND (ss.zone_id IS NULL OR er.zone_id = ss.zone_id)
                 """)
                 .param("sessionId", sessionId.toString())
+                .query(String.class)
+                .list();
+    }
+
+    @Transactional(readOnly = true)
+    public List<String> getExpectedEpcs(UUID sessionId) {
+        SohSession session = findOrThrow(sessionId);
+        // Returns the inventory EPCs the Android app should scan FOR (expected set).
+        // Source: epc_registry — EPCs actively tracked in this store.
+        return jdbcClient.sql("""
+                SELECT epc FROM inventory.epc_registry
+                WHERE store_id = :storeId
+                  AND status NOT IN ('sold', 'damaged', 'transferred')
+                """)
+                .param("storeId", session.getStoreId())
                 .query(String.class)
                 .list();
     }

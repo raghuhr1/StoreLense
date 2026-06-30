@@ -38,6 +38,18 @@ public class ReconciliationEngine {
     // ── Public API ─────────────────────────────────────────────────────────
 
     public CcReconciliation reconcile(UUID sessionId) {
+        // Idempotency: if a completed reconciliation already exists for this session
+        // (e.g. Kafka redelivery or duplicate manual trigger), delete stale records and re-run
+        List<CcReconciliation> existing = reconciliationRepository.findBySessionIdOrderByRunAtDesc(sessionId);
+        if (!existing.isEmpty()) {
+            existing.forEach(r -> {
+                itemRepository.deleteAll(itemRepository.findByReconciliation_Id(r.getId()));
+                reconciliationRepository.delete(r);
+            });
+            log.info("Removed {} stale reconciliation record(s) for session {} before re-run",
+                    existing.size(), sessionId);
+        }
+
         // Phase 1: reads + HTTP calls outside the write transaction
         SohSessionInfo session = sohServiceClient.getSession(sessionId);
         List<String> scannedEpcs = sohServiceClient.getSessionEpcs(sessionId);
