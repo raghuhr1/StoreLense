@@ -26,7 +26,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     @Query(value = """
             SELECT DISTINCT p.* FROM products.products p
             WHERE p.is_active = true
-              AND (:since IS NULL OR p.updated_at > :since)
+              AND (CAST(:since AS timestamptz) IS NULL OR p.updated_at > CAST(:since AS timestamptz))
               AND p.id IN (
                   SELECT product_id FROM inventory.inventory_state
                    WHERE store_id = CAST(:storeId AS uuid)
@@ -39,7 +39,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
             countQuery = """
             SELECT COUNT(DISTINCT p.id) FROM products.products p
             WHERE p.is_active = true
-              AND (:since IS NULL OR p.updated_at > :since)
+              AND (CAST(:since AS timestamptz) IS NULL OR p.updated_at > CAST(:since AS timestamptz))
               AND p.id IN (
                   SELECT product_id FROM inventory.inventory_state
                    WHERE store_id = CAST(:storeId AS uuid)
@@ -57,7 +57,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     @Query(value = """
             SELECT DISTINCT p.* FROM products.products p
             WHERE p.is_active = true
-              AND (:since IS NULL OR p.updated_at > :since)
+              AND (CAST(:since AS timestamptz) IS NULL OR p.updated_at > CAST(:since AS timestamptz))
               AND p.id IN (
                   SELECT product_id FROM inventory.inventory_state
                    WHERE store_id = CAST(:storeId AS uuid)
@@ -72,7 +72,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
             countQuery = """
             SELECT COUNT(DISTINCT p.id) FROM products.products p
             WHERE p.is_active = true
-              AND (:since IS NULL OR p.updated_at > :since)
+              AND (CAST(:since AS timestamptz) IS NULL OR p.updated_at > CAST(:since AS timestamptz))
               AND p.id IN (
                   SELECT product_id FROM inventory.inventory_state
                    WHERE store_id = CAST(:storeId AS uuid)
