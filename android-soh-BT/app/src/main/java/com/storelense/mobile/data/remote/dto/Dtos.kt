@@ -41,10 +41,7 @@ data class CreateSohSessionRequest(
     val sessionType: String = "full_store",
     val notes: String? = null,
     val source: String? = null,
-    val zoneRegion: String? = null,
-    val cycleCountId: String? = null,
-    val locationCode: String? = null,
-    val sectionCode: String? = null
+    val zoneRegion: String? = null
 )
 
 data class SohSessionDto(
@@ -56,14 +53,8 @@ data class SohSessionDto(
     val result: SohResultDto?,
     val startedAt: String?,
     val completedAt: String?,
-    val pausedAt: String? = null,
-    val resumedAt: String? = null,
-    val uploadedAt: String? = null,
     val source: String = "manual",
-    val zoneRegion: String? = null,
-    val cycleCountId: String? = null,
-    val locationCode: String? = null,
-    val sectionCode: String? = null
+    val zoneRegion: String? = null
 )
 
 data class SohResultDto(
@@ -72,44 +63,7 @@ data class SohResultDto(
     val totalUnitsExpected: Int,
     val varianceCount: Int,
     val overcountItems: Int,
-    val undercountItems: Int,
-    val floorUnitsCounted: Int = 0,
-    val floorUnitsExpected: Int = 0,
-    val floorVariance: Int = 0,
-    val backroomUnitsCounted: Int = 0,
-    val backroomUnitsExpected: Int = 0,
-    val backroomVariance: Int = 0,
-    val totalStoreVariance: Int = 0
-)
-
-// ── Cycle Count ───────────────────────────────────────────────────────────────
-
-data class CycleCountDto(
-    val id: String,
-    val storeId: String,
-    val countDate: String?,
-    val status: String,               // DRAFT | RUNNING | COMPLETED | UPLOADED | RECONCILED | CLOSED
-    val notes: String? = null,
-    val sessions: List<SohSessionDto> = emptyList(),
-    val createdAt: String? = null,
-    val updatedAt: String? = null
-)
-
-data class CreateCycleCountRequest(
-    val storeId: String,
-    val countDate: String? = null,    // ISO-8601 date, e.g. "2026-07-01"
-    val notes: String? = null
-)
-
-// ── Store Locations ───────────────────────────────────────────────────────────
-
-data class StoreLocationDto(
-    val id: String,
-    val locationCode: String,         // SALES_FLOOR | BACKROOM
-    val sectionCode: String? = null,  // MENS | WOMENS | KIDS | FOOTWEAR | ACCESSORIES
-    val displayName: String?,
-    val sortOrder: Int = 0,
-    val isActive: Boolean = true
+    val undercountItems: Int
 )
 
 data class RfidBatchRequest(

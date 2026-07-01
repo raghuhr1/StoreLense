@@ -14,8 +14,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.storelense.mobile.ui.cyclecount.CycleCountDetailScreen
-import com.storelense.mobile.ui.cyclecount.CycleCountListScreen
 import com.storelense.mobile.ui.home.HomeScreen
 import com.storelense.mobile.ui.home.ExpertHomeScreen
 import com.storelense.mobile.ui.home.WorkflowsScreen
@@ -84,11 +82,6 @@ object Routes {
     const val SETTINGS_DEVICE  = "settings/device"
     const val SETTINGS_SYNC    = "settings/sync"
     const val TAG_ITEMS        = "tag_items"
-
-    // ── Cycle Count ───────────────────────────────────────────────────────
-    const val CYCLE_COUNT_LIST   = "cycle_count_list"
-    const val CYCLE_COUNT_DETAIL = "cycle_count_detail/{countId}"
-    fun cycleCountDetail(countId: String)  = "cycle_count_detail/$countId"
 
     // ── Route builder helpers ─────────────────────────────────────────────
     fun sohScan(sessionId: String)         = "soh_scan/$sessionId"

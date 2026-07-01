@@ -10,6 +10,8 @@ import com.storelense.inventory.domain.entity.InventoryState;
 import com.storelense.inventory.domain.repository.EpcPositionHistoryRepository;
 import com.storelense.inventory.domain.repository.EpcRegistryRepository;
 import com.storelense.inventory.domain.repository.InventoryStateRepository;
+import com.storelense.inventory.dto.CommissionRequest;
+import com.storelense.inventory.dto.CommissionResponse;
 import com.storelense.inventory.dto.EpcLedgerRow;
 import com.storelense.inventory.dto.EpcLocationResponse;
 import com.storelense.inventory.dto.EpcsByEanResponse;
@@ -504,6 +506,97 @@ public class InventoryService {
         return new com.storelense.inventory.dto.PutawayResponse(
                 moved, skipped,
                 "Put away " + moved + " EPC(s) to zone " + zoneId);
+    }
+
+    /**
+     * Tag Items: registers an EPC→product mapping on the spot when no T5 file was received.
+     * Inserts into products.epc_tags (global tag registry) and inventory.epc_registry (store-level).
+     * Increments quantity_on_hand for the chosen zone in inventory_state.
+     * All three inserts are idempotent — rescanning the same EPC is safe.
+     */
+    @SuppressWarnings("null")
+    @Transactional
+    public CommissionResponse commissionTagItem(CommissionRequest req) {
+        record ProductInfo(UUID id, String name) {}
+        var product = jdbcClient.sql("""
+                SELECT id, name FROM products.products WHERE sku = :sku AND is_active = true LIMIT 1
+                """)
+                .param("sku", req.sku())
+                .query((rs, n) -> new ProductInfo(rs.getObject("id", UUID.class), rs.getString("name")))
+                .optional()
+                .orElseThrow(() -> new ResourceNotFoundException("Product", req.sku()));
+
+        UUID zoneId = jdbcClient.sql("""
+                SELECT id FROM stores.zones
+                WHERE store_id = CAST(:storeId AS uuid)
+                  AND zone_code = :zoneCode
+                  AND is_active = true
+                LIMIT 1
+                """)
+                .param("storeId", req.storeId().toString())
+                .param("zoneCode", req.zone())
+                .query(UUID.class)
+                .optional()
+                .orElseThrow(() -> new ResourceNotFoundException("Zone", req.zone()));
+
+        String epc = req.epc().toUpperCase();
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+
+        jdbcClient.sql("""
+                INSERT INTO products.epc_tags
+                       (epc, epc_encoding, product_id, is_encoded, is_active, created_at, updated_at)
+                VALUES (:epc, 'SGTIN_96', CAST(:productId AS uuid), false, true, :now, :now)
+                ON CONFLICT (epc) DO NOTHING
+                """)
+                .param("epc", epc)
+                .param("productId", product.id().toString())
+                .param("now", now)
+                .update();
+
+        jdbcClient.sql("""
+                INSERT INTO inventory.epc_registry
+                       (epc, store_id, product_id, zone_id, status,
+                        first_seen_at, last_seen_at, created_at, updated_at)
+                VALUES (:epc, CAST(:storeId AS uuid), CAST(:productId AS uuid), CAST(:zoneId AS uuid),
+                        'in_store', :now, :now, :now, :now)
+                ON CONFLICT (epc, store_id) DO NOTHING
+                """)
+                .param("epc", epc)
+                .param("storeId", req.storeId().toString())
+                .param("productId", product.id().toString())
+                .param("zoneId", zoneId.toString())
+                .param("now", now)
+                .update();
+
+        inventoryStateRepository.findByStoreIdAndProductIdAndZoneId(req.storeId(), product.id(), zoneId)
+                .ifPresentOrElse(
+                        state -> {
+                            state.setQuantityOnHand(state.getQuantityOnHand() + 1);
+                            state.setAccuracyPct(calcAccuracy(state.getQuantityOnHand(), state.getQuantityExpected()));
+                            inventoryStateRepository.save(state);
+                        },
+                        () -> inventoryStateRepository.save(
+                                InventoryState.builder()
+                                        .storeId(req.storeId())
+                                        .productId(product.id())
+                                        .zoneId(zoneId)
+                                        .quantityOnHand(1)
+                                        .quantityExpected(0)
+                                        .build()));
+
+        int totalTagged = jdbcClient.sql("""
+                SELECT COUNT(*)::int FROM inventory.epc_registry
+                WHERE store_id    = CAST(:storeId AS uuid)
+                  AND product_id  = CAST(:productId AS uuid)
+                  AND status NOT IN ('sold', 'damaged', 'transferred')
+                """)
+                .param("storeId", req.storeId().toString())
+                .param("productId", product.id().toString())
+                .query(Integer.class)
+                .single();
+
+        log.info("Tag Items: EPC {} → SKU {} at store {} zone {}", epc, req.sku(), req.storeId(), req.zone());
+        return new CommissionResponse(epc, req.sku(), product.name(), product.id(), req.storeId(), req.zone(), totalTagged);
     }
 
     private java.math.BigDecimal calcAccuracy(int onHand, int expected) {

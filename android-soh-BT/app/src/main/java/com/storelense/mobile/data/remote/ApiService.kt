@@ -205,4 +205,11 @@ interface ApiService {
         @Path("sku")      sku: String,
         @Query("storeId") storeId: String
     ): Response<ApiResponse<InventorySkuDto>>
+
+    // ── Tag Items ─────────────────────────────────────────────────────────────
+
+    @POST("api/inventory/commission")
+    suspend fun commissionTagItem(
+        @Body req: CommissionTagRequest
+    ): Response<ApiResponse<CommissionTagResponse>>
 }

@@ -4,6 +4,8 @@ import com.storelense.common.dto.ApiResponse;
 import com.storelense.common.dto.PageResponse;
 import com.storelense.common.security.StoreLensePrincipal;
 import com.storelense.inventory.domain.entity.InventoryState;
+import com.storelense.inventory.dto.CommissionRequest;
+import com.storelense.inventory.dto.CommissionResponse;
 import com.storelense.inventory.dto.EpcLedgerRow;
 import com.storelense.inventory.dto.EpcLocationResponse;
 import com.storelense.inventory.dto.EpcsByEanResponse;
@@ -186,6 +188,24 @@ public class InventoryController {
 
         UUID effective = principal.isAdmin() ? storeId : principal.storeId();
         return ResponseEntity.ok(ApiResponse.ok(inventoryService.getInboundPendingEpcs(effective)));
+    }
+
+    @PostMapping("/commission")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE')")
+    @Operation(summary = "Tag Items — register an EPC→product mapping on the handheld",
+               description = "Called when staff scan a physical tag and assign it to a product+zone " +
+                             "without a pre-loaded T5/EPC file. Inserts into products.epc_tags and " +
+                             "inventory.epc_registry; increments quantity_on_hand. Idempotent: " +
+                             "re-scanning the same EPC is safe.")
+    public ResponseEntity<ApiResponse<CommissionResponse>> commissionTag(
+            @Valid @RequestBody CommissionRequest req,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+
+        UUID storeId = principal.isAdmin() ? req.storeId() : principal.storeId();
+        CommissionRequest effective = storeId.equals(req.storeId())
+                ? req
+                : new CommissionRequest(storeId, req.sku(), req.epc(), req.zone());
+        return ResponseEntity.ok(ApiResponse.ok(inventoryService.commissionTagItem(effective)));
     }
 
     @PostMapping("/putaway")

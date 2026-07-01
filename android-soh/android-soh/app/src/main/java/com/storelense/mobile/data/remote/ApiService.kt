@@ -48,6 +48,46 @@ interface ApiService {
     @POST("api/soh/sessions/{id}/complete")
     suspend fun completeSohSession(@Path("id") id: String): Response<ApiResponse<SohSessionDto>>
 
+    @POST("api/soh/sessions/{id}/pause")
+    suspend fun pauseSohSession(@Path("id") id: String): Response<ApiResponse<Unit>>
+
+    @POST("api/soh/sessions/{id}/resume")
+    suspend fun resumeSohSession(@Path("id") id: String): Response<ApiResponse<Unit>>
+
+    @POST("api/soh/sessions/{id}/upload")
+    suspend fun uploadSohSession(@Path("id") id: String): Response<ApiResponse<Unit>>
+
+    // ── Cycle Counts ──────────────────────────────────────────────────────────
+
+    @GET("api/cycle-counts")
+    suspend fun getCycleCounts(
+        @Query("storeId") storeId: String,
+        @Query("page")    page: Int = 0,
+        @Query("size")    size: Int = 50
+    ): Response<ApiResponse<PagedData<CycleCountDto>>>
+
+    @GET("api/cycle-counts/{id}")
+    suspend fun getCycleCount(@Path("id") id: String): Response<ApiResponse<CycleCountDto>>
+
+    @POST("api/cycle-counts")
+    suspend fun createCycleCount(@Body req: CreateCycleCountRequest): Response<ApiResponse<CycleCountDto>>
+
+    @POST("api/cycle-counts/{id}/start")
+    suspend fun startCycleCount(@Path("id") id: String): Response<ApiResponse<CycleCountDto>>
+
+    @POST("api/cycle-counts/{id}/upload")
+    suspend fun uploadCycleCount(@Path("id") id: String): Response<ApiResponse<CycleCountDto>>
+
+    @POST("api/cycle-counts/{id}/close")
+    suspend fun closeCycleCount(@Path("id") id: String): Response<ApiResponse<CycleCountDto>>
+
+    // ── Store Locations ───────────────────────────────────────────────────────
+
+    @GET("api/stores/{storeId}/locations")
+    suspend fun getStoreLocations(
+        @Path("storeId") storeId: String
+    ): Response<ApiResponse<List<StoreLocationDto>>>
+
     // ── Phase 5: Session Participants ─────────────────────────────────────────────
 
     @POST("api/soh/sessions/{id}/participants")
@@ -205,4 +245,11 @@ interface ApiService {
         @Path("sku")      sku: String,
         @Query("storeId") storeId: String
     ): Response<ApiResponse<InventorySkuDto>>
+
+    // ── Tag Items ─────────────────────────────────────────────────────────────
+
+    @POST("api/inventory/commission")
+    suspend fun commissionTagItem(
+        @Body req: CommissionTagRequest
+    ): Response<ApiResponse<CommissionTagResponse>>
 }
