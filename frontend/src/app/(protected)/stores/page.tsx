@@ -54,6 +54,16 @@ export default function StoresPage() {
     onSuccess:  () => { qc.invalidateQueries({ queryKey: ['stores'] }); setEditing(null); reset() },
   })
 
+  const deactivateMut = useMutation({
+    mutationFn: (id: string) => storesApi.deactivate(id),
+    onSuccess:  () => { qc.invalidateQueries({ queryKey: ['stores'] }); closeForm() },
+  })
+
+  const activateMut = useMutation({
+    mutationFn: (id: string) => storesApi.update(id, { active: true } as Partial<Store>),
+    onSuccess:  () => { qc.invalidateQueries({ queryKey: ['stores'] }); closeForm() },
+  })
+
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { countryCode: 'IN', timezone: 'Asia/Kolkata' },
@@ -173,11 +183,34 @@ export default function StoresPage() {
         </p>
       )}
 
-      <div className="flex gap-3 justify-end pt-2">
-        <button type="button" onClick={closeForm} className="btn-secondary">Cancel</button>
-        <button type="submit" disabled={createMut.isPending || updateMut.isPending} className="btn-primary">
-          {(createMut.isPending || updateMut.isPending) ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Store'}
-        </button>
+      <div className="flex items-center gap-3 pt-2">
+        {isEdit && (
+          editing!.active ? (
+            <button
+              type="button"
+              onClick={() => { if (confirm(`Deactivate ${editing!.name}? Staff will lose access.`)) deactivateMut.mutate(editing!.id) }}
+              disabled={deactivateMut.isPending}
+              className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
+            >
+              {deactivateMut.isPending ? 'Deactivating…' : 'Deactivate Store'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => activateMut.mutate(editing!.id)}
+              disabled={activateMut.isPending}
+              className="text-xs text-green-700 hover:text-green-800 hover:bg-green-50 border border-green-200 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
+            >
+              {activateMut.isPending ? 'Activating…' : 'Activate Store'}
+            </button>
+          )
+        )}
+        <div className="flex gap-3 ml-auto">
+          <button type="button" onClick={closeForm} className="btn-secondary">Cancel</button>
+          <button type="submit" disabled={createMut.isPending || updateMut.isPending} className="btn-primary">
+            {(createMut.isPending || updateMut.isPending) ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Store'}
+          </button>
+        </div>
       </div>
     </form>
   )
