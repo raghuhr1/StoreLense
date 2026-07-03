@@ -8,7 +8,7 @@ import java.util.UUID;
 public record CommissionRequest(
         @NotNull UUID storeId,
         @NotBlank String sku,
-        @NotBlank @Pattern(regexp = "[0-9A-Fa-f]{24}", message = "EPC must be 24 hex characters")
+        @NotBlank @Pattern(regexp = "[0-9A-Fa-f]{16,64}", message = "EPC must be 16–64 hex characters")
         String epc,
         @NotBlank String zone
 ) {}

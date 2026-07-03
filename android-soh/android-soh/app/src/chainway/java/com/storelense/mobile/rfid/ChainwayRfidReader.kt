@@ -1,6 +1,7 @@
 package com.storelense.mobile.rfid
 
 import android.content.Context
+import android.content.Intent
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -15,28 +16,33 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import java.time.Instant
 import javax.inject.Inject
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-import kotlin.coroutines.suspendCoroutine
 
 /*
- * ChainwayRfidReader — production RFID reader for Chainway C72 using the
- * Chainway UHF RFID SDK (RFIDWithUHFUART).
+ * ChainwayRfidReader — UHF RFID reader for Chainway C66 and C72 devices.
+ *
+ * SDK: DeviceAPI_ver*.aar (com.rscja.deviceapi.RFIDWithUHFUART)
+ *   - C66 uses MediaTek (MTK) chipset  → libDeviceAPIM.so
+ *   - C72 uses Qualcomm chipset        → libDeviceAPIQ.so
+ *   Both chipsets are handled by the same RFIDWithUHFUART class; the AAR
+ *   auto-selects the right native library at runtime.
+ *
+ * IMPORTANT — Chainway scanner service (com.rscja.scanner):
+ *   The C66/C72 firmware runs a system scanner daemon that holds exclusive
+ *   ownership of the UHF UART file descriptor at all times. Third-party apps
+ *   MUST send a broadcast to yield the hardware before calling init(), and
+ *   return it afterwards. Skipping this causes either init() to fail or
+ *   FDSAN crash (SIGABRT) when free() is called on an fd owned by the daemon.
  *
  * Prerequisites:
- *   1. Obtain RFIDWithUHFUART.jar from Chainway or from your C72 device SDK package.
- *      Typical location in the device SDK: sdk/libs/RFIDWithUHFUART.jar
- *   2. Place the JAR in android-soh/app/chainway-libs/
- *   3. Uncomment all //CHAINWAY: lines below.
- *
- * Supported devices: Chainway C72, C72 Pro (UHF variant)
- * SDK package:       com.rscja.deviceapi
- * Main class:        RFIDWithUHFUART
+ *   1. com.rscja.permission.UHF declared in the chainway AndroidManifest.xml
+ *   2. Build the `chainwayRelease` or `chainwayDebug` variant.
  */
 
 import com.rscja.deviceapi.RFIDWithUHFUART
 import com.rscja.deviceapi.entity.UHFTAGInfo
-import com.rscja.deviceapi.interfaces.IUHF
+
+private const val ACTION_SCANNER_DISABLE = "com.rscja.scanner.action.DISABLE_FUNCTION_BARCODE_RFID"
+private const val ACTION_SCANNER_ENABLE  = "com.rscja.scanner.action.ENABLE_FUNCTION_BARCODE_RFID"
 
 class ChainwayRfidReader @Inject constructor(
     @ApplicationContext private val context: Context
@@ -53,28 +59,73 @@ class ChainwayRfidReader @Inject constructor(
 
     private var uhfReader: RFIDWithUHFUART? = null
 
+    // ── Scanner service coordination ──────────────────────────────────────────
+
+    // Tell the Chainway system scanner daemon to release the UHF UART fd.
+    // Must be called before init() so our process can claim the hardware.
+    private fun releaseHardwareFromScannerService() {
+        runCatching { context.sendBroadcast(Intent(ACTION_SCANNER_DISABLE)) }
+            .onFailure { Timber.w(it, "Could not send DISABLE broadcast") }
+    }
+
+    // Return UHF hardware control to the system scanner daemon after we are done.
+    private fun returnHardwareToScannerService() {
+        runCatching { context.sendBroadcast(Intent(ACTION_SCANNER_ENABLE)) }
+            .onFailure { Timber.w(it, "Could not send ENABLE broadcast") }
+    }
+
+    // ── Connection ────────────────────────────────────────────────────────────
+
     override suspend fun connect() = withContext(Dispatchers.IO) {
         try {
+            // Step 1: free existing session if we were previously connected.
+            // Only safe to call free() when init() succeeded before (we own the fd).
+            // Calling free() before init() touches an fd owned by the scanner service
+            // → Android FDSAN raises SIGABRT → process killed (not catchable).
+            if (_isConnected) {
+                runCatching { uhfReader?.free() }.onFailure { Timber.w(it, "pre-connect free() failed") }
+                _isConnected = false
+                _connectionState.value = false
+                delay(200)
+            }
+
             uhfReader = RFIDWithUHFUART.getInstance()
 
+            // Step 2: ask the system scanner service to yield the UHF hardware.
+            releaseHardwareFromScannerService()
+            delay(300) // give the daemon time to release the UART fd
+
+            // Step 3: initialise — retry up to 3 times with increasing back-off.
             var ok = false
             var attempts = 0
             while (!ok && attempts < 3) {
                 attempts++
-                // Release any previously stuck state before re-initialising.
-                // Without this, init() returns -1 if the previous session was not cleanly freed.
-                runCatching { uhfReader?.free() }
-                delay(150) // Give hardware a moment to settle
 
-                ok = uhfReader!!.init(context)
+                ok = runCatching { uhfReader!!.init(context) }.getOrElse { e ->
+                    Timber.e(e, "Chainway RFID init threw on attempt $attempts")
+                    false
+                }
+
                 if (!ok) {
-                    Timber.w("Chainway RFID init failed (attempt $attempts)")
-                    delay(500)
+                    Timber.w("Chainway RFID init returned false (attempt $attempts)")
+                    if (attempts < 3) {
+                        // init() touched the fd even on failure; free() is safe here.
+                        runCatching { uhfReader?.free() }
+                        delay(200L * attempts) // 200 ms, 400 ms
+                        // Re-broadcast in case the daemon reclaimed the hardware.
+                        releaseHardwareFromScannerService()
+                        delay(300)
+                    }
                 }
             }
 
             if (!ok) {
-                throw IllegalStateException("Chainway RFID init returned false after $attempts attempts. Please restart the device.")
+                // Return hardware to system so the built-in scanner keeps working.
+                returnHardwareToScannerService()
+                throw IllegalStateException(
+                    "Chainway RFID init failed after $attempts attempts. " +
+                    "Check com.rscja.permission.UHF in manifest and restart the device."
+                )
             }
 
             _isConnected = true
@@ -102,36 +153,40 @@ class ChainwayRfidReader @Inject constructor(
 
     override fun setTxPower(dbm: Int) {
         try {
-            // Chainway power: 0–30 dBm. Map our standard 27 dBm → Chainway index.
             uhfReader?.setPower(dbm)
         } catch (e: Exception) { Timber.e(e, "setTxPower failed") }
     }
 
     override suspend fun disconnect() {
-        try {
-            pollingJob?.cancel()
-            uhfReader?.free()
-            uhfReader = null
-        } catch (e: Exception) { Timber.e(e) }
+        pollingJob?.cancel()
+        if (_isConnected) {
+            runCatching { uhfReader?.stopInventory() }
+            runCatching { uhfReader?.free() }.onFailure { Timber.e(it, "free() on disconnect failed") }
+            // Return UHF hardware to the system scanner service.
+            returnHardwareToScannerService()
+        }
+        uhfReader = null
         _isConnected = false
         _connectionState.value = false
     }
+
+    // ── Tag polling ───────────────────────────────────────────────────────────
 
     private var pollingJob: kotlinx.coroutines.Job? = null
     private val pollingScope = kotlinx.coroutines.CoroutineScope(
         kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob()
     )
 
-    // Chainway SDK uses a pull model: poll readTagFromBuffer() in a loop while scanning.
-    // Cancel any previous job first — startScan() may be called again after auto-reconnect.
     private fun startPollingTags() {
         pollingJob?.cancel()
         pollingJob = pollingScope.launch {
             while (true) {
                 val tag: UHFTAGInfo? = uhfReader?.readTagFromBuffer()
                 if (tag != null && !tag.epc.isNullOrBlank()) {
-                    // Normalize EPC: uppercase, no spaces or colons — must match the server format
-                    val epc = tag.epc.trim().replace(" ", "").replace(":", "").uppercase()
+                    val raw = tag.epc.trim().replace(" ", "").replace(":", "").uppercase()
+                    Timber.d("C66 raw EPC: '$raw' (${raw.length} chars), RSSI=${tag.rssi}")
+                    // SGTIN-96 = 24 hex chars. Some Chainway firmware prepends the 4-char PC word.
+                    val epc = if (raw.length == 28) raw.drop(4) else raw
                     _reads.tryEmit(
                         EpcRead(
                             epc         = epc,
