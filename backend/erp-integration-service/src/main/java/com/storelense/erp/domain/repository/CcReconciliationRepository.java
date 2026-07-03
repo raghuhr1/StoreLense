@@ -18,4 +18,8 @@ public interface CcReconciliationRepository extends JpaRepository<CcReconciliati
     List<CcReconciliation> findByBatchIdOrderByRunAtDesc(UUID batchId);
 
     Page<CcReconciliation> findByStoreIdOrderByRunAtDesc(UUID storeId, Pageable pageable);
+
+    List<CcReconciliation> findByCycleCountIdOrderByRunAtDesc(UUID cycleCountId);
+
+    Optional<CcReconciliation> findTopByCycleCountIdOrderByRunAtDesc(UUID cycleCountId);
 }

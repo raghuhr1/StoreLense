@@ -1,5 +1,6 @@
 package com.storelense.mobile.data.local.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -17,7 +18,11 @@ data class EpcReadEntity(
     val antennaPort: Int? = null,
     val scannedAt: String,
     val uploaded: Boolean = false,
-    val zoneId: String? = null
+    val zoneId: String? = null,
+    /** SALES_FLOOR or BACKROOM — set at scan time from the parent session. */
+    val locationCode: String? = null,
+    /** MENS | WOMENS | KIDS | FOOTWEAR | ACCESSORIES — null for BACKROOM reads. */
+    val sectionCode: String? = null
 )
 
 @Entity(tableName = "soh_sessions")
@@ -27,10 +32,16 @@ data class SohSessionEntity(
     val status: String,
     val sessionType: String?,
     val startedAt: String?,
-    val source: String = "manual",     // manual | erp_triggered
+    @ColumnInfo(defaultValue = "manual") val source: String = "manual",     // manual | erp_triggered
     val zoneRegion: String? = null,
-    val expectedCount: Int = 0,
-    val cachedAt: Long = System.currentTimeMillis()
+    @ColumnInfo(defaultValue = "0") val expectedCount: Int = 0,
+    @ColumnInfo(defaultValue = "0") val cachedAt: Long = 0,
+    /** SALES_FLOOR or BACKROOM */
+    val locationCode: String? = null,
+    /** MENS | WOMENS | KIDS | FOOTWEAR | ACCESSORIES — null for BACKROOM sessions. */
+    val sectionCode: String? = null,
+    /** UUID of the parent cycle count grouping this session with others. */
+    val cycleCountId: String? = null
 )
 
 @Entity(
@@ -54,7 +65,7 @@ data class InboundShipmentEntity(
     val status: String,
     val expectedAt: String?,
     val lineCount: Int?,
-    val cachedAt: Long = System.currentTimeMillis()
+    @ColumnInfo(defaultValue = "0") val cachedAt: Long = 0
 )
 
 @Entity(tableName = "refill_tasks")
@@ -65,7 +76,7 @@ data class RefillTaskEntity(
     val priority: Int,
     val dueBy: String?,
     val itemCount: Int,
-    val cachedAt: Long = System.currentTimeMillis()
+    @ColumnInfo(defaultValue = "0") val cachedAt: Long = 0
 )
 
 @Entity(
@@ -107,10 +118,10 @@ data class ProductEntity(
     val category: String?,
     val erpCode: String?,
     val storeId: String?,
-    val onHandQty: Int = 0,
-    val expectedQty: Int = 0,
+    @ColumnInfo(defaultValue = "0") val onHandQty: Int = 0,
+    @ColumnInfo(defaultValue = "0") val expectedQty: Int = 0,
     val imageUrl: String?,
-    val lastSyncedAt: Long = System.currentTimeMillis()
+    @ColumnInfo(defaultValue = "0") val lastSyncedAt: Long = System.currentTimeMillis()
 )
 
 // ── Stores ────────────────────────────────────────────────────────────────────
@@ -128,12 +139,12 @@ data class StoreEntity(
 @Entity(tableName = "transfers_out")
 data class TransferOutEntity(
     @PrimaryKey val id: String,
-    val sourceStoreId: String = "",
+    @ColumnInfo(defaultValue = "") val sourceStoreId: String = "",
     val destStoreId: String,
     val transferType: String,
     val epcsText: String,          // pipe-joined EPC list: "EPC1|EPC2|EPC3"
-    val status: String = "PENDING", // PENDING | SUBMITTED | FAILED
-    val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "PENDING") val status: String = "PENDING", // PENDING | SUBMITTED | FAILED
+    @ColumnInfo(defaultValue = "0") val createdAt: Long = System.currentTimeMillis(),
     val uploadedAt: Long? = null
 )
 
@@ -155,21 +166,21 @@ data class TransferManifestEntity(
 )
 data class ExceptionCacheEntity(
     @PrimaryKey val epc: String,
-    val storeId: String = "",
+    @ColumnInfo(defaultValue = "") val storeId: String = "",
     val type: String,              // MISSING_EPC | GHOST_TAG | READ_MISS | UNDER_REVIEW
-    val confidence: Int = 0,
+    @ColumnInfo(defaultValue = "0") val confidence: Int = 0,
     val classification: String?,   // READ_MISS_LIKELY | ACTUALLY_MISSING | GHOST_SUSPECTED | null
     val lastSeen: String?,
-    val status: String = "OPEN",   // OPEN | IGNORED | INVESTIGATING | RESOLVED
-    val cachedAt: Long = System.currentTimeMillis()
+    @ColumnInfo(defaultValue = "OPEN") val status: String = "OPEN",   // OPEN | IGNORED | INVESTIGATING | RESOLVED
+    @ColumnInfo(defaultValue = "0") val cachedAt: Long = System.currentTimeMillis()
 )
 
 @Entity(tableName = "ghost_analysis")
 data class GhostAnalysisEntity(
     @PrimaryKey val epc: String,
-    val confidenceScore: Int = 0,
+    @ColumnInfo(defaultValue = "0") val confidenceScore: Int = 0,
     val reasonsText: String,       // pipe-joined reason strings: "Single Read|Weak RSSI"
     val status: String,
-    val cachedAt: Long = System.currentTimeMillis()
+    @ColumnInfo(defaultValue = "0") val cachedAt: Long = System.currentTimeMillis()
 )
 

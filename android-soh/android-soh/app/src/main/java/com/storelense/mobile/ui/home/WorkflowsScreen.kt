@@ -27,6 +27,7 @@ import com.storelense.mobile.ui.theme.IndigoTransfer
 @Composable
 fun WorkflowsScreen(
     onSoh: () -> Unit,
+    onCycleCount: () -> Unit = {},
     onInbound: () -> Unit,
     onReplenish: () -> Unit,
     onTransferOut: () -> Unit,
@@ -143,10 +144,19 @@ fun WorkflowsScreen(
                         WorkflowRow(
                             icon       = Icons.Default.BarChart,
                             label      = "SOH Count",
-                            subtitle   = "Reconciliation",
+                            subtitle   = "Quick session scan",
                             badge      = if (state.openSohSessions > 0) "${state.openSohSessions} open" else "No open sessions",
                             badgeColor = if (state.openSohSessions > 0) AmberReplenish else MaterialTheme.colorScheme.onSurfaceVariant,
                             onClick    = onSoh
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        WorkflowRow(
+                            icon       = Icons.Default.ChecklistRtl,
+                            label      = "Cycle Count",
+                            subtitle   = "Floor + Backroom count",
+                            badge      = null,
+                            badgeColor = Color.Gray,
+                            onClick    = onCycleCount
                         )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         WorkflowRow(

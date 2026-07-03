@@ -27,6 +27,14 @@ public class SohSessionItem {
     @Column(name = "zone_id")
     private UUID zoneId;
 
+    /** SALES_FLOOR or BACKROOM — propagated from the parent session. */
+    @Column(name = "location_code", length = 20)
+    private String locationCode;
+
+    /** MENS | WOMENS | KIDS | FOOTWEAR | ACCESSORIES — null for BACKROOM items. */
+    @Column(name = "section_code", length = 20)
+    private String sectionCode;
+
     @Column(name = "counted_quantity", nullable = false)
     @Builder.Default
     private int countedQuantity = 0;

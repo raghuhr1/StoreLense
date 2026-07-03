@@ -13,6 +13,7 @@ import com.storelense.inventory.domain.repository.InventoryStateRepository;
 import com.storelense.inventory.dto.CommissionRequest;
 import com.storelense.inventory.dto.CommissionResponse;
 import com.storelense.inventory.dto.EpcLedgerRow;
+import com.storelense.inventory.dto.IdentifyEpcResponse;
 import com.storelense.inventory.dto.EpcLocationResponse;
 import com.storelense.inventory.dto.EpcsByEanResponse;
 import com.storelense.inventory.dto.SkuInventoryResponse;
@@ -542,6 +543,39 @@ public class InventoryService {
         String epc = req.epc().toUpperCase();
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
+        // Detect EPC replacement: if this product already has in_store EPCs at this store
+        // (other than the new one being commissioned), those are old physical tags being replaced.
+        // Mark them 'replaced' so the in-store count doesn't inflate.
+        int replacedEpcCount = jdbcClient.sql("""
+                UPDATE inventory.epc_registry
+                SET status = 'replaced', updated_at = :now
+                WHERE store_id   = CAST(:storeId AS uuid)
+                  AND product_id = CAST(:productId AS uuid)
+                  AND status     = 'in_store'
+                  AND epc        != :epc
+                """)
+                .param("storeId", req.storeId().toString())
+                .param("productId", product.id().toString())
+                .param("epc", epc)
+                .param("now", now)
+                .update();
+
+        boolean isReplacement = replacedEpcCount > 0;
+
+        // Deactivate old epc_tags for this product when replacing
+        if (isReplacement) {
+            jdbcClient.sql("""
+                    UPDATE products.epc_tags
+                    SET is_active = false, updated_at = :now
+                    WHERE product_id = CAST(:productId AS uuid)
+                      AND epc        != :epc
+                    """)
+                    .param("productId", product.id().toString())
+                    .param("epc", epc)
+                    .param("now", now)
+                    .update();
+        }
+
         jdbcClient.sql("""
                 INSERT INTO products.epc_tags
                        (epc, epc_encoding, product_id, is_encoded, is_active, created_at, updated_at)
@@ -568,10 +602,14 @@ public class InventoryService {
                 .param("now", now)
                 .update();
 
+        // Only increment quantity_on_hand when this is a genuinely new item being tagged.
+        // When replacing an old damaged/wrong EPC, the item was already counted — don't double-count.
         inventoryStateRepository.findByStoreIdAndProductIdAndZoneId(req.storeId(), product.id(), zoneId)
                 .ifPresentOrElse(
                         state -> {
-                            state.setQuantityOnHand(state.getQuantityOnHand() + 1);
+                            if (!isReplacement) {
+                                state.setQuantityOnHand(state.getQuantityOnHand() + 1);
+                            }
                             state.setAccuracyPct(calcAccuracy(state.getQuantityOnHand(), state.getQuantityExpected()));
                             inventoryStateRepository.save(state);
                         },
@@ -588,7 +626,7 @@ public class InventoryService {
                 SELECT COUNT(*)::int FROM inventory.epc_registry
                 WHERE store_id    = CAST(:storeId AS uuid)
                   AND product_id  = CAST(:productId AS uuid)
-                  AND status NOT IN ('sold', 'damaged', 'transferred')
+                  AND status NOT IN ('sold', 'damaged', 'transferred', 'replaced')
                 """)
                 .param("storeId", req.storeId().toString())
                 .param("productId", product.id().toString())
@@ -597,6 +635,56 @@ public class InventoryService {
 
         log.info("Tag Items: EPC {} → SKU {} at store {} zone {}", epc, req.sku(), req.storeId(), req.zone());
         return new CommissionResponse(epc, req.sku(), product.name(), product.id(), req.storeId(), req.zone(), totalTagged);
+    }
+
+    /**
+     * Identify an EPC: returns the product it is mapped to in epc_tags, plus its current
+     * status and zone in the given store. Returns empty if the EPC has never been registered.
+     * Used by Tag Items to warn staff before re-assigning an already-tagged item.
+     */
+    @Transactional(readOnly = true)
+    public java.util.Optional<IdentifyEpcResponse> identifyEpc(String epc, UUID storeId) {
+        return jdbcClient.sql("""
+                SELECT
+                    et.epc,
+                    p.id         AS product_id,
+                    p.sku,
+                    p.name       AS product_name,
+                    er.status    AS status_in_store,
+                    z.name       AS zone_name,
+                    COALESCE((
+                        SELECT STRING_AGG(b.barcode_value, ',')
+                        FROM   products.barcodes b
+                        WHERE  b.product_id = p.id
+                          AND  b.barcode_type IN ('ean13','ean8','upc_a')
+                    ), '') AS eans
+                FROM  products.epc_tags et
+                JOIN  products.products p  ON p.id = et.product_id
+                LEFT JOIN inventory.epc_registry er
+                       ON er.epc = et.epc AND er.store_id = CAST(:storeId AS uuid)
+                LEFT JOIN stores.zones z ON z.id = er.zone_id
+                WHERE et.epc = :epc AND et.is_active = true
+                LIMIT 1
+                """)
+                .param("epc", epc.toUpperCase())
+                .param("storeId", storeId.toString())
+                .query((rs, n) -> {
+                    String eansRaw = rs.getString("eans");
+                    java.util.List<String> eans = (eansRaw != null && !eansRaw.isBlank())
+                            ? java.util.Arrays.asList(eansRaw.split(","))
+                            : java.util.List.of();
+                    return new IdentifyEpcResponse(
+                            rs.getString("epc"),
+                            rs.getObject("product_id", UUID.class),
+                            rs.getString("sku"),
+                            rs.getString("product_name"),
+                            eans,
+                            rs.getString("status_in_store"),
+                            rs.getString("zone_name"),
+                            true
+                    );
+                })
+                .optional();
     }
 
     private java.math.BigDecimal calcAccuracy(int onHand, int expected) {

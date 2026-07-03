@@ -208,6 +208,12 @@ interface ApiService {
 
     // ── Tag Items ─────────────────────────────────────────────────────────────
 
+    @GET("api/inventory/identify-epc/{epc}")
+    suspend fun identifyEpc(
+        @Path("epc")      epc: String,
+        @Query("storeId") storeId: String
+    ): Response<ApiResponse<IdentifyEpcDto>>
+
     @POST("api/inventory/commission")
     suspend fun commissionTagItem(
         @Body req: CommissionTagRequest

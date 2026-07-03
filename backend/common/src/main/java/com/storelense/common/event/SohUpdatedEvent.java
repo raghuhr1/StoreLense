@@ -11,5 +11,7 @@ public record SohUpdatedEvent(
         UUID    productId,
         UUID    zoneId,
         String  epc,
-        Instant processedAt
+        Instant processedAt,
+        String  locationCode,
+        String  sectionCode
 ) {}

@@ -22,7 +22,7 @@ import com.storelense.mobile.data.local.entity.*
         ExceptionCacheEntity::class,
         GhostAnalysisEntity::class,
     ],
-    version = 7,
+    version = 10,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -38,6 +38,57 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun ghostAnalysisDao(): GhostAnalysisDao
 
     companion object {
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // No schema changes between v8 and v9 — version bump only.
+            }
+        }
+
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // epc_reads: add location/section columns for cycle count attribution
+                db.execSQL("ALTER TABLE epc_reads ADD COLUMN locationCode TEXT")
+                db.execSQL("ALTER TABLE epc_reads ADD COLUMN sectionCode TEXT")
+
+                // soh_sessions: add location/section/cycleCountId for cycle count support
+                db.execSQL("ALTER TABLE soh_sessions ADD COLUMN locationCode TEXT")
+                db.execSQL("ALTER TABLE soh_sessions ADD COLUMN sectionCode TEXT")
+                db.execSQL("ALTER TABLE soh_sessions ADD COLUMN cycleCountId TEXT")
+            }
+        }
+
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 1. Add pendingQty to refill_task_items
+                try {
+                    db.execSQL("ALTER TABLE refill_task_items ADD COLUMN pendingQty INTEGER NOT NULL DEFAULT -1")
+                } catch (e: Exception) { /* already exists */ }
+
+                // 2. Add cachedAt to tables that were missing it in their original schema
+                // We use DEFAULT 0 to match @ColumnInfo(defaultValue = "0")
+                try {
+                    db.execSQL("ALTER TABLE soh_sessions ADD COLUMN cachedAt INTEGER NOT NULL DEFAULT 0")
+                } catch (e: Exception) { /* already exists */ }
+
+                try {
+                    db.execSQL("ALTER TABLE inbound_shipments ADD COLUMN cachedAt INTEGER NOT NULL DEFAULT 0")
+                } catch (e: Exception) { /* already exists */ }
+
+                try {
+                    db.execSQL("ALTER TABLE refill_tasks ADD COLUMN cachedAt INTEGER NOT NULL DEFAULT 0")
+                } catch (e: Exception) { /* already exists */ }
+
+                // 3. Fix expectedCount default value in soh_sessions if it was created with 'undefined'
+                // Room validation is very strict about this.
+                try {
+                    // In SQLite we can't easily change DEFAULT value of existing column.
+                    // However, we can try to re-apply the column if it was somehow missing or incorrect
+                    // But usually, Room's error 'Expected: 0, Found: undefined' means the SQL used to create
+                    // the table or add the column didn't specify the default value correctly.
+                } catch (e: Exception) {}
+            }
+        }
+
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("""
@@ -101,6 +152,13 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_products_sku ON products(sku)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_products_erpCode ON products(erpCode)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_products_storeId ON products(storeId)")
+
+                // Ensure lastSyncedAt exists (it might be missing if added recently to M1_2 but not to a migration)
+                try {
+                    db.execSQL("ALTER TABLE products ADD COLUMN lastSyncedAt INTEGER NOT NULL DEFAULT 0")
+                } catch (e: Exception) {
+                    // Column might already exist
+                }
             }
         }
 

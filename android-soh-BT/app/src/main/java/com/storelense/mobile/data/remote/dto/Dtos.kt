@@ -297,6 +297,17 @@ data class ParticipantsListDto(
 
 // ── Tag Items (commission RFID tags to products on-device) ───────────────────
 
+data class IdentifyEpcDto(
+    val epc: String,
+    val productId: String,
+    val sku: String,
+    val productName: String,
+    val eans: List<String> = emptyList(),
+    val statusInStore: String?,
+    val zoneName: String?,
+    val alreadyRegistered: Boolean
+)
+
 data class CommissionTagRequest(
     val storeId: String,
     val sku: String,

@@ -7,6 +7,7 @@ import com.storelense.inventory.domain.entity.InventoryState;
 import com.storelense.inventory.dto.CommissionRequest;
 import com.storelense.inventory.dto.CommissionResponse;
 import com.storelense.inventory.dto.EpcLedgerRow;
+import com.storelense.inventory.dto.IdentifyEpcResponse;
 import com.storelense.inventory.dto.EpcLocationResponse;
 import com.storelense.inventory.dto.EpcsByEanResponse;
 import com.storelense.inventory.dto.InboundEpcRow;
@@ -206,6 +207,23 @@ public class InventoryController {
                 ? req
                 : new CommissionRequest(storeId, req.sku(), req.epc(), req.zone());
         return ResponseEntity.ok(ApiResponse.ok(inventoryService.commissionTagItem(effective)));
+    }
+
+    @GetMapping("/identify-epc/{epc}")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE')")
+    @Operation(summary = "Identify an EPC — returns product mapping and store status",
+               description = "Looks up an EPC in the global tag registry (products.epc_tags) and " +
+                             "returns the product it is assigned to, plus its current status/zone at " +
+                             "this store. Returns 404 if the EPC has never been registered.")
+    public ResponseEntity<ApiResponse<IdentifyEpcResponse>> identifyEpc(
+            @PathVariable String epc,
+            @RequestParam(required = false) UUID storeId,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+
+        UUID effective = principal.isAdmin() ? storeId : principal.storeId();
+        return inventoryService.identifyEpc(epc.toUpperCase(), effective)
+                .map(r -> ResponseEntity.ok(ApiResponse.ok(r)))
+                .orElse(ResponseEntity.notFound().<ApiResponse<IdentifyEpcResponse>>build());
     }
 
     @PostMapping("/putaway")

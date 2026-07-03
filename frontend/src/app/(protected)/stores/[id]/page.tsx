@@ -5,7 +5,7 @@ import { use, useMemo, useState }  from 'react'
 import { useForm }        from 'react-hook-form'
 import { zodResolver }    from '@hookform/resolvers/zod'
 import { z }              from 'zod'
-import { Plus, Trash2, Zap } from 'lucide-react'
+import { Plus, Trash2, Zap, MapPin } from 'lucide-react'
 import Header             from '@/components/layout/Header'
 import { storesApi }      from '@/lib/api/stores'
 import { productsApi }    from '@/lib/api/products'
@@ -34,14 +34,19 @@ type ParForm = z.infer<typeof parSchema>
 export default function StoreDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const qc     = useQueryClient()
-  const [zoneOpen, setZoneOpen] = useState(false)
-  const [parOpen,  setParOpen]  = useState(false)
+  const [zoneOpen,    setZoneOpen]    = useState(false)
+  const [parOpen,     setParOpen]     = useState(false)
+  const [locOpen,     setLocOpen]     = useState(false)
+  const [locCode,     setLocCode]     = useState('SALES_FLOOR')
+  const [locSection,  setLocSection]  = useState('')
+  const [locDisplay,  setLocDisplay]  = useState('')
   const [productSearch, setProductSearch] = useState('')
 
-  const { data: store }   = useQuery({ queryKey: ['store', id],       queryFn: () => storesApi.get(id) })
-  const { data: zones }   = useQuery({ queryKey: ['zones', id],       queryFn: () => storesApi.zones(id) })
-  const { data: readers } = useQuery({ queryKey: ['readers', id],     queryFn: () => storesApi.readers(id) })
-  const { data: parLvls } = useQuery({ queryKey: ['par-levels', id],  queryFn: () => parLevelsApi.list(id) })
+  const { data: store }       = useQuery({ queryKey: ['store', id],          queryFn: () => storesApi.get(id) })
+  const { data: zones }       = useQuery({ queryKey: ['zones', id],          queryFn: () => storesApi.zones(id) })
+  const { data: readers }     = useQuery({ queryKey: ['readers', id],        queryFn: () => storesApi.readers(id) })
+  const { data: storeLocations } = useQuery({ queryKey: ['store-locations', id], queryFn: () => storesApi.locations(id) })
+  const { data: parLvls }     = useQuery({ queryKey: ['par-levels', id],     queryFn: () => parLevelsApi.list(id) })
   const { data: rules }   = useQuery<ReplenishmentRule[]>({
     queryKey: ['replenishment-rules', id],
     queryFn:  () => replenishmentRulesApi.list(id),
@@ -65,6 +70,23 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
   const zoneMut = useMutation({
     mutationFn: (v: ZoneForm) => storesApi.createZone(id, v),
     onSuccess:  () => { qc.invalidateQueries({ queryKey: ['zones', id] }); setZoneOpen(false); zoneReset() },
+  })
+
+  // Store location create / deactivate
+  const locCreateMut = useMutation({
+    mutationFn: () => storesApi.createLocation(id, {
+      locationCode: locCode,
+      sectionCode:  locCode === 'SALES_FLOOR' && locSection ? locSection : null,
+      displayName:  locDisplay || (locCode === 'BACKROOM' ? 'Backroom' : locSection ? `Sales Floor – ${locSection}` : 'Sales Floor'),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['store-locations', id] })
+      setLocOpen(false); setLocCode('SALES_FLOOR'); setLocSection(''); setLocDisplay('')
+    },
+  })
+  const locDeactivateMut = useMutation({
+    mutationFn: (locId: string) => storesApi.deactivateLocation(id, locId),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['store-locations', id] }),
   })
 
   // Par level upsert
@@ -180,6 +202,118 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
               ))}
             </ul>
           </div>
+        </div>
+
+        {/* Store Locations (Cycle Count taxonomy) */}
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                <MapPin size={14} className="text-brand-500" />
+                Cycle Count Locations ({storeLocations?.length ?? 0})
+              </h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Locations available for cycle count sessions (SALES_FLOOR / BACKROOM + optional sections)
+              </p>
+            </div>
+            <button onClick={() => setLocOpen(true)} className="btn-primary text-xs py-1.5 px-3">
+              <Plus size={14} /> Add Location
+            </button>
+          </div>
+
+          {locOpen && (
+            <div className="mb-5 p-4 bg-gray-50 border border-gray-100 rounded-xl space-y-3">
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">New Location</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Location *</label>
+                  <select
+                    value={locCode}
+                    onChange={e => { setLocCode(e.target.value); setLocSection('') }}
+                    className={inputCls}
+                  >
+                    <option value="SALES_FLOOR">Sales Floor</option>
+                    <option value="BACKROOM">Backroom</option>
+                  </select>
+                </div>
+                {locCode === 'SALES_FLOOR' && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Section (optional)</label>
+                    <select
+                      value={locSection}
+                      onChange={e => setLocSection(e.target.value)}
+                      className={inputCls}
+                    >
+                      <option value="">— None (whole floor) —</option>
+                      <option value="MENS">Mens</option>
+                      <option value="WOMENS">Womens</option>
+                      <option value="KIDS">Kids</option>
+                      <option value="FOOTWEAR">Footwear</option>
+                      <option value="ACCESSORIES">Accessories</option>
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Display Name (optional)</label>
+                  <input
+                    value={locDisplay}
+                    onChange={e => setLocDisplay(e.target.value)}
+                    placeholder="Auto-generated if blank"
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+              {locCreateMut.isError && (
+                <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded px-3 py-2">
+                  Failed to create location. Check for duplicates.
+                </p>
+              )}
+              <div className="flex gap-2 justify-end">
+                <button type="button" onClick={() => { setLocOpen(false); setLocCode('SALES_FLOOR'); setLocSection(''); setLocDisplay('') }}
+                  className="btn-secondary text-xs">Cancel</button>
+                <button
+                  type="button"
+                  onClick={() => locCreateMut.mutate()}
+                  disabled={locCreateMut.isPending}
+                  className="btn-primary text-xs"
+                >
+                  {locCreateMut.isPending ? 'Adding…' : 'Add Location'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {(!storeLocations || storeLocations.length === 0) ? (
+            <p className="py-6 text-center text-sm text-gray-400">
+              No locations configured. Add locations to enable cycle count sessions.
+            </p>
+          ) : (
+            <ul className="divide-y divide-gray-50">
+              {storeLocations.map(loc => (
+                <li key={loc.id} className="py-2.5 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{loc.displayName}</p>
+                    <p className="text-xs text-gray-400">
+                      {loc.locationCode}{loc.sectionCode ? ` / ${loc.sectionCode}` : ''} · sort {loc.sortOrder}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {statusBadge(loc.isActive ? 'active' : 'inactive')}
+                    {loc.isActive && (
+                      <button
+                        onClick={() => locDeactivateMut.mutate(loc.id)}
+                        disabled={locDeactivateMut.isPending}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                        title="Deactivate location"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         {/* Zone Par Levels */}

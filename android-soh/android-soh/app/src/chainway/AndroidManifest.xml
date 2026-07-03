@@ -2,13 +2,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!--
+        com.rscja.permission.UHF is a Chainway system permission required to access
+        the built-in UHF RFID module on C66/C72. Without this declaration,
+        RFIDWithUHFUART.init() returns false and the reader cannot be opened.
+    -->
+    <uses-permission android:name="com.rscja.permission.UHF" />
+
     <application
-        android:label="StoreLense C72"
+        android:label="StoreLense C66"
         tools:replace="android:label">
-        <!--
-            Chainway C72 does not use EMDK. No additional permissions needed beyond INTERNET.
-            If your C72 firmware requires a specific RFID permission, add it here.
-        -->
     </application>
 
 </manifest>

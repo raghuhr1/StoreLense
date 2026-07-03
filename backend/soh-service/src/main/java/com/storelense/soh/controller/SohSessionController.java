@@ -77,6 +77,30 @@ public class SohSessionController {
         return ResponseEntity.ok(ApiResponse.ok("Session completed", sessionService.completeSession(id)));
     }
 
+    @PostMapping("/{id}/pause")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE')")
+    @Operation(summary = "Pause an in-progress session (e.g. lunch break, shift handover)")
+    public ResponseEntity<ApiResponse<Void>> pause(@PathVariable UUID id) {
+        sessionService.pauseSession(id);
+        return ResponseEntity.ok(ApiResponse.ok(null));
+    }
+
+    @PostMapping("/{id}/resume")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE')")
+    @Operation(summary = "Resume a paused session")
+    public ResponseEntity<ApiResponse<Void>> resume(@PathVariable UUID id) {
+        sessionService.resumeSession(id);
+        return ResponseEntity.ok(ApiResponse.ok(null));
+    }
+
+    @PostMapping("/{id}/upload")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER')")
+    @Operation(summary = "Mark a completed session as uploaded to ERP")
+    public ResponseEntity<ApiResponse<Void>> upload(@PathVariable UUID id) {
+        sessionService.uploadSession(id);
+        return ResponseEntity.ok(ApiResponse.ok(null));
+    }
+
     // ── Phase 5: Session Participants ─────────────────────────────────────────
 
     @PostMapping("/{id}/participants")

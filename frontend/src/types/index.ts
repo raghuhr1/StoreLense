@@ -127,12 +127,22 @@ export interface ZoneScanRollupRow {
 
 // ─── SOH / Cycle Count ────────────────────────────────────────────────────────
 export type SessionStatus = 'created' | 'in_progress' | 'completed' | 'cancelled' | 'failed'
-export type SessionType   = 'manual' | 'scheduled' | 'full_store' | 'spot_check'
+                          | 'paused' | 'uploaded' | 'reconciled' | 'closed'
+export type SessionType   = 'manual' | 'scheduled' | 'full_store' | 'spot_check' | 'cycle_count'
 
 export interface SohSession {
   id: string; storeId: string; zoneId: string | null; sessionType: SessionType
   status: SessionStatus; startedBy: string; startedAt: string
   completedAt: string | null; totalEpcReads: number; uniqueEpcCount: number; notes: string | null
+  cycleCountId: string | null
+  locationCode: string | null
+  sectionCode: string | null
+  pausedAt: string | null
+  resumedAt: string | null
+  uploadedAt: string | null
+  reconciledAt: string | null
+  closedAt: string | null
+  result: SohResult | null
 }
 
 export interface SohResult {
@@ -140,6 +150,81 @@ export interface SohResult {
   totalProductsCounted: number; totalUnitsCounted: number; totalUnitsExpected: number
   accuracyPct: number; varianceCount: number; overcountItems: number; undercountItems: number
   resultGeneratedAt: string
+  floorUnitsCounted: number
+  floorUnitsExpected: number
+  floorVariance: number
+  backroomUnitsCounted: number
+  backroomUnitsExpected: number
+  backroomVariance: number
+  totalStoreVariance: number
+}
+
+export type CycleCountStatus = 'DRAFT' | 'RUNNING' | 'COMPLETED' | 'UPLOADED' | 'RECONCILED' | 'CLOSED'
+
+export interface CycleCount {
+  id: string
+  storeId: string
+  countDate: string
+  status: CycleCountStatus
+  createdBy: string
+  notes: string | null
+  createdAt: string
+  updatedAt: string
+  sessions: SohSession[]
+}
+
+export interface StoreLocation {
+  id: string
+  storeId: string
+  locationCode: string
+  sectionCode: string | null
+  displayName: string
+  sortOrder: number
+  isActive: boolean
+  createdAt: string
+}
+
+export interface AntennaLocationMapping {
+  id: string
+  storeId: string
+  readerId: string
+  antennaPort: number
+  locationCode: string
+  sectionCode: string | null
+  displayName: string | null
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CycleCountReconciliation {
+  id: string
+  cycleCountId: string
+  sessionId: string | null
+  batchId: string
+  storeId: string
+  runAt: string
+  totalExpected: number
+  totalScanned: number
+  matchedCount: number
+  missingCount: number
+  extraCount: number
+  accuracyPct: number | null
+  status: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'PENDING_APPROVAL' | 'APPROVED'
+  floorExpected: number
+  floorScanned: number
+  floorMissing: number
+  backroomExpected: number
+  backroomScanned: number
+  backroomMissing: number
+  reviewerId: string | null
+  approvedAt: string | null
+  createdAt: string
+}
+
+export interface ReconciliationItemWithLocation extends ReconciliationItem {
+  locationCode: string | null
+  sectionCode: string | null
 }
 
 // ─── Refill / Receiving ───────────────────────────────────────────────────────

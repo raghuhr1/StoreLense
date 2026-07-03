@@ -99,15 +99,25 @@ class SohRepository @Inject constructor(
         }
     }
 
-    suspend fun bufferEpc(sessionId: String, epc: String, rssi: Double?, antenna: Int?, zoneId: String? = null) {
+    suspend fun bufferEpc(
+        sessionId: String,
+        epc: String,
+        rssi: Double?,
+        antenna: Int?,
+        zoneId: String? = null,
+        locationCode: String? = null,
+        sectionCode: String? = null
+    ) {
         epcReadDao.insert(
             EpcReadEntity(
-                sessionId   = sessionId,
-                epc         = epc,
-                rssi        = rssi,
-                antennaPort = antenna,
-                scannedAt   = Instant.now().toString(),
-                zoneId      = zoneId
+                sessionId    = sessionId,
+                epc          = epc,
+                rssi         = rssi,
+                antennaPort  = antenna,
+                scannedAt    = Instant.now().toString(),
+                zoneId       = zoneId,
+                locationCode = locationCode,
+                sectionCode  = sectionCode
             )
         )
     }
@@ -205,6 +215,39 @@ class SohRepository @Inject constructor(
         }
     }
 
+    suspend fun pauseSession(sessionId: String): Result<Unit> {
+        return try {
+            val resp = api.pauseSohSession(sessionId)
+            val body = resp.body()
+            if (resp.isSuccessful && body?.success == true) Result.Success(Unit)
+            else Result.Error(body?.message ?: "Pause failed")
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Network error")
+        }
+    }
+
+    suspend fun resumeSession(sessionId: String): Result<Unit> {
+        return try {
+            val resp = api.resumeSohSession(sessionId)
+            val body = resp.body()
+            if (resp.isSuccessful && body?.success == true) Result.Success(Unit)
+            else Result.Error(body?.message ?: "Resume failed")
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Network error")
+        }
+    }
+
+    suspend fun uploadSession(sessionId: String): Result<Unit> {
+        return try {
+            val resp = api.uploadSohSession(sessionId)
+            val body = resp.body()
+            if (resp.isSuccessful && body?.success == true) Result.Success(Unit)
+            else Result.Error(body?.message ?: "Upload failed")
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Network error")
+        }
+    }
+
     private fun SohSessionDto.toEntity() = SohSessionEntity(
         id            = id,
         storeId       = storeId,
@@ -213,6 +256,9 @@ class SohRepository @Inject constructor(
         startedAt     = startedAt,
         source        = source,
         zoneRegion    = zoneRegion,
+        locationCode  = locationCode,
+        sectionCode   = sectionCode,
+        cycleCountId  = cycleCountId,
         expectedCount = expectedEpcs?.size ?: result?.totalUnitsExpected ?: 0
     )
 }

@@ -24,6 +24,8 @@ public class SohResult {
     @Column(name = "store_id", nullable = false)
     private UUID storeId;
 
+    // ── Store-level totals ────────────────────────────────────────────────────
+
     @Column(name = "total_products_counted", nullable = false)
     @Builder.Default private int totalProductsCounted = 0;
 
@@ -44,6 +46,35 @@ public class SohResult {
 
     @Column(name = "undercount_items", nullable = false)
     @Builder.Default private int undercountItems = 0;
+
+    // ── Sales Floor breakdown ─────────────────────────────────────────────────
+
+    @Column(name = "floor_units_counted", nullable = false)
+    @Builder.Default private int floorUnitsCounted = 0;
+
+    @Column(name = "floor_units_expected", nullable = false)
+    @Builder.Default private int floorUnitsExpected = 0;
+
+    /** counted − expected for Sales Floor; negative = undercount. */
+    @Column(name = "floor_variance", nullable = false)
+    @Builder.Default private int floorVariance = 0;
+
+    // ── Backroom breakdown ────────────────────────────────────────────────────
+
+    @Column(name = "backroom_units_counted", nullable = false)
+    @Builder.Default private int backroomUnitsCounted = 0;
+
+    @Column(name = "backroom_units_expected", nullable = false)
+    @Builder.Default private int backroomUnitsExpected = 0;
+
+    /** counted − expected for Backroom; negative = undercount. */
+    @Column(name = "backroom_variance", nullable = false)
+    @Builder.Default private int backroomVariance = 0;
+
+    // ── Store total variance (floor + backroom combined) ──────────────────────
+
+    @Column(name = "total_store_variance", nullable = false)
+    @Builder.Default private int totalStoreVariance = 0;
 
     @Column(name = "result_generated_at", nullable = false)
     private OffsetDateTime resultGeneratedAt;

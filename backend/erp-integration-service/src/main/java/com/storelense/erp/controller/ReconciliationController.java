@@ -30,6 +30,8 @@ public class ReconciliationController {
     private final ReconciliationEngine           engine;
     private final CcReconciliationItemRepository itemRepository;
 
+    // ── Session-scoped (existing) ──────────────────────────────────────────
+
     @GetMapping("/sessions")
     @Operation(summary = "List reconciliation runs for a store, newest first")
     public ResponseEntity<ApiResponse<PageResponse<CcReconciliation>>> listByStore(
@@ -65,21 +67,67 @@ public class ReconciliationController {
     @Operation(summary = "Download reconciliation line items as CSV")
     public ResponseEntity<byte[]> getResultCsv(@PathVariable UUID sessionId) {
         CcReconciliation recon = engine.getLatestResult(sessionId);
-        List<CcReconciliationItem> items = itemRepository.findByReconciliation_Id(recon.getId());
+        return buildCsvResponse(recon.getId(), "reconciliation-" + sessionId + ".csv");
+    }
 
-        StringBuilder csv = new StringBuilder("EPC,EAN,STATUS,EXPECTED_QTY,SCANNED_QTY\n");
+    // ── Cycle-count-scoped (new) ───────────────────────────────────────────
+
+    @PostMapping("/cycle-counts/{id}/run")
+    @Operation(summary = "Run reconciliation across all sessions belonging to a cycle count")
+    public ResponseEntity<ApiResponse<CcReconciliation>> runByCount(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(engine.reconcileByCount(id)));
+    }
+
+    @GetMapping("/cycle-counts/{id}/result")
+    @Operation(summary = "Get the latest reconciliation result for a cycle count")
+    public ResponseEntity<ApiResponse<CcReconciliation>> getCountResult(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(engine.getLatestCountResult(id)));
+    }
+
+    @GetMapping("/cycle-counts/{id}/result/items")
+    @Operation(summary = "Get reconciliation line items for a cycle count, optionally filtered by location")
+    public ResponseEntity<ApiResponse<List<CcReconciliationItem>>> getCountResultItems(
+            @PathVariable UUID id,
+            @RequestParam(required = false) String location) {
+        CcReconciliation recon = engine.getLatestCountResult(id);
+        return ResponseEntity.ok(ApiResponse.ok(engine.getItemsByLocation(recon.getId(), location)));
+    }
+
+    @PostMapping("/cycle-counts/{id}/approve")
+    @Operation(summary = "Approve a cycle count reconciliation result (PENDING_APPROVAL → APPROVED)")
+    public ResponseEntity<ApiResponse<CcReconciliation>> approve(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+        CcReconciliation recon = engine.getLatestCountResult(id);
+        return ResponseEntity.ok(ApiResponse.ok(engine.approve(recon.getId(), principal.userId())));
+    }
+
+    @GetMapping("/cycle-counts/{id}/result/csv")
+    @Operation(summary = "Download cycle count reconciliation as CSV including LOCATION and SECTION columns")
+    public ResponseEntity<byte[]> getCountResultCsv(@PathVariable UUID id) {
+        CcReconciliation recon = engine.getLatestCountResult(id);
+        return buildCsvResponse(recon.getId(), "reconciliation-count-" + id + ".csv");
+    }
+
+    // ── Shared CSV builder ─────────────────────────────────────────────────
+
+    private ResponseEntity<byte[]> buildCsvResponse(UUID reconciliationId, String filename) {
+        List<CcReconciliationItem> items = itemRepository.findByReconciliation_Id(reconciliationId);
+
+        StringBuilder csv = new StringBuilder("EPC,EAN,STATUS,EXPECTED_QTY,SCANNED_QTY,LOCATION,SECTION\n");
         for (CcReconciliationItem item : items) {
             csv.append(item.getEpc()).append(',')
-               .append(item.getEan() != null ? item.getEan() : "").append(',')
+               .append(item.getEan()          != null ? item.getEan()          : "").append(',')
                .append(item.getStatus()).append(',')
                .append(item.getExpectedQty()).append(',')
-               .append(item.getScannedQty()).append('\n');
+               .append(item.getScannedQty()).append(',')
+               .append(item.getLocationCode() != null ? item.getLocationCode() : "").append(',')
+               .append(item.getSectionCode()  != null ? item.getSectionCode()  : "").append('\n');
         }
 
         return ResponseEntity.ok()
                 .header("Content-Type", "text/csv; charset=UTF-8")
-                .header("Content-Disposition",
-                        "attachment; filename=\"reconciliation-" + sessionId + ".csv\"")
+                .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
                 .body(csv.toString().getBytes(StandardCharsets.UTF_8));
     }
 }

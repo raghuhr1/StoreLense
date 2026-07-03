@@ -25,12 +25,21 @@ public class CcReconciliationItem {
     @Column(length = 30)
     private String ean;
 
+    /** MATCH | MISSING | EXTRA */
     @Column(nullable = false, length = 10)
-    private String status;   // MATCH | MISSING | EXTRA
+    private String status;
 
     @Column(name = "expected_qty", nullable = false)
     @Builder.Default private int expectedQty = 0;
 
     @Column(name = "scanned_qty", nullable = false)
     @Builder.Default private int scannedQty = 0;
+
+    /** SALES_FLOOR or BACKROOM — where this EPC was found (or expected). */
+    @Column(name = "location_code", length = 20)
+    private String locationCode;
+
+    /** MENS | WOMENS | KIDS | FOOTWEAR | ACCESSORIES — null for BACKROOM items. */
+    @Column(name = "section_code", length = 20)
+    private String sectionCode;
 }

@@ -3,6 +3,7 @@ package com.storelense.mobile.ui.tagitems
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.storelense.mobile.data.remote.dto.CommissionTagResponse
+import com.storelense.mobile.data.remote.dto.IdentifyEpcDto
 import com.storelense.mobile.data.remote.dto.ZoneDto
 import com.storelense.mobile.data.repository.AuthRepository
 import com.storelense.mobile.data.repository.InventoryRepository
@@ -11,26 +12,43 @@ import com.storelense.mobile.data.repository.Result
 import com.storelense.mobile.data.repository.StoreRepository
 import com.storelense.mobile.rfid.RfidReader
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import javax.inject.Inject
 
-enum class TagPhase { PRODUCT_SEARCH, SCANNING, CONFIRM, SAVING, SUCCESS, ERROR }
+enum class ScanMode { SINGLE, MULTI }
+
+enum class TagPhase {
+    PRODUCT_SEARCH,
+    SCANNING, CONFIRM, SAVING, SUCCESS, ERROR,
+    MULTI_ZONE_SELECT, MULTI_SCANNING, MULTI_DONE
+}
+
+data class MultiScanResult(
+    val epc: String,
+    val status: String   // "ok", "duplicate", "error"
+)
 
 data class TagItemsState(
+    val scanMode: ScanMode           = ScanMode.SINGLE,
     val phase: TagPhase              = TagPhase.PRODUCT_SEARCH,
     val searchQuery: String          = "",
     val searchResults: List<com.storelense.mobile.data.local.entity.ProductEntity> = emptyList(),
     val isSearching: Boolean         = false,
     val selectedSku: String          = "",
     val selectedProductName: String  = "",
-    val scannedEpc: String           = "",
     val zones: List<ZoneDto>         = emptyList(),
     val selectedZone: ZoneDto?       = null,
-    val isConnecting: Boolean        = false,
+    val scannedEpc: String           = "",
+    val identifiedProduct: IdentifyEpcDto? = null,
+    val isIdentifying: Boolean       = false,
+    val multiResults: List<MultiScanResult> = emptyList(),
+    val multiScanActive: Boolean     = false,
     val readerConnected: Boolean     = false,
     val sessionCount: Int            = 0,
     val lastResult: CommissionTagResponse? = null,
@@ -51,37 +69,39 @@ class TagItemsViewModel @Inject constructor(
 
     private val storeId get() = auth.storeId ?: ""
 
+    private var multiScanJob: Job? = null
+    private val taggedEpcsThisSession = mutableSetOf<String>()
+
     init {
         loadZones()
-        connectReader()
-    }
-
-    private fun loadZones() = viewModelScope.launch {
-        when (val r = stores.getZones(storeId)) {
-            is Result.Success -> {
-                val zones = r.data
-                _state.update { it.copy(zones = zones, selectedZone = zones.firstOrNull()) }
-            }
-            is Result.Error -> Timber.w("Could not load zones: ${r.message}")
+        viewModelScope.launch {
+            try { rfid.connect(); _state.update { it.copy(readerConnected = true) } }
+            catch (e: Exception) { Timber.w("Reader connect failed: ${e.message}") }
         }
     }
 
-    private fun connectReader() = viewModelScope.launch {
-        _state.update { it.copy(isConnecting = true) }
-        try {
-            rfid.connect()
-            _state.update { it.copy(isConnecting = false, readerConnected = true) }
-        } catch (e: Exception) {
-            _state.update { it.copy(isConnecting = false, readerConnected = false) }
+    // ── Mode ──────────────────────────────────────────────────────────────────
+
+    fun setScanMode(mode: ScanMode) {
+        if (_state.value.scanMode == mode) return
+        stopMultiScanIfActive()
+        _state.update {
+            it.copy(
+                scanMode  = mode,
+                phase     = TagPhase.PRODUCT_SEARCH,
+                scannedEpc = "",
+                identifiedProduct = null,
+                multiResults = emptyList(),
+                error = null
+            )
         }
     }
+
+    // ── Product search ────────────────────────────────────────────────────────
 
     fun onSearchQueryChange(q: String) {
         _state.update { it.copy(searchQuery = q) }
-        if (q.length < 2) {
-            _state.update { it.copy(searchResults = emptyList()) }
-            return
-        }
+        if (q.length < 2) { _state.update { it.copy(searchResults = emptyList()) }; return }
         viewModelScope.launch {
             _state.update { it.copy(isSearching = true) }
             val results = products.search(q, storeId)
@@ -90,42 +110,68 @@ class TagItemsViewModel @Inject constructor(
     }
 
     fun selectProduct(sku: String, name: String) {
+        val mode = _state.value.scanMode
         _state.update {
             it.copy(
                 selectedSku         = sku,
                 selectedProductName = name,
                 searchResults       = emptyList(),
                 searchQuery         = "",
-                phase               = TagPhase.SCANNING,
                 scannedEpc          = "",
+                identifiedProduct   = null,
+                error               = null,
+                phase = if (mode == ScanMode.MULTI) TagPhase.MULTI_ZONE_SELECT
+                        else TagPhase.SCANNING
+            )
+        }
+        if (mode == ScanMode.SINGLE) startSingleScan()
+    }
+
+    fun pickNewProduct() {
+        stopMultiScanIfActive()
+        _state.update {
+            it.copy(
+                phase               = TagPhase.PRODUCT_SEARCH,
+                selectedSku         = "",
+                selectedProductName = "",
+                scannedEpc          = "",
+                identifiedProduct   = null,
                 error               = null
             )
         }
-        startSingleScan()
     }
 
+    // ── Zone ──────────────────────────────────────────────────────────────────
+
+    fun selectZone(zone: ZoneDto) = _state.update { it.copy(selectedZone = zone) }
+
+    // ── Single scan ───────────────────────────────────────────────────────────
+
     fun rescanTag() {
-        _state.update { it.copy(phase = TagPhase.SCANNING, scannedEpc = "", error = null) }
+        _state.update { it.copy(phase = TagPhase.SCANNING, scannedEpc = "", identifiedProduct = null, error = null) }
         startSingleScan()
     }
 
     private fun startSingleScan() = viewModelScope.launch {
         if (!rfid.isConnected) {
             try { rfid.connect() } catch (e: Exception) {
-                _state.update { it.copy(error = "Reader not connected. Tap Rescan to retry.") }
+                _state.update { it.copy(error = "Reader not connected — tap Rescan to retry.") }
                 return@launch
             }
         }
         rfid.startScan()
-        rfid.reads.collect { read ->
-            rfid.stopScan()
-            _state.update { it.copy(scannedEpc = read.epc.uppercase(), phase = TagPhase.CONFIRM) }
-            // Only collect first read — cancel after first
-            return@collect
+        val read = try { rfid.reads.first() } finally { rfid.stopScan() }
+        val epc = read.epc.uppercase()
+        _state.update { it.copy(scannedEpc = epc, isIdentifying = true) }
+        when (val r = inventory.identifyEpc(epc, storeId)) {
+            is Result.Success -> _state.update {
+                it.copy(identifiedProduct = r.data, isIdentifying = false, phase = TagPhase.CONFIRM)
+            }
+            is Result.Error -> _state.update {
+                it.copy(identifiedProduct = null, isIdentifying = false, phase = TagPhase.CONFIRM)
+            }
         }
     }
-
-    fun selectZone(zone: ZoneDto) = _state.update { it.copy(selectedZone = zone) }
 
     fun confirmTag() {
         val s = _state.value
@@ -138,49 +184,91 @@ class TagItemsViewModel @Inject constructor(
                 epc      = s.scannedEpc,
                 zoneCode = s.selectedZone.zoneCode ?: s.selectedZone.id
             )) {
-                is Result.Success -> {
-                    _state.update {
-                        it.copy(
-                            phase        = TagPhase.SUCCESS,
-                            lastResult   = r.data,
-                            sessionCount = it.sessionCount + 1
-                        )
-                    }
+                is Result.Success -> _state.update {
+                    it.copy(phase = TagPhase.SUCCESS, lastResult = r.data, sessionCount = it.sessionCount + 1)
                 }
-                is Result.Error -> {
-                    _state.update { it.copy(phase = TagPhase.ERROR, error = r.message) }
-                }
+                is Result.Error -> _state.update { it.copy(phase = TagPhase.ERROR, error = r.message) }
             }
         }
     }
 
     fun tagAnother() {
-        _state.update {
-            it.copy(
-                phase      = TagPhase.SCANNING,
-                scannedEpc = "",
-                error      = null
-            )
-        }
+        _state.update { it.copy(phase = TagPhase.SCANNING, scannedEpc = "", identifiedProduct = null, error = null) }
         startSingleScan()
     }
 
-    fun pickNewProduct() {
-        _state.update {
-            it.copy(
-                phase               = TagPhase.PRODUCT_SEARCH,
-                selectedSku         = "",
-                selectedProductName = "",
-                scannedEpc          = "",
-                error               = null
-            )
+    // ── Multi scan ────────────────────────────────────────────────────────────
+
+    fun startMultiScan() {
+        val s = _state.value
+        if (s.selectedZone == null) return
+        taggedEpcsThisSession.clear()
+        _state.update { it.copy(phase = TagPhase.MULTI_SCANNING, multiScanActive = true, multiResults = emptyList(), error = null) }
+        multiScanJob = viewModelScope.launch {
+            if (!rfid.isConnected) {
+                try { rfid.connect() } catch (e: Exception) {
+                    _state.update { it.copy(multiScanActive = false, error = "Reader not connected.") }
+                    return@launch
+                }
+            }
+            rfid.startScan()
+            rfid.reads.collect { read ->
+                val epc = read.epc.uppercase()
+                if (epc in taggedEpcsThisSession) return@collect
+                taggedEpcsThisSession.add(epc)
+                _state.update {
+                    it.copy(
+                        multiResults = it.multiResults + MultiScanResult(epc, "saving"),
+                        sessionCount = it.sessionCount + 1
+                    )
+                }
+                val sku      = _state.value.selectedSku
+                val zoneCode = _state.value.selectedZone?.zoneCode ?: _state.value.selectedZone?.id ?: return@collect
+                viewModelScope.launch {
+                    val status = when (inventory.commissionTagItem(storeId, sku, epc, zoneCode)) {
+                        is Result.Success -> "ok"
+                        is Result.Error   -> "error"
+                    }
+                    _state.update { st ->
+                        st.copy(multiResults = st.multiResults.map { r ->
+                            if (r.epc == epc && r.status == "saving") r.copy(status = status) else r
+                        })
+                    }
+                }
+            }
+        }
+    }
+
+    fun stopMultiScan() {
+        stopMultiScanIfActive()
+        _state.update { it.copy(phase = TagPhase.MULTI_DONE, multiScanActive = false) }
+    }
+
+    private fun stopMultiScanIfActive() {
+        rfid.stopScan()
+        multiScanJob?.cancel()
+        multiScanJob = null
+        if (_state.value.multiScanActive) {
+            _state.update { it.copy(multiScanActive = false) }
+        }
+    }
+
+    fun restartMultiScan() {
+        _state.update { it.copy(phase = TagPhase.MULTI_ZONE_SELECT, multiResults = emptyList(), error = null) }
+    }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    private fun loadZones() = viewModelScope.launch {
+        when (val r = stores.getZones(storeId)) {
+            is Result.Success -> _state.update { it.copy(zones = r.data, selectedZone = r.data.firstOrNull()) }
+            is Result.Error   -> Timber.w("Could not load zones: ${r.message}")
         }
     }
 
     override fun onCleared() {
         super.onCleared()
-        viewModelScope.launch {
-            try { rfid.disconnect() } catch (_: Exception) {}
-        }
+        stopMultiScanIfActive()
+        viewModelScope.launch { try { rfid.disconnect() } catch (_: Exception) {} }
     }
 }

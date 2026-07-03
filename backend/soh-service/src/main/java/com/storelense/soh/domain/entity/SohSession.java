@@ -21,6 +21,10 @@ public class SohSession {
     @Column(name = "store_id", nullable = false)
     private UUID storeId;
 
+    /** Optional parent cycle count grouping this session with others. */
+    @Column(name = "cycle_count_id")
+    private UUID cycleCountId;
+
     @Column(name = "zone_id")
     private UUID zoneId;
 
@@ -28,9 +32,22 @@ public class SohSession {
     @Builder.Default
     private String sessionType = "manual";
 
+    /**
+     * created → in_progress → paused → in_progress (resume)
+     *                       → completed → uploaded → reconciled → closed
+     * Any state → cancelled | failed
+     */
     @Column(nullable = false, length = 20)
     @Builder.Default
     private String status = "created";
+
+    /** SALES_FLOOR or BACKROOM — null for legacy / non-cycle-count sessions. */
+    @Column(name = "location_code", length = 20)
+    private String locationCode;
+
+    /** MENS | WOMENS | KIDS | FOOTWEAR | ACCESSORIES — only set when locationCode = SALES_FLOOR. */
+    @Column(name = "section_code", length = 20)
+    private String sectionCode;
 
     @Column(name = "started_by", nullable = false)
     private UUID startedBy;
@@ -40,6 +57,21 @@ public class SohSession {
 
     @Column(name = "completed_at")
     private OffsetDateTime completedAt;
+
+    @Column(name = "paused_at")
+    private OffsetDateTime pausedAt;
+
+    @Column(name = "resumed_at")
+    private OffsetDateTime resumedAt;
+
+    @Column(name = "uploaded_at")
+    private OffsetDateTime uploadedAt;
+
+    @Column(name = "reconciled_at")
+    private OffsetDateTime reconciledAt;
+
+    @Column(name = "closed_at")
+    private OffsetDateTime closedAt;
 
     @Column(name = "cancelled_at")
     private OffsetDateTime cancelledAt;
@@ -81,5 +113,7 @@ public class SohSession {
     }
     @PreUpdate void preUpdate() { updatedAt = OffsetDateTime.now(); }
 
-    public boolean isEditable() { return "created".equals(status) || "in_progress".equals(status); }
+    public boolean isEditable() {
+        return "created".equals(status) || "in_progress".equals(status) || "paused".equals(status);
+    }
 }

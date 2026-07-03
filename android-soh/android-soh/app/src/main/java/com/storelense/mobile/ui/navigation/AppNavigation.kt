@@ -125,6 +125,7 @@ fun AppNavigation() {
             // Switch to ExpertHomeScreen for a better UX, or keep HomeScreen for the old version
             ExpertHomeScreen(
                 onSoh         = { nav.navigate(Routes.SCAN_MODE) },
+                onCycleCount  = { nav.navigate(Routes.CYCLE_COUNT_LIST) },
                 onReplenish   = { nav.navigate(Routes.REPLENISH_LIST) },
                 onTransferOut = { nav.navigate(Routes.TRANSFER_OUT) },
                 onItemLocator = { nav.navigate(Routes.PRODUCT_FINDER) },
@@ -138,6 +139,7 @@ fun AppNavigation() {
         composable(Routes.WORKFLOWS) {
             WorkflowsScreen(
                 onSoh             = { nav.navigate(Routes.SCAN_MODE) },
+                onCycleCount      = { nav.navigate(Routes.CYCLE_COUNT_LIST) },
                 onInbound         = { nav.navigate(Routes.INBOUND_LIST) },
                 onReplenish       = { nav.navigate(Routes.REPLENISH_LIST) },
                 onTransferOut     = { nav.navigate(Routes.TRANSFER_OUT) },
@@ -149,6 +151,28 @@ fun AppNavigation() {
                 onLocate          = { nav.navigate(Routes.PRODUCT_FINDER) },
                 onSettings        = { nav.navigate(Routes.SETTINGS) },
                 onReaderSettings  = { nav.navigate(Routes.SETTINGS_READER) }
+            )
+        }
+
+        // ── Cycle Count ───────────────────────────────────────────────────────
+        composable(Routes.CYCLE_COUNT_LIST) {
+            CycleCountListScreen(
+                onCountSelected = { id -> nav.navigate(Routes.cycleCountDetail(id)) },
+                onBack          = { nav.popBackStack() }
+            )
+        }
+
+        composable(
+            Routes.CYCLE_COUNT_DETAIL,
+            arguments = listOf(navArgument("countId") { type = NavType.StringType })
+        ) {
+            CycleCountDetailScreen(
+                onStartScan = { sessionId ->
+                    nav.navigate(Routes.sohScan(sessionId)) {
+                        // Keep detail on back stack so user can return to add more locations
+                    }
+                },
+                onBack = { nav.popBackStack() }
             )
         }
 

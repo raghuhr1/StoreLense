@@ -16,7 +16,8 @@ import java.util.UUID;
 public class SohServiceClient {
 
     /** Minimal session fields needed by the reconciliation engine. */
-    public record SohSessionInfo(UUID id, UUID storeId, String zoneRegion, String status) {}
+    public record SohSessionInfo(UUID id, UUID storeId, String zoneRegion, String status,
+                                  String locationCode, String sectionCode) {}
 
     private final RestClient sohRestClient;
 
@@ -39,7 +40,9 @@ public class SohServiceClient {
                     UUID.fromString((String) d.get("id")),
                     UUID.fromString((String) d.get("storeId")),
                     (String) d.get("zoneRegion"),
-                    (String) d.get("status")
+                    (String) d.get("status"),
+                    (String) d.get("locationCode"),
+                    (String) d.get("sectionCode")
             );
         } catch (IllegalStateException e) {
             throw e;
@@ -49,6 +52,42 @@ public class SohServiceClient {
             throw new IllegalStateException(
                     "soh-service unreachable or returned an error for session " + sessionId +
                     ". Ensure SOH_SERVICE_TOKEN is configured. Cause: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Returns all sessions belonging to a cycle count, ordered by start time.
+     * Returns empty list on error so reconcileByCount can degrade gracefully.
+     */
+    @SuppressWarnings("unchecked")
+    public List<SohSessionInfo> getSessionsByCount(UUID cycleCountId) {
+        try {
+            ApiResponse<List<Map<String, Object>>> response = sohRestClient.get()
+                    .uri("/api/cycle-counts/{id}", cycleCountId)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<>() {});
+
+            if (response == null || response.getData() == null) return List.of();
+
+            // The cycle-count GET returns { ..., sessions: [...] }
+            Object rawSessions = ((Map<?, ?>) response.getData()).get("sessions");
+            if (!(rawSessions instanceof List<?> sessionList)) return List.of();
+
+            return sessionList.stream()
+                    .filter(s -> s instanceof Map)
+                    .map(s -> (Map<String, Object>) s)
+                    .map(d -> new SohSessionInfo(
+                            UUID.fromString((String) d.get("id")),
+                            UUID.fromString((String) d.get("storeId")),
+                            (String) d.get("zoneRegion"),
+                            (String) d.get("status"),
+                            (String) d.get("locationCode"),
+                            (String) d.get("sectionCode")
+                    ))
+                    .toList();
+        } catch (Exception e) {
+            log.warn("getSessionsByCount failed for cycleCountId {}: {}", cycleCountId, e.getMessage());
+            return List.of();
         }
     }
 

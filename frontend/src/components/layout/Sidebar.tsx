@@ -6,7 +6,7 @@ import {
   type LucideIcon,
   LayoutDashboard, Package, RotateCw,
   ArrowLeftRight, BarChart3, Users, Store, Cpu, ScanLine, Tag, TrendingUp,
-  Truck, RefreshCw, ShoppingCart, GitCompare, PackageOpen, BookOpen,
+  Truck, RefreshCw, ShoppingCart, GitCompare, PackageOpen, BookOpen, Radio,
 } from 'lucide-react'
 import { useAuth }       from '@/lib/auth/AuthContext'
 import { cn }            from '@/lib/utils'
@@ -29,7 +29,8 @@ const allNavItems: NavItem[] = [
   { href: '/products',    label: 'Products',     icon: Tag,             roles: ['ADMIN'] },
   { href: '/users',       label: 'Users',        icon: Users,           roles: ['ADMIN'] },
   { href: '/stores',      label: 'Stores',       icon: Store,           roles: ['ADMIN'] },
-  { href: '/devices',     label: 'Devices',      icon: Cpu,             roles: ['ADMIN','STORE_MANAGER'] },
+  { href: '/devices',             label: 'Devices',         icon: Cpu,    roles: ['ADMIN','STORE_MANAGER'] },
+  { href: '/devices/antenna-mapping', label: 'Antenna Mapping', icon: Radio,  roles: ['ADMIN'] },
 ]
 
 export default function Sidebar() {

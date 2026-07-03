@@ -11,6 +11,7 @@ import com.storelense.soh.domain.entity.SohSession;
 import com.storelense.soh.domain.entity.SohSessionItem;
 import com.storelense.soh.domain.repository.SohSessionItemRepository;
 import com.storelense.soh.domain.repository.SohSessionRepository;
+import com.storelense.soh.domain.repository.StoreLocationRepository;
 import com.storelense.soh.dto.*;
 import com.storelense.soh.mapper.SohMapper;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +27,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -35,9 +38,13 @@ public class SohSessionService {
 
     private final SohSessionRepository     sessionRepository;
     private final SohSessionItemRepository itemRepository;
+    private final StoreLocationRepository  locationRepository;
     private final SohMapper                sohMapper;
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final JdbcClient               jdbcClient;
+    private final CycleCountService        cycleCountService;
+
+    // ── List / Get ─────────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
     public PageResponse<SohSessionResponse> listSessions(UUID storeId, String status, Pageable pageable) {
@@ -60,16 +67,431 @@ public class SohSessionService {
                 base.id(), base.storeId(), base.zoneId(),
                 base.sessionType(), base.status(),
                 base.startedBy(), base.startedAt(),
-                base.completedAt(),
+                base.completedAt(), base.pausedAt(), base.resumedAt(),
+                base.uploadedAt(), base.reconciledAt(), base.closedAt(),
                 base.totalEpcReads(), base.uniqueEpcCount(),
                 base.notes(), base.source(), base.zoneRegion(),
-                expectedEpcs,
-                result
+                base.cycleCountId(), base.locationCode(), base.sectionCode(),
+                expectedEpcs, result
         );
     }
 
+    // ── Start ──────────────────────────────────────────────────────────────────
+
+    @Transactional
+    public SohSessionResponse startSession(StartSessionRequest req, UUID userId, UUID effectiveStoreId) {
+        // Validate location/section when linked to a cycle count
+        if (req.cycleCountId() != null) {
+            validateLocation(effectiveStoreId, req.locationCode(), req.sectionCode());
+        }
+
+        // Prevent concurrent active sessions for the same store + location combination.
+        // A store may have one Floor session and one Backroom session active simultaneously
+        // (Scenario 6), but not two Floor sessions with the same section.
+        sessionRepository.findActiveSessions(effectiveStoreId).stream()
+                .filter(s -> locationConflicts(s, req.locationCode(), req.sectionCode()))
+                .findFirst()
+                .ifPresent(s -> {
+                    throw new BusinessException("SESSION_ACTIVE",
+                            "An active session already exists for this store / location",
+                            HttpStatus.CONFLICT);
+                });
+
+        SohSession session = SohSession.builder()
+                .storeId(effectiveStoreId)
+                .cycleCountId(req.cycleCountId())
+                .zoneId(req.zoneId())
+                .sessionType(req.sessionType() != null ? req.sessionType() : "manual")
+                .status("in_progress")
+                .source(req.source() != null ? req.source() : "manual")
+                .zoneRegion(req.zoneRegion())
+                .locationCode(req.locationCode())
+                .sectionCode(req.sectionCode())
+                .startedBy(userId)
+                .notes(req.notes())
+                .build();
+
+        SohSession saved = sessionRepository.save(session);
+
+        // Advance parent cycle count from DRAFT → RUNNING on first session start
+        if (req.cycleCountId() != null) {
+            cycleCountService.onSessionStarted(req.cycleCountId());
+        }
+
+        return sohMapper.toResponse(saved);
+    }
+
+    @Transactional
+    public SohSessionResponse createFromErpImport(ErpImportCompletedEvent event) {
+        SohSession session = SohSession.builder()
+                .storeId(event.storeId())
+                .sessionType("erp_triggered")
+                .status("in_progress")
+                .source("erp_triggered")
+                .zoneRegion(event.zoneRegion())
+                .startedBy(event.batchId())
+                .notes("Auto-created from ERP import batch " + event.batchId())
+                .build();
+        return sohMapper.toResponse(sessionRepository.save(session));
+    }
+
+    // ── EPC count increment (called by Kafka consumer in inventory-service) ────
+
+    @Transactional
+    public void incrementEpcCount(UUID sessionId, UUID productId, UUID zoneId,
+                                   String locationCode, String sectionCode) {
+        SohSession session = findOrThrow(sessionId);
+        if (!session.isEditable()) {
+            throw new BusinessException("SESSION_NOT_EDITABLE", "Session is not in an editable state");
+        }
+
+        // Resolve effective location: prefer event-level value, fall back to session-level
+        String effLocation = locationCode != null ? locationCode : session.getLocationCode();
+        String effSection  = sectionCode  != null ? sectionCode  : session.getSectionCode();
+
+        SohSessionItem item = itemRepository
+                .findBySession_IdAndProductIdAndZoneIdAndLocationCode(
+                        sessionId, productId, zoneId, effLocation)
+                .orElseGet(() -> {
+                    SohSessionItem newItem = SohSessionItem.builder()
+                            .session(session)
+                            .productId(productId)
+                            .zoneId(zoneId)
+                            .locationCode(effLocation)
+                            .sectionCode(effSection)
+                            .countedQuantity(0)
+                            .build();
+                    return itemRepository.save(newItem);
+                });
+
+        itemRepository.incrementCount(item.getId(), 1);
+        session.setTotalEpcReads(session.getTotalEpcReads() + 1);
+        sessionRepository.save(session);
+    }
+
+    // ── Lifecycle transitions ──────────────────────────────────────────────────
+
+    @Transactional
+    public SohResultResponse completeSession(UUID sessionId) {
+        SohSession session = findOrThrow(sessionId);
+        if (!"in_progress".equals(session.getStatus()) && !"paused".equals(session.getStatus())) {
+            throw new BusinessException("SESSION_NOT_ACTIVE",
+                    "Session must be in_progress or paused to complete");
+        }
+
+        SohResult result = calculateResult(session);
+        session.setResult(result);
+        session.setStatus("completed");
+        session.setCompletedAt(OffsetDateTime.now());
+        sessionRepository.save(session);
+
+        kafkaTemplate.send(KafkaTopics.SOH_SESSION_COMPLETED, sessionId.toString(),
+                new SohSessionCompletedEvent(sessionId, session.getStoreId(), result.getAccuracyPct()));
+
+        // Check whether all sessions under the parent count are now complete
+        if (session.getCycleCountId() != null) {
+            cycleCountService.onSessionCompleted(session.getCycleCountId());
+
+            // Cross-session EPC overlap check: flag EPCs scanned in more than one location
+            checkCrossSessionEpcOverlap(session);
+        }
+
+        return sohMapper.toResultResponse(result);
+    }
+
+    @Transactional
+    public void pauseSession(UUID sessionId) {
+        SohSession session = findOrThrow(sessionId);
+        if (!"in_progress".equals(session.getStatus())) {
+            throw new BusinessException("SESSION_NOT_IN_PROGRESS",
+                    "Only in_progress sessions can be paused");
+        }
+        session.setStatus("paused");
+        session.setPausedAt(OffsetDateTime.now());
+        sessionRepository.save(session);
+        log.info("Session {} paused", sessionId);
+    }
+
+    @Transactional
+    public void resumeSession(UUID sessionId) {
+        SohSession session = findOrThrow(sessionId);
+        if (!"paused".equals(session.getStatus())) {
+            throw new BusinessException("SESSION_NOT_PAUSED",
+                    "Only paused sessions can be resumed");
+        }
+        session.setStatus("in_progress");
+        session.setResumedAt(OffsetDateTime.now());
+        sessionRepository.save(session);
+        log.info("Session {} resumed", sessionId);
+    }
+
+    @Transactional
+    public void uploadSession(UUID sessionId) {
+        SohSession session = findOrThrow(sessionId);
+        if (!"completed".equals(session.getStatus())) {
+            throw new BusinessException("SESSION_NOT_COMPLETED",
+                    "Only completed sessions can be marked as uploaded");
+        }
+        session.setStatus("uploaded");
+        session.setUploadedAt(OffsetDateTime.now());
+        sessionRepository.save(session);
+        log.info("Session {} marked uploaded", sessionId);
+    }
+
+    @Transactional
+    public void cancelSession(UUID sessionId, String reason) {
+        SohSession session = findOrThrow(sessionId);
+        if (!session.isEditable()) {
+            throw new BusinessException("SESSION_NOT_EDITABLE", "Session cannot be cancelled");
+        }
+        session.setStatus("cancelled");
+        session.setCancelledAt(OffsetDateTime.now());
+        session.setCancellationReason(reason);
+        sessionRepository.save(session);
+    }
+
+    // ── EPC queries ────────────────────────────────────────────────────────────
+
+    @Transactional(readOnly = true)
+    public List<String> getSessionEpcs(UUID sessionId) {
+        findOrThrow(sessionId);
+        List<String> fromRfid = jdbcClient.sql("""
+                SELECT DISTINCT epc FROM rfid.rfid_reads
+                WHERE rfid_session_id = :sessionId::uuid
+                """)
+                .param("sessionId", sessionId.toString())
+                .query(String.class).list();
+
+        if (!fromRfid.isEmpty()) return fromRfid;
+
+        return jdbcClient.sql("""
+                SELECT DISTINCT er.epc
+                FROM inventory.epc_registry er
+                JOIN soh.soh_sessions ss ON ss.id = :sessionId::uuid
+                WHERE er.store_id = ss.store_id
+                  AND er.last_seen_at >= ss.started_at
+                  AND (ss.completed_at IS NULL OR er.last_seen_at <= ss.completed_at)
+                  AND (ss.zone_id IS NULL OR er.zone_id = ss.zone_id)
+                """)
+                .param("sessionId", sessionId.toString())
+                .query(String.class).list();
+    }
+
+    @Transactional(readOnly = true)
+    public List<String> getExpectedEpcs(UUID sessionId) {
+        SohSession session = findOrThrow(sessionId);
+        return jdbcClient.sql("""
+                SELECT epc FROM inventory.epc_registry
+                WHERE store_id = :storeId
+                  AND status NOT IN ('sold', 'damaged', 'transferred')
+                """)
+                .param("storeId", session.getStoreId())
+                .query(String.class).list();
+    }
+
+    // ── Result calculation ─────────────────────────────────────────────────────
+
+    private SohResult calculateResult(SohSession session) {
+        var items = session.getItems();
+        int totalCounted = items.stream().mapToInt(SohSessionItem::getCountedQuantity).sum();
+
+        if (totalCounted == 0) {
+            try {
+                Integer rawCount = jdbcClient.sql("""
+                        SELECT COUNT(DISTINCT epc)
+                        FROM rfid.rfid_reads
+                        WHERE rfid_session_id = :sessionId::uuid
+                        """)
+                        .param("sessionId", session.getId().toString())
+                        .query(Integer.class).optional().orElse(0);
+                totalCounted = rawCount != null ? rawCount : 0;
+            } catch (Exception ex) {
+                log.warn("Could not compute fallback EPC count for session {}: {}",
+                        session.getId(), ex.getMessage());
+            }
+        }
+
+        int totalExpected = fetchExpectedCount(session);
+        int varianceCount = (int) items.stream()
+                .filter(i -> i.getCountedQuantity() != i.getExpectedQuantity()).count();
+        int overcount  = (int) items.stream()
+                .filter(i -> i.getCountedQuantity() > i.getExpectedQuantity()).count();
+        int undercount = (int) items.stream()
+                .filter(i -> i.getCountedQuantity() < i.getExpectedQuantity()).count();
+
+        BigDecimal accuracy = totalExpected == 0 ? BigDecimal.valueOf(100)
+                : BigDecimal.valueOf(100.0 * totalCounted / totalExpected)
+                        .setScale(2, RoundingMode.HALF_UP);
+
+        // ── Per-location breakdown ─────────────────────────────────────────────
+        UUID sid = session.getId();
+
+        int floorCounted  = itemRepository.sumCountedByLocation(sid, "SALES_FLOOR");
+        int floorExpected = itemRepository.sumExpectedByLocation(sid, "SALES_FLOOR");
+        int backCounted   = itemRepository.sumCountedByLocation(sid, "BACKROOM");
+        int backExpected  = itemRepository.sumExpectedByLocation(sid, "BACKROOM");
+
+        return SohResult.builder()
+                .session(session)
+                .storeId(session.getStoreId())
+                .totalProductsCounted(items.size())
+                .totalUnitsCounted(totalCounted)
+                .totalUnitsExpected(totalExpected)
+                .accuracyPct(accuracy)
+                .varianceCount(varianceCount)
+                .overcountItems(overcount)
+                .undercountItems(undercount)
+                .floorUnitsCounted(floorCounted)
+                .floorUnitsExpected(floorExpected)
+                .floorVariance(floorCounted - floorExpected)
+                .backroomUnitsCounted(backCounted)
+                .backroomUnitsExpected(backExpected)
+                .backroomVariance(backCounted - backExpected)
+                .totalStoreVariance(totalCounted - totalExpected)
+                .build();
+    }
+
+    private int fetchExpectedCount(SohSession session) {
+        try {
+            int n = jdbcClient.sql("""
+                    SELECT COUNT(*) FROM inventory.epc_registry
+                    WHERE store_id = :storeId
+                      AND status NOT IN ('sold','damaged','transferred')
+                    """)
+                    .param("storeId", session.getStoreId())
+                    .query(Integer.class).single();
+            if (n > 0) return n;
+        } catch (Exception ex) {
+            log.warn("epc_registry count failed for session {}: {}", session.getId(), ex.getMessage());
+        }
+        return jdbcClient.sql("""
+                SELECT COALESCE(SUM(quantity_expected), 0)
+                FROM inventory.inventory_state
+                WHERE store_id = :storeId
+                """)
+                .param("storeId", session.getStoreId())
+                .query(Integer.class).single();
+    }
+
+    // ── Cross-session EPC overlap check ───────────────────────────────────────
+
+    private void checkCrossSessionEpcOverlap(SohSession justCompleted) {
+        UUID cycleCountId = justCompleted.getCycleCountId();
+        if (cycleCountId == null) return;
+
+        List<SohSession> siblings = sessionRepository
+                .findByCycleCountIdOrderByStartedAtAsc(cycleCountId)
+                .stream()
+                .filter(s -> !s.getId().equals(justCompleted.getId())
+                        && ("completed".equals(s.getStatus()) || "uploaded".equals(s.getStatus())))
+                .toList();
+
+        if (siblings.isEmpty()) return;
+
+        try {
+            // Collect EPCs from the just-completed session
+            Set<String> myEpcs = new java.util.HashSet<>(jdbcClient.sql("""
+                    SELECT DISTINCT epc FROM rfid.rfid_reads
+                    WHERE rfid_session_id IN (
+                        SELECT id FROM rfid.rfid_sessions
+                        WHERE soh_session_id = :sessionId::uuid
+                    )
+                    """)
+                    .param("sessionId", justCompleted.getId().toString())
+                    .query(String.class).list());
+
+            for (SohSession sibling : siblings) {
+                Set<String> siblingEpcs = new java.util.HashSet<>(jdbcClient.sql("""
+                        SELECT DISTINCT epc FROM rfid.rfid_reads
+                        WHERE rfid_session_id IN (
+                            SELECT id FROM rfid.rfid_sessions
+                            WHERE soh_session_id = :sessionId::uuid
+                        )
+                        """)
+                        .param("sessionId", sibling.getId().toString())
+                        .query(String.class).list());
+
+                Set<String> overlap = myEpcs.stream()
+                        .filter(siblingEpcs::contains)
+                        .collect(Collectors.toSet());
+
+                if (!overlap.isEmpty()) {
+                    log.warn("CycleCount {} — {} EPC(s) scanned in both session {} ({}) and session {} ({}): {}",
+                            cycleCountId, overlap.size(),
+                            justCompleted.getId(), justCompleted.getLocationCode(),
+                            sibling.getId(), sibling.getLocationCode(),
+                            overlap.size() > 5 ? overlap.stream().limit(5).collect(Collectors.joining(",")) + "…"
+                                               : String.join(",", overlap));
+
+                    // Persist overlapping EPCs as investigation flags in soh_variance
+                    overlap.forEach(epc -> {
+                        try {
+                            jdbcClient.sql("""
+                                    INSERT INTO soh.soh_variance
+                                        (session_id, result_id, store_id, product_id,
+                                         zone_id, counted_qty, expected_qty, variance_qty,
+                                         variance_type, requires_investigation, investigation_notes)
+                                    SELECT
+                                        :sessionId::uuid,
+                                        r.id,
+                                        :storeId::uuid,
+                                        COALESCE(
+                                            (SELECT et.product_id FROM products.epc_tags et
+                                             WHERE et.epc = :epc AND et.is_active = true LIMIT 1),
+                                            '00000000-0000-0000-0000-000000000000'::uuid
+                                        ),
+                                        NULL, 1, 1, 0,
+                                        'match',
+                                        true,
+                                        'EPC scanned in multiple locations: ' || :otherSession || ' (' || :otherLocation || ')'
+                                    FROM soh.soh_results r
+                                    WHERE r.session_id = :sessionId::uuid
+                                    """)
+                                    .param("sessionId", justCompleted.getId().toString())
+                                    .param("storeId", justCompleted.getStoreId().toString())
+                                    .param("epc", epc)
+                                    .param("otherSession", sibling.getId().toString())
+                                    .param("otherLocation",
+                                           sibling.getLocationCode() != null ? sibling.getLocationCode() : "unknown")
+                                    .update();
+                        } catch (Exception ex) {
+                            log.debug("Could not persist overlap flag for EPC {}: {}", epc, ex.getMessage());
+                        }
+                    });
+                }
+            }
+        } catch (Exception ex) {
+            log.warn("Cross-session EPC overlap check failed for cycle count {}: {}",
+                    cycleCountId, ex.getMessage());
+        }
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+
+    private void validateLocation(UUID storeId, String locationCode, String sectionCode) {
+        if (locationCode == null) {
+            throw new BusinessException("LOCATION_REQUIRED",
+                    "locationCode is required when linking a session to a cycle count",
+                    HttpStatus.BAD_REQUEST);
+        }
+        boolean valid = locationRepository.existsByStoreIdAndLocationCodeAndSectionCodeAndIsActiveTrue(
+                storeId, locationCode, sectionCode);
+        if (!valid) {
+            throw new BusinessException("INVALID_LOCATION",
+                    "No active store location found for locationCode=" + locationCode
+                            + " sectionCode=" + sectionCode,
+                    HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    private boolean locationConflicts(SohSession existing, String newLocation, String newSection) {
+        if (newLocation == null) return false;
+        // Same location AND same section (or both null sections) = conflict
+        return newLocation.equals(existing.getLocationCode())
+                && java.util.Objects.equals(newSection, existing.getSectionCode());
+    }
+
     private List<String> fetchExpectedEpcs(SohSession session) {
-        // ERP-triggered: expected EPCs come from the ERP import snapshot
         if ("erp_triggered".equals(session.getSource()) && session.getStartedBy() != null) {
             try {
                 List<String> erpEpcs = jdbcClient.sql("""
@@ -80,16 +502,13 @@ public class SohSessionService {
                         LIMIT 10000
                         """)
                         .param("batchId", session.getStartedBy().toString())
-                        .query(String.class)
-                        .list();
+                        .query(String.class).list();
                 if (!erpEpcs.isEmpty()) return erpEpcs;
             } catch (Exception ex) {
-                log.warn("Could not fetch ERP expected EPCs for session {}: {}", session.getId(), ex.getMessage());
+                log.warn("Could not fetch ERP expected EPCs for session {}: {}",
+                        session.getId(), ex.getMessage());
             }
         }
-        // System-driven fallback: non-sold EPCs already tracked in epc_registry.
-        // Covers manual sessions and stores that haven't uploaded an ERP CSV.
-        // When zoneRegion is set (zone-wise scan), filter expected EPCs to that zone.
         try {
             boolean hasZone = session.getZoneRegion() != null && !session.getZoneRegion().isBlank();
             String sql = hasZone
@@ -116,217 +535,10 @@ public class SohSessionService {
             if (hasZone) q = q.param("zoneRegion", session.getZoneRegion());
             return q.query(String.class).list();
         } catch (Exception ex) {
-            log.warn("Could not fetch system expected EPCs for session {}: {}", session.getId(), ex.getMessage());
+            log.warn("Could not fetch system expected EPCs for session {}: {}",
+                    session.getId(), ex.getMessage());
             return List.of();
         }
-    }
-
-    @Transactional
-    public SohSessionResponse startSession(StartSessionRequest req, UUID userId, UUID effectiveStoreId) {
-        // Prevent concurrent sessions for same store — take the most recent active one if multiple exist
-        sessionRepository.findActiveSessions(effectiveStoreId).stream().findFirst().ifPresent(s -> {
-            throw new BusinessException("SESSION_ACTIVE",
-                    "An active session already exists for this store", HttpStatus.CONFLICT);
-        });
-
-        SohSession session = SohSession.builder()
-                .storeId(effectiveStoreId)
-                .zoneId(req.zoneId())
-                .sessionType(req.sessionType() != null ? req.sessionType() : "manual")
-                .status("in_progress")
-                .source(req.source() != null ? req.source() : "manual")
-                .zoneRegion(req.zoneRegion())
-                .startedBy(userId)
-                .notes(req.notes())
-                .build();
-
-        return sohMapper.toResponse(sessionRepository.save(session));
-    }
-
-    @Transactional
-    public SohSessionResponse createFromErpImport(ErpImportCompletedEvent event) {
-        SohSession session = SohSession.builder()
-                .storeId(event.storeId())
-                .sessionType("erp_triggered")
-                .status("in_progress")
-                .source("erp_triggered")
-                .zoneRegion(event.zoneRegion())
-                .startedBy(event.batchId())
-                .notes("Auto-created from ERP import batch " + event.batchId())
-                .build();
-        return sohMapper.toResponse(sessionRepository.save(session));
-    }
-
-    @Transactional
-    public void incrementEpcCount(UUID sessionId, UUID productId, UUID zoneId) {
-        SohSession session = findOrThrow(sessionId);
-        if (!session.isEditable()) {
-            throw new BusinessException("SESSION_NOT_EDITABLE", "Session is not in progress");
-        }
-
-        SohSessionItem item = itemRepository
-                .findBySession_IdAndProductIdAndZoneId(sessionId, productId, zoneId)
-                .orElseGet(() -> {
-                    SohSessionItem newItem = SohSessionItem.builder()
-                            .session(session)
-                            .productId(productId)
-                            .zoneId(zoneId)
-                            .countedQuantity(0)
-                            .build();
-                    return itemRepository.save(newItem);
-                });
-
-        itemRepository.incrementCount(item.getId(), 1);
-        session.setTotalEpcReads(session.getTotalEpcReads() + 1);
-        sessionRepository.save(session);
-    }
-
-    @Transactional
-    public SohResultResponse completeSession(UUID sessionId) {
-        SohSession session = findOrThrow(sessionId);
-        if (!"in_progress".equals(session.getStatus())) {
-            throw new BusinessException("SESSION_NOT_IN_PROGRESS",
-                    "Session must be in_progress to complete");
-        }
-
-        SohResult result = calculateResult(session);
-        session.setResult(result);
-        session.setStatus("completed");
-        session.setCompletedAt(OffsetDateTime.now());
-        sessionRepository.save(session);
-
-        kafkaTemplate.send(KafkaTopics.SOH_SESSION_COMPLETED, sessionId.toString(),
-                new SohSessionCompletedEvent(sessionId, session.getStoreId(), result.getAccuracyPct()));
-
-        return sohMapper.toResultResponse(result);
-    }
-
-    @Transactional
-    public void cancelSession(UUID sessionId, String reason) {
-        SohSession session = findOrThrow(sessionId);
-        if (!session.isEditable()) {
-            throw new BusinessException("SESSION_NOT_EDITABLE", "Session cannot be cancelled");
-        }
-        session.setStatus("cancelled");
-        session.setCancelledAt(OffsetDateTime.now());
-        session.setCancellationReason(reason);
-        sessionRepository.save(session);
-    }
-
-    private SohResult calculateResult(SohSession session) {
-        var items = session.getItems();
-        int totalCounted = items.stream().mapToInt(SohSessionItem::getCountedQuantity).sum();
-
-        // Fallback when session items are empty (EPC→product mapping not yet populated):
-        // use raw rfid_reads, which are always persisted by rfid-processing-service regardless
-        // of whether the EPC resolved to a product. This ensures counted > 0 even when
-        // epc_tags is unpopulated, so accuracy is not incorrectly shown as 0%.
-        if (totalCounted == 0) {
-            try {
-                Integer rawCount = jdbcClient.sql("""
-                        SELECT COUNT(DISTINCT epc)
-                        FROM rfid.rfid_reads
-                        WHERE rfid_session_id = :sessionId::uuid
-                        """)
-                        .param("sessionId", session.getId().toString())
-                        .query(Integer.class).optional().orElse(0);
-                totalCounted = rawCount != null ? rawCount : 0;
-                log.debug("Fallback rfid_reads count for session {}: {} raw EPCs scanned", session.getId(), totalCounted);
-            } catch (Exception ex) {
-                log.warn("Could not compute fallback EPC count for session {}: {}", session.getId(), ex.getMessage());
-            }
-        }
-
-        // Expected = non-sold EPCs registered for this store (same source as live scan UI expected count).
-        // Falls back to inventory_state if epc_registry has no data.
-        int totalExpected = 0;
-        try {
-            totalExpected = jdbcClient.sql("""
-                    SELECT COUNT(*)
-                    FROM inventory.epc_registry
-                    WHERE store_id = :storeId
-                      AND status NOT IN ('sold', 'damaged', 'transferred')
-                    """)
-                    .param("storeId", session.getStoreId())
-                    .query(Integer.class)
-                    .single();
-        } catch (Exception ex) {
-            log.warn("Could not count epc_registry for session {}: {}", session.getId(), ex.getMessage());
-        }
-        if (totalExpected == 0) {
-            totalExpected = jdbcClient.sql("""
-                    SELECT COALESCE(SUM(quantity_expected), 0)
-                    FROM inventory.inventory_state
-                    WHERE store_id = :storeId
-                    """)
-                    .param("storeId", session.getStoreId())
-                    .query(Integer.class)
-                    .single();
-            log.debug("ERP expected for session {}: {} units from inventory_state", session.getId(), totalExpected);
-        }
-        int varianceCount = (int) items.stream().filter(i -> i.getCountedQuantity() != i.getExpectedQuantity()).count();
-        int overcount     = (int) items.stream().filter(i -> i.getCountedQuantity() > i.getExpectedQuantity()).count();
-        int undercount    = (int) items.stream().filter(i -> i.getCountedQuantity() < i.getExpectedQuantity()).count();
-
-        BigDecimal accuracy = totalExpected == 0 ? BigDecimal.valueOf(100)
-                : BigDecimal.valueOf(100.0 * totalCounted / totalExpected).setScale(2, RoundingMode.HALF_UP);
-
-        return SohResult.builder()
-                .session(session)
-                .storeId(session.getStoreId())
-                .totalProductsCounted(items.size())
-                .totalUnitsCounted(totalCounted)
-                .totalUnitsExpected(totalExpected)
-                .accuracyPct(accuracy)
-                .varianceCount(varianceCount)
-                .overcountItems(overcount)
-                .undercountItems(undercount)
-                .build();
-    }
-
-    @Transactional(readOnly = true)
-    public List<String> getSessionEpcs(UUID sessionId) {
-        findOrThrow(sessionId); // 404 if session missing
-
-        // Returns EPCs that were actually scanned during this session (used by reconciliation engine).
-        List<String> fromRfid = jdbcClient.sql("""
-                SELECT DISTINCT epc FROM rfid.rfid_reads
-                WHERE rfid_session_id = :sessionId::uuid
-                """)
-                .param("sessionId", sessionId.toString())
-                .query(String.class)
-                .list();
-
-        if (!fromRfid.isEmpty()) return fromRfid;
-
-        // Fallback: epc_registry last_seen_at window
-        return jdbcClient.sql("""
-                SELECT DISTINCT er.epc
-                FROM inventory.epc_registry er
-                JOIN soh.soh_sessions ss ON ss.id = :sessionId::uuid
-                WHERE er.store_id = ss.store_id
-                AND er.last_seen_at >= ss.started_at
-                AND (ss.completed_at IS NULL OR er.last_seen_at <= ss.completed_at)
-                AND (ss.zone_id IS NULL OR er.zone_id = ss.zone_id)
-                """)
-                .param("sessionId", sessionId.toString())
-                .query(String.class)
-                .list();
-    }
-
-    @Transactional(readOnly = true)
-    public List<String> getExpectedEpcs(UUID sessionId) {
-        SohSession session = findOrThrow(sessionId);
-        // Returns the inventory EPCs the Android app should scan FOR (expected set).
-        // Source: epc_registry — EPCs actively tracked in this store.
-        return jdbcClient.sql("""
-                SELECT epc FROM inventory.epc_registry
-                WHERE store_id = :storeId
-                  AND status NOT IN ('sold', 'damaged', 'transferred')
-                """)
-                .param("storeId", session.getStoreId())
-                .query(String.class)
-                .list();
     }
 
     private SohSession findOrThrow(UUID id) {

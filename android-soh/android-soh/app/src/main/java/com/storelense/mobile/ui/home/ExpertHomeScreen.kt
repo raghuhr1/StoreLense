@@ -31,6 +31,7 @@ import com.storelense.mobile.ui.theme.*
 @Composable
 fun ExpertHomeScreen(
     onSoh: () -> Unit,
+    onCycleCount: () -> Unit = {},
     onReplenish: () -> Unit,
     onTransferOut: () -> Unit,
     onItemLocator: () -> Unit,
@@ -154,21 +155,40 @@ fun ExpertHomeScreen(
 
             // ── 4. QUICK TOOLS ──────────────────────────────────────────────
             item {
-                Surface(
-                    onClick = onItemLocator,
-                    color = SurfaceSlate,
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth().height(60.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 20.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Surface(
+                        onClick = onCycleCount,
+                        color = SurfaceSlate,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth().height(60.dp)
                     ) {
-                        Icon(Icons.Default.MyLocation, null, tint = EnergyTeal)
-                        Spacer(Modifier.width(16.dp))
-                        Text("Locate specific item", color = Color.White, fontWeight = FontWeight.SemiBold)
-                        Spacer(Modifier.weight(1f))
-                        Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, null, tint = MutedText, modifier = Modifier.size(14.dp))
+                        Row(
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.ChecklistRtl, null, tint = EnergyEmerald)
+                            Spacer(Modifier.width(16.dp))
+                            Text("Cycle Count", color = Color.White, fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.weight(1f))
+                            Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, null, tint = MutedText, modifier = Modifier.size(14.dp))
+                        }
+                    }
+                    Surface(
+                        onClick = onItemLocator,
+                        color = SurfaceSlate,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth().height(60.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.MyLocation, null, tint = EnergyTeal)
+                            Spacer(Modifier.width(16.dp))
+                            Text("Locate specific item", color = Color.White, fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.weight(1f))
+                            Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, null, tint = MutedText, modifier = Modifier.size(14.dp))
+                        }
                     }
                 }
             }

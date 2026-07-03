@@ -31,6 +31,13 @@ export function statusBadge(status: string): React.ReactElement {
     in_progress: 'yellow', completed: 'green', cancelled: 'red', failed: 'red',
     created: 'gray', open: 'blue', closed: 'gray',
     in_store: 'green', missing: 'red', sold: 'gray', damaged: 'red',
+    // session lifecycle extensions
+    paused: 'yellow', uploaded: 'blue', reconciled: 'purple',
+    // cycle count statuses (uppercase from backend)
+    DRAFT: 'gray', RUNNING: 'yellow', COMPLETED: 'green',
+    UPLOADED: 'blue', RECONCILED: 'purple', CLOSED: 'gray',
+    // reconciliation statuses
+    PENDING_APPROVAL: 'yellow', APPROVED: 'green', FAILED: 'red',
   }
   return <Badge variant={map[status] ?? 'gray'}>{status.replace(/_/g, ' ')}</Badge>
 }

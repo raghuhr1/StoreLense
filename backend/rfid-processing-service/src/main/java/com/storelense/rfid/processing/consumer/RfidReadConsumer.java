@@ -6,11 +6,15 @@ import com.storelense.common.kafka.KafkaTopics;
 import com.storelense.rfid.processing.domain.entity.RfidRead;
 import com.storelense.rfid.processing.domain.repository.RfidReadRepository;
 import com.storelense.rfid.processing.service.EpcResolutionService;
+import com.storelense.rfid.processing.service.LocationMappingService;
+import com.storelense.rfid.processing.service.LocationMappingService.LocationPair;
 import com.storelense.rfid.processing.service.RfidProcessingMetrics;
 import com.storelense.rfid.processing.service.RfidSessionManager;
 import com.storelense.rfid.processing.service.ZoneMappingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.annotation.RetryableTopic;
 import org.springframework.kafka.retrytopic.TopicSuffixingStrategy;
@@ -33,8 +37,15 @@ public class RfidReadConsumer {
     private final EpcResolutionService  epcResolution;
     private final RfidSessionManager    sessionManager;
     private final ZoneMappingService    zoneMappingService;
+    private final LocationMappingService locationMappingService;
     private final RfidProcessingMetrics metrics;
+    private final StringRedisTemplate   redis;
     private final org.springframework.kafka.core.KafkaTemplate<String, Object> kafkaTemplate;
+
+    // Default RSSI threshold — reads weaker than this are ignored as noise.
+    // Per-store override stored in Redis: rfid:rssi_threshold:{storeId}
+    @Value("${storelense.rfid.rssi-threshold-default:-75}")
+    private int defaultRssiThreshold;
 
     /**
      * Retries 3 times with 500 ms → 1 s → 2 s backoff before routing to DLT.
@@ -58,7 +69,14 @@ public class RfidReadConsumer {
         metrics.recordEventReceived();
 
         try {
-            // 1. Session-level deduplication via Redis HLL
+            // 1. RSSI floor filter — drop reads from antennas that are too far from the tag
+            if (isBelowRssiThreshold(event)) {
+                log.trace("RSSI {} below threshold for EPC {} — dropped", event.rssi(), event.epc());
+                metrics.recordEventDeduped(); // reuse metric as "filtered"
+                return;
+            }
+
+            // 2. Session-level deduplication via Redis HLL
             boolean isNewEpc = sessionManager.recordRead(event.rfidSessionId(), event.epc());
             if (!isNewEpc) {
                 metrics.recordEventDeduped();
@@ -66,10 +84,10 @@ public class RfidReadConsumer {
                 return;
             }
 
-            // 2. Persist the raw read
+            // 3. Persist the raw read
             RfidRead saved = persistRead(event);
 
-            // 3. Resolve EPC → product UUID (cache → API → GTIN decode)
+            // 4. Resolve EPC → product UUID (cache → API → GTIN decode)
             Optional<UUID> productId = epcResolution.resolveToProductId(event.epc());
             if (productId.isEmpty()) {
                 metrics.recordResolutionFailed();
@@ -78,21 +96,31 @@ public class RfidReadConsumer {
                 return;
             }
 
-            // 4. Zone: prefer worker-selected zone from handheld; fall back to reader→zone mapping
+            // 5. Zone: prefer worker-selected zone from handheld; fall back to reader→zone mapping
             Optional<UUID> zoneId = event.zoneId() != null
                     ? Optional.of(event.zoneId())
                     : zoneMappingService.resolveZone(event.readerId());
 
-            // 5. Publish rfid.soh.updated
+            // 6. Antenna → location resolution (SALES_FLOOR / BACKROOM + optional section)
+            Optional<LocationPair> location = Optional.empty();
+            if (event.readerId() != null && event.antennaPort() != null) {
+                location = locationMappingService.resolve(
+                        event.readerId(),
+                        event.antennaPort() != null ? event.antennaPort().shortValue() : null);
+            }
+
+            // 7. Publish rfid.soh.updated
             SohUpdatedEvent sohEvent = new SohUpdatedEvent(
                     UUID.randomUUID().toString(),
                     event.rfidSessionId(),
-                    null,                   // sohSessionId correlated by soh-service
+                    null,                                           // sohSessionId correlated by soh-service
                     event.storeId(),
                     productId.get(),
                     zoneId.orElse(null),
                     event.epc(),
-                    Instant.now()
+                    Instant.now(),
+                    location.map(LocationPair::locationCode).orElse(null),
+                    location.map(LocationPair::sectionCode).orElse(null)
             );
 
             kafkaTemplate.send(KafkaTopics.RFID_SOH_UPDATED, event.storeId().toString(), sohEvent);
@@ -109,6 +137,26 @@ public class RfidReadConsumer {
         } finally {
             metrics.recordProcessingTime(System.nanoTime() - startNs);
         }
+    }
+
+    private boolean isBelowRssiThreshold(RfidReadEvent event) {
+        if (event.rssi() == null) return false;
+
+        int threshold = defaultRssiThreshold;
+        if (event.storeId() != null) {
+            String storeKey = "rfid:rssi_threshold:" + event.storeId();
+            String stored = redis.opsForValue().get(storeKey);
+            if (stored != null) {
+                try {
+                    threshold = Integer.parseInt(stored);
+                } catch (NumberFormatException ex) {
+                    log.warn("Invalid RSSI threshold '{}' for store {} — using default {}",
+                            stored, event.storeId(), defaultRssiThreshold);
+                }
+            }
+        }
+
+        return event.rssi() < threshold;
     }
 
     private RfidRead persistRead(RfidReadEvent event) {

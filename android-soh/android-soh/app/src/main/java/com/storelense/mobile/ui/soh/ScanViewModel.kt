@@ -72,7 +72,11 @@ data class ScanState(
     val showZoneSelectorSheet: Boolean       = false,
     val selectedZoneId: String?              = null,
     val selectedZoneName: String?            = null,
-    val isLoadingZones: Boolean              = false
+    val isLoadingZones: Boolean              = false,
+    // Phase 3 — Cycle Count location context
+    val locationCode: String?                = null,
+    val sectionCode: String?                 = null,
+    val cycleCountId: String?                = null
 )
 
 enum class ScanPhase { Connecting, Scanning, Paused, Uploading, Done }
@@ -136,7 +140,10 @@ class ScanViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         zoneRegion     = r.data.zoneRegion,
-                        isErpTriggered = r.data.source == "erp_triggered"
+                        isErpTriggered = r.data.source == "erp_triggered",
+                        locationCode   = r.data.locationCode,
+                        sectionCode    = r.data.sectionCode,
+                        cycleCountId   = r.data.cycleCountId
                     )
                 }
                 // Fetch expected EPCs asynchronously — scanning starts without waiting
@@ -282,7 +289,15 @@ class ScanViewModel @Inject constructor(
             } ?: _state.value.readerSignalBars
 
             if (scannedSet.add(read.epc)) {
-                soh.bufferEpc(sessionId, read.epc, read.rssi, read.antennaPort, _state.value.selectedZoneId)
+                soh.bufferEpc(
+                    sessionId    = sessionId,
+                    epc          = read.epc,
+                    rssi         = read.rssi,
+                    antenna      = read.antennaPort,
+                    zoneId       = _state.value.selectedZoneId,
+                    locationCode = _state.value.locationCode,
+                    sectionCode  = _state.value.sectionCode
+                )
                 _state.update { s ->
                     s.copy(
                         scannedCount     = scannedSet.size,
@@ -335,8 +350,26 @@ class ScanViewModel @Inject constructor(
 
     fun togglePause() {
         when (_state.value.phase) {
-            ScanPhase.Scanning -> { rfid.stopScan(); _state.update { it.copy(phase = ScanPhase.Paused) } }
-            ScanPhase.Paused   -> { rfid.startScan(); _state.update { it.copy(phase = ScanPhase.Scanning) } }
+            ScanPhase.Scanning -> {
+                rfid.stopScan()
+                _state.update { it.copy(phase = ScanPhase.Paused) }
+                // Sync to server for cycle-count sessions so the session status reflects pause
+                if (_state.value.cycleCountId != null) {
+                    viewModelScope.launch {
+                        soh.pauseSession(sessionId)
+                    }
+                }
+            }
+            ScanPhase.Paused -> {
+                rfid.startScan()
+                _state.update { it.copy(phase = ScanPhase.Scanning) }
+                // Sync resume to server for cycle-count sessions
+                if (_state.value.cycleCountId != null) {
+                    viewModelScope.launch {
+                        soh.resumeSession(sessionId)
+                    }
+                }
+            }
             else -> {}
         }
     }

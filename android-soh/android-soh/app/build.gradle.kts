@@ -32,8 +32,8 @@ android {
         create("chainway") {
             dimension    = "device"
             // Separate applicationId so both APKs can coexist on a test device
-            applicationIdSuffix = ".c72"
-            versionNameSuffix   = "-c72"
+            applicationIdSuffix = ".c66"
+            versionNameSuffix   = "-c66"
         }
     }
 

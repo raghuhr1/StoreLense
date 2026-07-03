@@ -1,5 +1,5 @@
 import client from './client'
-import type { ApiResponse, PageResponse, Store, Zone, RfidReader } from '@/types'
+import type { ApiResponse, PageResponse, Store, Zone, RfidReader, StoreLocation, AntennaLocationMapping } from '@/types'
 
 export const storesApi = {
   list: (params?: { page?: number; size?: number }) =>
@@ -25,4 +25,28 @@ export const storesApi = {
 
   readers: (storeId: string) =>
     client.get<ApiResponse<RfidReader[]>>(`/stores/${storeId}/readers`).then(r => r.data.data),
+
+  locations: (storeId: string) =>
+    client.get<ApiResponse<StoreLocation[]>>(`/stores/${storeId}/locations`).then(r => r.data.data),
+
+  createLocation: (storeId: string, body: {
+    locationCode: string; sectionCode?: string | null
+    displayName: string; sortOrder?: number
+  }) =>
+    client.post<ApiResponse<StoreLocation>>(`/stores/${storeId}/locations`, body).then(r => r.data.data),
+
+  deactivateLocation: (storeId: string, locationId: string) =>
+    client.delete(`/stores/${storeId}/locations/${locationId}`),
+
+  antennaMappings: (storeId: string) =>
+    client.get<ApiResponse<AntennaLocationMapping[]>>(`/stores/${storeId}/antenna-mappings`).then(r => r.data.data),
+
+  createAntennaMapping: (storeId: string, body: {
+    readerId: string; antennaPort: number
+    locationCode: string; sectionCode?: string | null; displayName?: string
+  }) =>
+    client.post<ApiResponse<AntennaLocationMapping>>(`/stores/${storeId}/antenna-mappings`, body).then(r => r.data.data),
+
+  deactivateAntennaMapping: (storeId: string, mappingId: string) =>
+    client.delete(`/stores/${storeId}/antenna-mappings/${mappingId}`),
 }

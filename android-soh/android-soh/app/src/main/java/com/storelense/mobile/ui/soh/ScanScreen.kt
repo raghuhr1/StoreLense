@@ -186,8 +186,29 @@ fun ScanScreen(
                 title = {
                     Column {
                         Text("Inventory Audit", fontWeight = FontWeight.Black, color = Color.White)
+                        val subtitle = buildString {
+                            // Location context (cycle count)
+                            if (state.locationCode != null) {
+                                append(when (state.locationCode) {
+                                    "SALES_FLOOR" -> "Sales Floor"
+                                    "BACKROOM"    -> "Backroom"
+                                    else          -> state.locationCode
+                                })
+                                when (state.sectionCode) {
+                                    "MENS"        -> append(" – Mens")
+                                    "WOMENS"      -> append(" – Womens")
+                                    "KIDS"        -> append(" – Kids")
+                                    "FOOTWEAR"    -> append(" – Footwear")
+                                    "ACCESSORIES" -> append(" – Accessories")
+                                    null          -> {}
+                                    else          -> append(" – ${state.sectionCode}")
+                                }
+                            } else {
+                                append(state.selectedZoneName ?: state.zoneRegion ?: "Full Store")
+                            }
+                        }
                         Text(
-                            text = state.selectedZoneName ?: state.zoneRegion ?: "Full Store",
+                            text = subtitle,
                             style = MaterialTheme.typography.labelSmall,
                             color = EnergyTeal,
                             fontWeight = FontWeight.Bold
@@ -258,7 +279,8 @@ fun ScanScreen(
                     scannedCount  = state.scannedCount,
                     matchedCount  = state.matchedCount,
                     expectedCount = state.expectedCount,
-                    phase         = state.phase
+                    phase         = state.phase,
+                    lastEpc       = state.lastEpc
                 )
 
                 // Metrics Grid
@@ -422,9 +444,17 @@ private fun AuditProgressCard(
     scannedCount: Int,
     matchedCount: Int,
     expectedCount: Int,
-    phase: ScanPhase
+    phase: ScanPhase,
+    lastEpc: String = ""
 ) {
-    val rawPct = if (expectedCount > 0) (matchedCount.toFloat() / expectedCount * 100f).coerceIn(0f, 100f) else 0f
+    // When no ERP baseline exists (Full Store scan), drive the ring with scannedCount.
+    // Use a soft cap of 100 items so the ring fills meaningfully as scanning progresses.
+    val hasExpected = expectedCount > 0
+    val rawPct = if (hasExpected) {
+        (matchedCount.toFloat() / expectedCount * 100f).coerceIn(0f, 100f)
+    } else {
+        (scannedCount.toFloat() / maxOf(scannedCount, 100) * 100f).coerceIn(0f, 100f)
+    }
     val pct by animateFloatAsState(
         targetValue = rawPct,
         animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing),
@@ -443,7 +473,6 @@ private fun AuditProgressCard(
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
-                // Large High-End Ring
                 Canvas(Modifier.size(180.dp)) {
                     val stroke = Stroke(18.dp.toPx(), cap = StrokeCap.Round)
                     drawArc(Color.White.copy(0.05f), -90f, 360f, false, style = stroke)
@@ -456,42 +485,59 @@ private fun AuditProgressCard(
                     )
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("${pct.toInt()}%", fontSize = 48.sp, fontWeight = FontWeight.Black, color = Color.White)
-                    Text("COVERAGE", style = MaterialTheme.typography.labelSmall, color = MutedText, letterSpacing = 2.sp)
+                    if (hasExpected) {
+                        Text("${pct.toInt()}%", fontSize = 48.sp, fontWeight = FontWeight.Black, color = Color.White)
+                        Text("COVERAGE", style = MaterialTheme.typography.labelSmall, color = MutedText, letterSpacing = 2.sp)
+                    } else {
+                        Text(scannedCount.toString(), fontSize = 48.sp, fontWeight = FontWeight.Black, color = Color.White)
+                        Text("SCANNED", style = MaterialTheme.typography.labelSmall, color = MutedText, letterSpacing = 2.sp)
+                    }
                 }
-                
-                // Status Indicator
+
                 Box(Modifier.size(180.dp), contentAlignment = Alignment.BottomCenter) {
-                    val phaseColor = when(phase) {
+                    val phaseColor = when (phase) {
                         ScanPhase.Scanning -> EnergyEmerald
-                        ScanPhase.Paused -> SoftAmber
-                        else -> EnergyTeal
+                        ScanPhase.Paused   -> SoftAmber
+                        else               -> EnergyTeal
                     }
                     Surface(
-                        color = phaseColor,
-                        shape = CircleShape,
+                        color    = phaseColor,
+                        shape    = CircleShape,
                         modifier = Modifier.size(12.dp).offset(y = 6.dp)
                     ) {}
                 }
             }
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                val variance = expectedCount - matchedCount
-                val varianceColor = when {
-                    variance == 0 -> EnergyEmerald
-                    variance > 0  -> Color(0xFFFB7185)  // items still missing
-                    else          -> SoftAmber           // overcounted
+                if (hasExpected) {
+                    val variance = expectedCount - matchedCount
+                    val varianceColor = when {
+                        variance == 0 -> EnergyEmerald
+                        variance > 0  -> Color(0xFFFB7185)
+                        else          -> SoftAmber
+                    }
+                    val varianceLabel = when {
+                        variance > 0  -> "-$variance"
+                        variance < 0  -> "+${-variance}"
+                        else          -> "0"
+                    }
+                    ScanStatItem("Expected", expectedCount.toString(), Color.White)
+                    Box(Modifier.width(1.dp).height(32.dp).background(Color.White.copy(0.1f)))
+                    ScanStatItem("Scanned", scannedCount.toString(), EnergyTeal)
+                    Box(Modifier.width(1.dp).height(32.dp).background(Color.White.copy(0.1f)))
+                    ScanStatItem("Variance", varianceLabel, varianceColor)
+                    Box(Modifier.width(1.dp).height(32.dp).background(Color.White.copy(0.1f)))
+                    ScanStatItem("Found", matchedCount.toString(), EnergyEmerald)
+                } else {
+                    // Full Store / no ERP baseline — show scanned count progress only
+                    ScanStatItem("Unique Tags", scannedCount.toString(), EnergyEmerald)
+                    Box(Modifier.width(1.dp).height(32.dp).background(Color.White.copy(0.1f)))
+                    ScanStatItem(
+                        "Last Tag",
+                        if (lastEpc.isEmpty()) "—" else "…${lastEpc.takeLast(6)}",
+                        EnergyTeal
+                    )
                 }
-                val varianceLabel = when {
-                    variance > 0  -> "-$variance"
-                    variance < 0  -> "+${-variance}"
-                    else          -> "0"
-                }
-                ScanStatItem("Expected", expectedCount.toString(), Color.White)
-                Box(Modifier.width(1.dp).height(32.dp).background(Color.White.copy(0.1f)))
-                ScanStatItem("Variance", varianceLabel, varianceColor)
-                Box(Modifier.width(1.dp).height(32.dp).background(Color.White.copy(0.1f)))
-                ScanStatItem("Found", matchedCount.toString(), EnergyEmerald)
             }
         }
     }
