@@ -79,6 +79,7 @@ class ProductFinderViewModel @Inject constructor(
     private val rssiBuffer = ArrayDeque<Double>(20)
     private var rfidJob: Job? = null
     private var beepJob: Job? = null
+    private var lastReadTimeMs: Long = 0L
 
     private val toneGen: ToneGenerator? = try {
         ToneGenerator(AudioManager.STREAM_NOTIFICATION, 80)
@@ -189,6 +190,7 @@ class ProductFinderViewModel @Inject constructor(
             return
         }
         rssiBuffer.clear()
+        lastReadTimeMs = System.currentTimeMillis()
         _state.update { it.copy(rfidPhase = RfidPhase.Scanning, rfidError = null, closestRssi = -100.0) }
 
         rfidJob?.cancel()
@@ -227,6 +229,7 @@ class ProductFinderViewModel @Inject constructor(
     // ── Internals ───────────────────────────────────────────────────────────────
 
     private fun processRssi(epc: String, rssi: Double) {
+        lastReadTimeMs = System.currentTimeMillis()
         if (rssiBuffer.size >= 20) rssiBuffer.removeFirst()
         rssiBuffer.addLast(rssi)
         val smoothed  = rssiBuffer.average()
@@ -258,10 +261,27 @@ class ProductFinderViewModel @Inject constructor(
             while (isActive) {
                 val s = _state.value
                 if (s.rfidPhase == RfidPhase.Idle) break
-                if (s.soundEnabled) {
+
+                // If no read has arrived for 2 seconds the tag is out of range — reset to FAR
+                // so the beep rate and proximity indicator reflect the loss of signal.
+                val msSinceRead = System.currentTimeMillis() - lastReadTimeMs
+                if (msSinceRead > 2000L && rssiBuffer.isNotEmpty()) {
+                    rssiBuffer.clear()
+                    _state.update {
+                        it.copy(
+                            closestRssi = -100.0,
+                            proximity   = ProximityLevel.FAR,
+                            rfidPhase   = RfidPhase.Scanning,
+                            matchedEpc  = null
+                        )
+                    }
+                }
+
+                val current = _state.value
+                if (current.soundEnabled) {
                     toneGen?.startTone(ToneGenerator.TONE_PROP_BEEP, 60)
                 }
-                delay(beepInterval(s.closestRssi, rssiBuffer.isEmpty()))
+                delay(beepInterval(current.closestRssi, rssiBuffer.isEmpty()))
             }
         }
     }
