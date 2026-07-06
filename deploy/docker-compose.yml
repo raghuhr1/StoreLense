@@ -21,6 +21,8 @@ x-spring-env: &spring-env
   STORE_SERVICE_URL:   http://store-service:8082
   # Separate management port — not exposed to host; Prometheus reaches it inside Docker network
   MANAGEMENT_SERVER_PORT: "9000"
+  # Cap JVM heap on 2 GB server — prevents OOM kills
+  JAVA_TOOL_OPTIONS: "-Xmx192m -Xms64m -XX:+UseContainerSupport"
 
 # ─── Healthcheck defaults ────────────────────────────────────────────────────
 x-spring-healthcheck: &spring-healthcheck
@@ -80,6 +82,7 @@ services:
   kafka:
     image: apache/kafka:3.9.0
     environment:
+      KAFKA_HEAP_OPTS: "-Xmx256m -Xms256m"
       KAFKA_NODE_ID: "1"
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092
