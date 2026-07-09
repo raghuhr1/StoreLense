@@ -1,5 +1,6 @@
 package com.storelense.erp.domain.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
@@ -15,6 +16,7 @@ public class CcReconciliationItem {
     @Column(updatable = false, nullable = false)
     private UUID id;
 
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "reconciliation_id", nullable = false)
     private CcReconciliation reconciliation;

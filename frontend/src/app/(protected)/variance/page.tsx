@@ -57,16 +57,29 @@ export default function VariancePage() {
 
   const columns = useMemo<ColumnDef<ReconciliationSession, unknown>[]>(() => [
     {
-      accessorKey: 'sessionId',
-      header: 'Session',
-      cell: i => (
-        <Link
-          href={`/variance/${i.getValue<string>()}`}
-          className="font-mono text-xs text-blue-600 hover:underline"
-        >
-          {i.getValue<string>().slice(-8)}
-        </Link>
-      ),
+      id: 'ref',
+      header: 'Session / Count',
+      cell: ({ row }) => {
+        const { sessionId, cycleCountId } = row.original
+        if (!sessionId) {
+          return (
+            <Link
+              href={`/cycle-count/${cycleCountId}/reconcile`}
+              className="font-mono text-xs text-purple-600 hover:underline"
+            >
+              CC·{cycleCountId?.slice(-8)}
+            </Link>
+          )
+        }
+        return (
+          <Link
+            href={`/variance/${sessionId}`}
+            className="font-mono text-xs text-blue-600 hover:underline"
+          >
+            {sessionId.slice(-8)}
+          </Link>
+        )
+      },
     },
     {
       accessorKey: 'runAt',
@@ -111,7 +124,9 @@ export default function VariancePage() {
       header: 'Status',
       cell: i => {
         const s = i.getValue<string>()
-        const variant = s === 'COMPLETED' ? 'green' : s === 'FAILED' ? 'red' : 'yellow'
+        const variant = s === 'COMPLETED' || s === 'APPROVED' ? 'green'
+                      : s === 'FAILED' ? 'red'
+                      : 'yellow'
         return <Badge variant={variant}>{s}</Badge>
       },
     },

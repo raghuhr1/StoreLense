@@ -284,8 +284,9 @@ export interface ErpBatchDetail {
 // ─── Reconciliation ───────────────────────────────────────────────────────────
 export interface ReconciliationSession {
   id: string
-  sessionId: string
-  batchId: string
+  sessionId: string | null
+  cycleCountId: string | null
+  batchId: string | null
   storeId: string
   runAt: string
   totalExpected: number
@@ -294,7 +295,7 @@ export interface ReconciliationSession {
   missingCount: number
   extraCount: number
   accuracyPct: number | null
-  status: 'RUNNING' | 'COMPLETED' | 'FAILED'
+  status: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'PENDING_APPROVAL' | 'APPROVED'
   createdAt: string
 }
 
