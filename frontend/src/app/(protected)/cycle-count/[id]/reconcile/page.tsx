@@ -200,7 +200,9 @@ export default function CycleCountReconcilePage({ params }: { params: Promise<{ 
 
         {runMut.isError && (
           <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">
-            Reconciliation failed. Ensure the cycle count is in UPLOADED status and an ERP snapshot exists.
+            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+            {(runMut.error as any)?.response?.data?.message
+              ?? 'Reconciliation failed — ensure all sessions in this cycle count are completed before running.'}
           </p>
         )}
 
