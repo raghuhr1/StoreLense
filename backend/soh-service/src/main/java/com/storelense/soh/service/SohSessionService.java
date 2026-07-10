@@ -474,6 +474,13 @@ public class SohSessionService {
                     "locationCode is required when linking a session to a cycle count",
                     HttpStatus.BAD_REQUEST);
         }
+        // If the store has no configured locations yet, accept the well-known defaults
+        // so stores can operate before an admin sets up store_locations.
+        boolean hasAnyConfigured = locationRepository
+                .findByStoreIdAndIsActiveTrueOrderBySortOrderAsc(storeId)
+                .size() > 0;
+        if (!hasAnyConfigured) return;
+
         boolean valid = locationRepository.existsByStoreIdAndLocationCodeAndSectionCodeAndIsActiveTrue(
                 storeId, locationCode, sectionCode);
         if (!valid) {
