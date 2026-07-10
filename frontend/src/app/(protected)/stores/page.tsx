@@ -6,14 +6,115 @@ import { type ColumnDef }     from '@tanstack/react-table'
 import { useForm }            from 'react-hook-form'
 import { zodResolver }        from '@hookform/resolvers/zod'
 import { z }                  from 'zod'
-import { Plus, Pencil }       from 'lucide-react'
+import { Plus, Pencil, Sliders } from 'lucide-react'
 import Link                   from 'next/link'
 import Header                 from '@/components/layout/Header'
 import DataTable              from '@/components/ui/DataTable'
 import { statusBadge }        from '@/components/ui/Badge'
 import { storesApi }          from '@/lib/api/stores'
 import { fmt }                from '@/lib/utils'
-import type { Store }         from '@/types'
+import type { Store, Feature, StoreFeature } from '@/types'
+
+const FEATURE_LABELS: Record<Feature, string> = {
+  INVENTORY:       'Inventory & RFID Ledger',
+  INBOUND:         'Inbound Shipments',
+  REPLENISHMENT:   'Replenishment',
+  CYCLE_COUNT:     'Cycle Count & Variance',
+  TRANSFERS:       'Stock Transfers',
+  ANALYTICS:       'Analytics & Reports',
+  SALES:           'Sales Tracking',
+  DEVICES:         'Device Management',
+  ERP_INTEGRATION: 'ERP Integration',
+}
+
+function FeaturesModal({ store, onClose }: { store: Store; onClose: () => void }) {
+  const qc = useQueryClient()
+  const { data: features, isLoading } = useQuery({
+    queryKey: ['store-features', store.id],
+    queryFn:  () => storesApi.getFeatures(store.id),
+  })
+  const [local, setLocal] = useState<Record<string, boolean>>({})
+
+  const updateMut = useMutation({
+    mutationFn: (f: Record<string, boolean>) => storesApi.updateFeatures(store.id, f),
+    onSuccess:  () => { qc.invalidateQueries({ queryKey: ['store-features', store.id] }); onClose() },
+  })
+
+  const toggle = (feature: string, current: boolean) => {
+    setLocal(prev => ({ ...prev, [feature]: !current }))
+  }
+
+  const effectiveValue = (f: StoreFeature) =>
+    local[f.feature] !== undefined ? local[f.feature] : f.enabled
+
+  const save = () => {
+    const merged: Record<string, boolean> = {}
+    features?.forEach(f => { merged[f.feature] = effectiveValue(f) })
+    Object.entries(local).forEach(([k, v]) => { merged[k] = v })
+    updateMut.mutate(merged)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl p-6 w-[460px] shadow-xl space-y-4">
+        <div>
+          <h3 className="font-semibold text-gray-900">Feature Flags</h3>
+          <p className="text-xs text-gray-500 mt-0.5">{store.name} ({store.storeCode})</p>
+        </div>
+
+        {isLoading ? (
+          <div className="flex justify-center py-8">
+            <div className="w-6 h-6 border-4 border-brand-600 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {features?.map(f => {
+              const on = effectiveValue(f)
+              return (
+                <div key={f.feature}
+                  className="flex items-center justify-between px-4 py-3 rounded-xl border border-gray-100 hover:bg-gray-50">
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">
+                      {FEATURE_LABELS[f.feature as Feature] ?? f.feature}
+                    </p>
+                    <p className="text-xs text-gray-400">{f.feature}</p>
+                  </div>
+                  <button
+                    onClick={() => toggle(f.feature, on)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      on ? 'bg-brand-600' : 'bg-gray-200'
+                    }`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                      on ? 'translate-x-6' : 'translate-x-1'
+                    }`} />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {updateMut.isError && (
+          <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded px-3 py-2">
+            Failed to save features. Try again.
+          </p>
+        )}
+
+        <div className="flex gap-3 justify-end pt-1">
+          <button onClick={onClose} className="btn-secondary">Cancel</button>
+          <button
+            onClick={save}
+            disabled={updateMut.isPending || isLoading}
+            className="btn-primary disabled:opacity-40"
+          >
+            {updateMut.isPending ? 'Saving…' : 'Save Features'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const TIMEZONES = [
   'UTC', 'Australia/Sydney', 'Australia/Melbourne', 'Australia/Brisbane',
@@ -36,8 +137,9 @@ type FormValues = z.infer<typeof schema>
 
 export default function StoresPage() {
   const qc = useQueryClient()
-  const [open, setOpen]       = useState(false)
-  const [editing, setEditing] = useState<Store | null>(null)
+  const [open, setOpen]             = useState(false)
+  const [editing, setEditing]       = useState<Store | null>(null)
+  const [featuresStore, setFeaturesStore] = useState<Store | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['stores'],
@@ -108,13 +210,22 @@ export default function StoresPage() {
       id: 'actions',
       header: '',
       cell: ({ row }) => (
-        <button
-          onClick={() => openEdit(row.original)}
-          className="p-1.5 text-gray-400 hover:text-brand-600 hover:bg-gray-100 rounded transition-colors"
-          title="Edit store"
-        >
-          <Pencil size={15} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => openEdit(row.original)}
+            className="p-1.5 text-gray-400 hover:text-brand-600 hover:bg-gray-100 rounded transition-colors"
+            title="Edit store"
+          >
+            <Pencil size={15} />
+          </button>
+          <button
+            onClick={() => setFeaturesStore(row.original)}
+            className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors"
+            title="Manage features"
+          >
+            <Sliders size={15} />
+          </button>
+        </div>
       ),
     },
   ], [])
@@ -243,6 +354,10 @@ export default function StoresPage() {
               <StoreForm />
             </div>
           </div>
+        )}
+
+        {featuresStore && (
+          <FeaturesModal store={featuresStore} onClose={() => setFeaturesStore(null)} />
         )}
 
       </div>

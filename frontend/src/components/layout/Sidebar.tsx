@@ -9,36 +9,45 @@ import {
   Truck, RefreshCw, ShoppingCart, GitCompare, PackageOpen, BookOpen, Radio,
 } from 'lucide-react'
 import { useAuth }       from '@/lib/auth/AuthContext'
+import { useFeatures }  from '@/lib/features/FeaturesContext'
 import { cn }            from '@/lib/utils'
+import type { Feature }  from '@/types'
 
-type NavItem = { href: string; label: string; icon: LucideIcon; roles: readonly string[] }
+type NavItem = {
+  href: string; label: string; icon: LucideIcon
+  roles: readonly string[]
+  feature?: Feature
+}
 
 const allNavItems: NavItem[] = [
-  { href: '/dashboard',   label: 'Dashboard',    icon: LayoutDashboard, roles: ['ADMIN','STORE_MANAGER','STORE_ASSOCIATE','REFILL_ASSOCIATE'] },
-  { href: '/inventory',        label: 'Inventory',      icon: Package,      roles: ['ADMIN','STORE_MANAGER'] },
-  { href: '/inventory/ledger', label: 'RFID Ledger',    icon: BookOpen,     roles: ['ADMIN','STORE_MANAGER'] },
-  { href: '/inbound',        label: 'Inbound',        icon: Truck,        roles: ['ADMIN','STORE_MANAGER','REFILL_ASSOCIATE'] },
-  { href: '/replenishment',  label: 'Replenishment',  icon: RefreshCw,    roles: ['ADMIN','STORE_MANAGER','REFILL_ASSOCIATE'] },
-  { href: '/cycle-count',    label: 'Cycle Count',    icon: RotateCw,     roles: ['ADMIN','STORE_MANAGER','STORE_ASSOCIATE'] },
-  { href: '/transfers',   label: 'Transfers',    icon: ArrowLeftRight,  roles: ['ADMIN','STORE_MANAGER'] },
-  { href: '/reports',     label: 'Reports',      icon: BarChart3,       roles: ['ADMIN','STORE_MANAGER'] },
-  { href: '/analytics',   label: 'Analytics',    icon: TrendingUp,      roles: ['ADMIN','STORE_MANAGER'] },
-  { href: '/sold-items',  label: 'Sales',        icon: ShoppingCart,    roles: ['ADMIN','STORE_MANAGER'] },
-  { href: '/variance',    label: 'Variance',     icon: GitCompare,      roles: ['ADMIN','STORE_MANAGER'] },
-  { href: '/erp-imports', label: 'ERP Imports',  icon: PackageOpen,     roles: ['ADMIN'] },
-  { href: '/products',    label: 'Products',     icon: Tag,             roles: ['ADMIN'] },
-  { href: '/users',       label: 'Users',        icon: Users,           roles: ['ADMIN'] },
-  { href: '/stores',      label: 'Stores',       icon: Store,           roles: ['ADMIN'] },
-  { href: '/devices',             label: 'Devices',         icon: Cpu,    roles: ['ADMIN','STORE_MANAGER'] },
-  { href: '/devices/antenna-mapping', label: 'Antenna Mapping', icon: Radio,  roles: ['ADMIN'] },
+  { href: '/dashboard',            label: 'Dashboard',       icon: LayoutDashboard, roles: ['ADMIN','STORE_MANAGER','STORE_ASSOCIATE','REFILL_ASSOCIATE'] },
+  { href: '/inventory',            label: 'Inventory',       icon: Package,         roles: ['ADMIN','STORE_MANAGER'],                          feature: 'INVENTORY' },
+  { href: '/inventory/ledger',     label: 'RFID Ledger',     icon: BookOpen,        roles: ['ADMIN','STORE_MANAGER'],                          feature: 'INVENTORY' },
+  { href: '/inbound',              label: 'Inbound',         icon: Truck,           roles: ['ADMIN','STORE_MANAGER','REFILL_ASSOCIATE'],        feature: 'INBOUND' },
+  { href: '/replenishment',        label: 'Replenishment',   icon: RefreshCw,       roles: ['ADMIN','STORE_MANAGER','REFILL_ASSOCIATE'],        feature: 'REPLENISHMENT' },
+  { href: '/cycle-count',          label: 'Cycle Count',     icon: RotateCw,        roles: ['ADMIN','STORE_MANAGER','STORE_ASSOCIATE'],         feature: 'CYCLE_COUNT' },
+  { href: '/transfers',            label: 'Transfers',       icon: ArrowLeftRight,  roles: ['ADMIN','STORE_MANAGER'],                          feature: 'TRANSFERS' },
+  { href: '/reports',              label: 'Reports',         icon: BarChart3,       roles: ['ADMIN','STORE_MANAGER'],                          feature: 'ANALYTICS' },
+  { href: '/analytics',            label: 'Analytics',       icon: TrendingUp,      roles: ['ADMIN','STORE_MANAGER'],                          feature: 'ANALYTICS' },
+  { href: '/sold-items',           label: 'Sales',           icon: ShoppingCart,    roles: ['ADMIN','STORE_MANAGER'],                          feature: 'SALES' },
+  { href: '/variance',             label: 'Variance',        icon: GitCompare,      roles: ['ADMIN','STORE_MANAGER'],                          feature: 'CYCLE_COUNT' },
+  { href: '/erp-imports',          label: 'ERP Imports',     icon: PackageOpen,     roles: ['ADMIN'],                                          feature: 'ERP_INTEGRATION' },
+  { href: '/products',             label: 'Products',        icon: Tag,             roles: ['ADMIN'] },
+  { href: '/users',                label: 'Users',           icon: Users,           roles: ['ADMIN'] },
+  { href: '/stores',               label: 'Stores',          icon: Store,           roles: ['ADMIN'] },
+  { href: '/devices',              label: 'Devices',         icon: Cpu,             roles: ['ADMIN','STORE_MANAGER'],                          feature: 'DEVICES' },
+  { href: '/devices/antenna-mapping', label: 'Antenna Mapping', icon: Radio,        roles: ['ADMIN'],                                          feature: 'DEVICES' },
 ]
 
 export default function Sidebar() {
-  const pathname   = usePathname()
-  const { user }   = useAuth()
+  const pathname       = usePathname()
+  const { user }       = useAuth()
+  const { hasFeature } = useFeatures()
 
   const navItems = allNavItems.filter(item =>
-    user && (item.roles as readonly string[]).includes(user.role)
+    user &&
+    (item.roles as readonly string[]).includes(user.role) &&
+    (!item.feature || hasFeature(item.feature))
   )
 
   return (

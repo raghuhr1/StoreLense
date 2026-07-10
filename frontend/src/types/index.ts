@@ -1,3 +1,10 @@
+// ─── Features ─────────────────────────────────────────────────────────────────
+export type Feature =
+  | 'INVENTORY' | 'INBOUND' | 'REPLENISHMENT' | 'CYCLE_COUNT'
+  | 'TRANSFERS' | 'ANALYTICS' | 'SALES' | 'DEVICES' | 'ERP_INTEGRATION'
+
+export interface StoreFeature { feature: Feature; enabled: boolean }
+
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 export type Role = 'ADMIN' | 'STORE_MANAGER' | 'STORE_ASSOCIATE' | 'REFILL_ASSOCIATE'
 

@@ -1,13 +1,14 @@
 'use client'
 
-import { useEffect }   from 'react'
-import { useRouter }   from 'next/navigation'
-import Sidebar         from '@/components/layout/Sidebar'
-import { useAuth }     from '@/lib/auth/AuthContext'
+import { useEffect }        from 'react'
+import { useRouter }        from 'next/navigation'
+import Sidebar              from '@/components/layout/Sidebar'
+import { useAuth }          from '@/lib/auth/AuthContext'
+import { FeaturesProvider } from '@/lib/features/FeaturesContext'
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const router        = useRouter()
-  const { isAuthed, isLoading } = useAuth()
+  const { isAuthed, isLoading, user, isAdmin } = useAuth()
 
   useEffect(() => {
     if (!isLoading && !isAuthed) router.replace('/login')
@@ -24,13 +25,15 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   if (!isAuthed) return null
 
   return (
-    <div className="min-h-screen">
-      <Sidebar />
-      <div className="pl-[var(--sidebar-width)]">
-        <main className="pt-16 min-h-screen bg-gray-50">
-          {children}
-        </main>
+    <FeaturesProvider storeId={user?.storeId ?? null} isAdmin={isAdmin}>
+      <div className="min-h-screen">
+        <Sidebar />
+        <div className="pl-[var(--sidebar-width)]">
+          <main className="pt-16 min-h-screen bg-gray-50">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </FeaturesProvider>
   )
 }

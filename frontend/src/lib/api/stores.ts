@@ -1,5 +1,5 @@
 import client from './client'
-import type { ApiResponse, PageResponse, Store, Zone, RfidReader, StoreLocation, AntennaLocationMapping } from '@/types'
+import type { ApiResponse, PageResponse, Store, Zone, RfidReader, StoreLocation, AntennaLocationMapping, StoreFeature } from '@/types'
 
 export const storesApi = {
   list: (params?: { page?: number; size?: number }) =>
@@ -49,4 +49,10 @@ export const storesApi = {
 
   deactivateAntennaMapping: (storeId: string, mappingId: string) =>
     client.delete(`/stores/${storeId}/antenna-mappings/${mappingId}`),
+
+  getFeatures: (storeId: string) =>
+    client.get<ApiResponse<StoreFeature[]>>(`/stores/${storeId}/features`).then(r => r.data.data),
+
+  updateFeatures: (storeId: string, features: Record<string, boolean>) =>
+    client.put<ApiResponse<StoreFeature[]>>(`/stores/${storeId}/features`, { features }).then(r => r.data.data),
 }

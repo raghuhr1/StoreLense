@@ -4,6 +4,7 @@ import com.storelense.common.dto.ApiResponse;
 import com.storelense.common.dto.PageResponse;
 import com.storelense.store.dto.*;
 import com.storelense.store.service.RfidReaderService;
+import com.storelense.store.service.StoreFeatureService;
 import com.storelense.store.service.StoreService;
 import com.storelense.store.service.ZoneService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -26,9 +27,10 @@ import java.util.UUID;
 @Tag(name = "Stores", description = "Store and zone management")
 public class StoreController {
 
-    private final StoreService       storeService;
-    private final ZoneService        zoneService;
-    private final RfidReaderService  readerService;
+    private final StoreService        storeService;
+    private final ZoneService         zoneService;
+    private final RfidReaderService   readerService;
+    private final StoreFeatureService featureService;
 
     @GetMapping
     @Operation(summary = "List all active stores")
@@ -47,8 +49,26 @@ public class StoreController {
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Create a new store")
     public ResponseEntity<ApiResponse<StoreResponse>> create(@Valid @RequestBody CreateStoreRequest req) {
+        StoreResponse store = storeService.createStore(req);
+        featureService.seedDefaults(store.id());
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.ok("Store created", storeService.createStore(req)));
+                .body(ApiResponse.ok("Store created", store));
+    }
+
+    // --- Features ---
+
+    @GetMapping("/{id}/features")
+    @Operation(summary = "Get feature flags for a store")
+    public ResponseEntity<ApiResponse<List<StoreFeatureResponse>>> getFeatures(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(featureService.getFeatures(id)));
+    }
+
+    @PutMapping("/{id}/features")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Update feature flags for a store")
+    public ResponseEntity<ApiResponse<List<StoreFeatureResponse>>> updateFeatures(
+            @PathVariable UUID id, @RequestBody UpdateFeaturesRequest req) {
+        return ResponseEntity.ok(ApiResponse.ok(featureService.updateFeatures(id, req)));
     }
 
     @PutMapping("/{id}")
