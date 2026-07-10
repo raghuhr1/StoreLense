@@ -6,9 +6,11 @@ import com.storelense.common.event.SohSessionCompletedEvent;
 import com.storelense.common.exception.BusinessException;
 import com.storelense.common.exception.ResourceNotFoundException;
 import com.storelense.common.kafka.KafkaTopics;
+import com.storelense.soh.domain.entity.CycleCount;
 import com.storelense.soh.domain.entity.SohResult;
 import com.storelense.soh.domain.entity.SohSession;
 import com.storelense.soh.domain.entity.SohSessionItem;
+import com.storelense.soh.domain.repository.CycleCountRepository;
 import com.storelense.soh.domain.repository.SohSessionItemRepository;
 import com.storelense.soh.domain.repository.SohSessionRepository;
 import com.storelense.soh.domain.repository.StoreLocationRepository;
@@ -25,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Set;
@@ -39,6 +42,7 @@ public class SohSessionService {
     private final SohSessionRepository     sessionRepository;
     private final SohSessionItemRepository itemRepository;
     private final StoreLocationRepository  locationRepository;
+    private final CycleCountRepository     cycleCountRepository;
     private final SohMapper                sohMapper;
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final JdbcClient               jdbcClient;
@@ -123,11 +127,23 @@ public class SohSessionService {
 
     @Transactional
     public SohSessionResponse createFromErpImport(ErpImportCompletedEvent event) {
+        // Auto-create a CycleCount so the ERP-triggered session is visible on the CC page
+        CycleCount cc = cycleCountRepository.save(
+                CycleCount.builder()
+                        .storeId(event.storeId())
+                        .countDate(LocalDate.now())
+                        .status("RUNNING")
+                        .createdBy(event.batchId())
+                        .notes("Auto-created from ERP import batch " + event.batchId())
+                        .build()
+        );
+
         SohSession session = SohSession.builder()
                 .storeId(event.storeId())
                 .sessionType("erp_triggered")
                 .status("in_progress")
                 .source("erp_triggered")
+                .cycleCountId(cc.getId())
                 .zoneRegion(event.zoneRegion())
                 .startedBy(event.batchId())
                 .notes("Auto-created from ERP import batch " + event.batchId())
