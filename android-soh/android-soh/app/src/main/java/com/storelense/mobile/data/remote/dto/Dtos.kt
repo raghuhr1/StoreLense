@@ -221,6 +221,13 @@ data class DashboardSummaryDto(
     val pendingTransfers: Int = 0
 )
 
+// ── Store Features ────────────────────────────────────────────────────────────
+
+data class StoreFeatureDto(
+    val feature: String,
+    val enabled: Boolean
+)
+
 // ── Stores & Zones ────────────────────────────────────────────────────────────
 
 data class StoreDto(

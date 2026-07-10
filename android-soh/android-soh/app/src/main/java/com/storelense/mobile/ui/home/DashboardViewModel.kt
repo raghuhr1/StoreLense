@@ -42,8 +42,11 @@ data class DashboardState(
     val activeErpSession: Boolean = false,
     val username: String = "",
     val storeName: String? = null,
-    val error: String? = null
-)
+    val error: String? = null,
+    val enabledFeatures: Set<String>? = null  // null = not yet loaded → show all (fail-open)
+) {
+    fun hasFeature(feature: String) = enabledFeatures == null || feature in enabledFeatures
+}
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
@@ -71,6 +74,12 @@ class DashboardViewModel @Inject constructor(
                     name = stores.getStoresSync().firstOrNull { it.id == storeId }?.name
                 }
                 if (name != null) _state.update { it.copy(storeName = name) }
+            }
+
+            // Feature flags — fetch once on startup; null = fail-open (show all)
+            viewModelScope.launch {
+                val features = stores.getFeatures(storeId)
+                _state.update { it.copy(enabledFeatures = features) }
             }
 
             // SOH sessions — count open (in_progress or pending)

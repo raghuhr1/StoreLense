@@ -36,6 +36,14 @@ class StoreRepository @Inject constructor(
 
     suspend fun count(): Int = storeDao.count()
 
+    suspend fun getFeatures(storeId: String): Set<String>? = try {
+        val resp = api.getStoreFeatures(storeId)
+        val body = resp.body()
+        if (resp.isSuccessful && body?.success == true && body.data != null) {
+            body.data.filter { it.enabled }.map { it.feature }.toSet()
+        } else null
+    } catch (e: Exception) { null }
+
     suspend fun getZones(storeId: String): Result<List<ZoneDto>> = try {
         val resp = api.getZones(storeId)
         val body = resp.body()

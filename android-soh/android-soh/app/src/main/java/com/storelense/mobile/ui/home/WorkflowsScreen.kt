@@ -42,7 +42,11 @@ fun WorkflowsScreen(
     vm: DashboardViewModel = hiltViewModel()
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
-    val exceptionCount = state.missingItems + state.ghostTags + state.readMisses
+    val exceptionCount  = state.missingItems + state.ghostTags + state.readMisses
+    val showCycleCount  = state.hasFeature("CYCLE_COUNT")
+    val showInbound     = state.hasFeature("INBOUND")
+    val showReplenish   = state.hasFeature("REPLENISHMENT")
+    val showTransfers   = state.hasFeature("TRANSFERS")
 
     Scaffold(
         topBar = {
@@ -80,42 +84,50 @@ fun WorkflowsScreen(
 
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        PriorityCard(
-                            icon       = Icons.Default.LocalShipping,
-                            label      = "Receive DC",
-                            count      = state.pendingInbound,
-                            countLabel = "Pending",
-                            color      = GreenComplete,
-                            onClick    = onInbound,
-                            modifier   = Modifier.weight(1f)
-                        )
-                        PriorityCard(
-                            icon       = Icons.Default.MoveDown,
-                            label      = "Replenish",
-                            count      = state.pendingReplenishments,
-                            countLabel = "Pending",
-                            color      = AmberReplenish,
-                            onClick    = onReplenish,
-                            modifier   = Modifier.weight(1f)
-                        )
+                    if (showInbound || showReplenish) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            if (showInbound) {
+                                PriorityCard(
+                                    icon       = Icons.Default.LocalShipping,
+                                    label      = "Receive DC",
+                                    count      = state.pendingInbound,
+                                    countLabel = "Pending",
+                                    color      = GreenComplete,
+                                    onClick    = onInbound,
+                                    modifier   = Modifier.weight(1f)
+                                )
+                            }
+                            if (showReplenish) {
+                                PriorityCard(
+                                    icon       = Icons.Default.MoveDown,
+                                    label      = "Replenish",
+                                    count      = state.pendingReplenishments,
+                                    countLabel = "Pending",
+                                    color      = AmberReplenish,
+                                    onClick    = onReplenish,
+                                    modifier   = Modifier.weight(1f)
+                                )
+                            }
+                        }
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        PriorityCard(
-                            icon       = Icons.Default.SwapHoriz,
-                            label      = "Transfer Out",
-                            count      = state.pendingTransfers,
-                            countLabel = "Pending",
-                            color      = IndigoTransfer,
-                            onClick    = onTransferOut,
-                            modifier   = Modifier.weight(1f)
-                        )
+                        if (showTransfers) {
+                            PriorityCard(
+                                icon       = Icons.Default.SwapHoriz,
+                                label      = "Transfer Out",
+                                count      = state.pendingTransfers,
+                                countLabel = "Pending",
+                                color      = IndigoTransfer,
+                                onClick    = onTransferOut,
+                                modifier   = Modifier.weight(1f)
+                            )
+                        }
                         PriorityCard(
                             icon       = Icons.Default.Warning,
                             label      = "Exceptions",
@@ -141,24 +153,26 @@ fun WorkflowsScreen(
                     elevation = CardDefaults.cardElevation(2.dp)
                 ) {
                     Column {
-                        WorkflowRow(
-                            icon       = Icons.Default.BarChart,
-                            label      = "SOH Count",
-                            subtitle   = "Quick session scan",
-                            badge      = if (state.openSohSessions > 0) "${state.openSohSessions} open" else "No open sessions",
-                            badgeColor = if (state.openSohSessions > 0) AmberReplenish else MaterialTheme.colorScheme.onSurfaceVariant,
-                            onClick    = onSoh
-                        )
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                        WorkflowRow(
-                            icon       = Icons.Default.ChecklistRtl,
-                            label      = "Cycle Count",
-                            subtitle   = "Floor + Backroom count",
-                            badge      = null,
-                            badgeColor = Color.Gray,
-                            onClick    = onCycleCount
-                        )
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        if (showCycleCount) {
+                            WorkflowRow(
+                                icon       = Icons.Default.BarChart,
+                                label      = "SOH Count",
+                                subtitle   = "Quick session scan",
+                                badge      = if (state.openSohSessions > 0) "${state.openSohSessions} open" else "No open sessions",
+                                badgeColor = if (state.openSohSessions > 0) AmberReplenish else MaterialTheme.colorScheme.onSurfaceVariant,
+                                onClick    = onSoh
+                            )
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                            WorkflowRow(
+                                icon       = Icons.Default.ChecklistRtl,
+                                label      = "Cycle Count",
+                                subtitle   = "Floor + Backroom count",
+                                badge      = null,
+                                badgeColor = Color.Gray,
+                                onClick    = onCycleCount
+                            )
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        }
                         WorkflowRow(
                             icon       = Icons.Default.Search,
                             label      = "Product Search",

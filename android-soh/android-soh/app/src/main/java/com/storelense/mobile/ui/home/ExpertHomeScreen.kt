@@ -41,6 +41,8 @@ fun ExpertHomeScreen(
     vm: DashboardViewModel = hiltViewModel()
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val showCycleCount  = state.hasFeature("CYCLE_COUNT")
+    val showReplenish   = state.hasFeature("REPLENISHMENT")
 
     Scaffold(
         containerColor = DeepNavy,
@@ -99,12 +101,14 @@ fun ExpertHomeScreen(
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             // ── 1. VIBRANT HERO ACTION ──────────────────────────────────────
-            item {
-                VibrantHeroCard(
-                    title = "Scan Inventory",
-                    subtitle = "Update store stock levels",
-                    onClick = onSoh
-                )
+            if (showCycleCount) {
+                item {
+                    VibrantHeroCard(
+                        title = "Scan Inventory",
+                        subtitle = "Update store stock levels",
+                        onClick = onSoh
+                    )
+                }
             }
 
             // ── 2. SMART STATS GRID ─────────────────────────────────────────
@@ -128,49 +132,55 @@ fun ExpertHomeScreen(
             }
 
             // ── 3. URGENT TASKS ─────────────────────────────────────────────
-            item {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("PENDING TASKS", fontWeight = FontWeight.Bold, color = MutedText, fontSize = 12.sp, letterSpacing = 1.sp)
-                        Spacer(Modifier.width(8.dp))
-                        Box(Modifier.height(1.dp).weight(1f).background(SurfaceSlate))
+            if (showReplenish || true) { // always show section; individual rows are gated
+                item {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("PENDING TASKS", fontWeight = FontWeight.Bold, color = MutedText, fontSize = 12.sp, letterSpacing = 1.sp)
+                            Spacer(Modifier.width(8.dp))
+                            Box(Modifier.height(1.dp).weight(1f).background(SurfaceSlate))
+                        }
+                        Spacer(Modifier.height(16.dp))
+
+                        if (showReplenish) {
+                            RetailTaskRow(
+                                title = "Replenish Floor",
+                                count = state.pendingReplenishments,
+                                icon = Icons.Default.Inventory2,
+                                onClick = onReplenish
+                            )
+                            Spacer(Modifier.height(12.dp))
+                        }
+                        RetailTaskRow(
+                            title = "Missing Items",
+                            count = state.missingItems,
+                            icon = Icons.Default.RunningWithErrors,
+                            onClick = onExceptions
+                        )
                     }
-                    Spacer(Modifier.height(16.dp))
-                    
-                    RetailTaskRow(
-                        title = "Replenish Floor",
-                        count = state.pendingReplenishments,
-                        icon = Icons.Default.Inventory2,
-                        onClick = onReplenish
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    RetailTaskRow(
-                        title = "Missing Items",
-                        count = state.missingItems,
-                        icon = Icons.Default.RunningWithErrors,
-                        onClick = onExceptions
-                    )
                 }
             }
 
             // ── 4. QUICK TOOLS ──────────────────────────────────────────────
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Surface(
-                        onClick = onCycleCount,
-                        color = SurfaceSlate,
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.fillMaxWidth().height(60.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 20.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                    if (showCycleCount) {
+                        Surface(
+                            onClick = onCycleCount,
+                            color = SurfaceSlate,
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.fillMaxWidth().height(60.dp)
                         ) {
-                            Icon(Icons.Default.ChecklistRtl, null, tint = EnergyEmerald)
-                            Spacer(Modifier.width(16.dp))
-                            Text("Cycle Count", color = Color.White, fontWeight = FontWeight.SemiBold)
-                            Spacer(Modifier.weight(1f))
-                            Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, null, tint = MutedText, modifier = Modifier.size(14.dp))
+                            Row(
+                                modifier = Modifier.padding(horizontal = 20.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.ChecklistRtl, null, tint = EnergyEmerald)
+                                Spacer(Modifier.width(16.dp))
+                                Text("Cycle Count", color = Color.White, fontWeight = FontWeight.SemiBold)
+                                Spacer(Modifier.weight(1f))
+                                Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, null, tint = MutedText, modifier = Modifier.size(14.dp))
+                            }
                         }
                     }
                     Surface(

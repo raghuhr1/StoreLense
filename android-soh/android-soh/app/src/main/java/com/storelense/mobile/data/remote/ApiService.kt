@@ -189,6 +189,11 @@ interface ApiService {
         @Path("storeId") storeId: String
     ): Response<ApiResponse<List<ZoneDto>>>
 
+    @GET("api/stores/{storeId}/features")
+    suspend fun getStoreFeatures(
+        @Path("storeId") storeId: String
+    ): Response<ApiResponse<List<StoreFeatureDto>>>
+
     // ── Transfers ─────────────────────────────────────────────────────────────
 
     @POST("api/transfers")
