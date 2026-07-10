@@ -149,7 +149,7 @@ class SohSessionPauseResumeTest {
         when(sessionRepository.findActiveSessions(storeId)).thenReturn(java.util.List.of(existing));
 
         var req = new com.storelense.soh.dto.StartSessionRequest(
-                storeId, null, "cycle_count", null, null,
+                storeId, null, "cycle_count", null, null, null,
                 UUID.randomUUID(), "SALES_FLOOR", "MENS"
         );
 
