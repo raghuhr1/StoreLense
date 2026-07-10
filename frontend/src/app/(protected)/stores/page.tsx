@@ -29,9 +29,10 @@ const FEATURE_LABELS: Record<Feature, string> = {
 
 function FeaturesModal({ store, onClose }: { store: Store; onClose: () => void }) {
   const qc = useQueryClient()
-  const { data: features, isLoading } = useQuery({
+  const { data: features, isLoading, isError } = useQuery({
     queryKey: ['store-features', store.id],
     queryFn:  () => storesApi.getFeatures(store.id),
+    retry: 1,
   })
   const [local, setLocal] = useState<Record<string, boolean>>({})
 
@@ -66,6 +67,10 @@ function FeaturesModal({ store, onClose }: { store: Store; onClose: () => void }
           <div className="flex justify-center py-8">
             <div className="w-6 h-6 border-4 border-brand-600 border-t-transparent rounded-full animate-spin" />
           </div>
+        ) : isError ? (
+          <p className="text-sm text-red-500 bg-red-50 border border-red-200 rounded px-3 py-4 text-center">
+            Failed to load features. Ensure store-service is running with the latest build.
+          </p>
         ) : (
           <div className="space-y-2">
             {features?.map(f => {
