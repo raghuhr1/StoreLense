@@ -52,8 +52,8 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
     queryFn:  () => replenishmentRulesApi.list(id),
   })
   const { data: productsPage } = useQuery({
-    queryKey: ['products-store', id],
-    queryFn:  () => productsApi.list({ storeId: id, size: 200 }),
+    queryKey: ['products-all'],
+    queryFn:  () => productsApi.list({ size: 200 }),
   })
 
   const products = productsPage?.content ?? []
