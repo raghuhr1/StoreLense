@@ -22,9 +22,9 @@ const createSchema = z.object({
   firstName: z.string().min(1, 'Required'),
   lastName:  z.string().min(1, 'Required'),
   storeId:   z.string().optional(),
-  role:      z.enum(['ADMIN', 'STORE_MANAGER', 'STORE_ASSOCIATE', 'REFILL_ASSOCIATE']),
+  role:      z.enum(['ADMIN', 'STORE_MANAGER', 'STORE_ASSOCIATE', 'REFILL_ASSOCIATE', 'SECURITY_GUARD']),
 }).superRefine((data, ctx) => {
-  if (['STORE_MANAGER', 'STORE_ASSOCIATE'].includes(data.role) && !data.storeId) {
+  if (['STORE_MANAGER', 'STORE_ASSOCIATE', 'SECURITY_GUARD'].includes(data.role) && !data.storeId) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A store must be selected for this role', path: ['storeId'] })
   }
 })
@@ -33,10 +33,10 @@ const editSchema = z.object({
   firstName: z.string().min(1, 'Required'),
   lastName:  z.string().min(1, 'Required'),
   email:     z.string().email('Invalid email'),
-  role:      z.enum(['ADMIN', 'STORE_MANAGER', 'STORE_ASSOCIATE', 'REFILL_ASSOCIATE']),
+  role:      z.enum(['ADMIN', 'STORE_MANAGER', 'STORE_ASSOCIATE', 'REFILL_ASSOCIATE', 'SECURITY_GUARD']),
   storeId:   z.string().optional(),
 }).superRefine((data, ctx) => {
-  if (['STORE_MANAGER', 'STORE_ASSOCIATE'].includes(data.role) && !data.storeId) {
+  if (['STORE_MANAGER', 'STORE_ASSOCIATE', 'SECURITY_GUARD'].includes(data.role) && !data.storeId) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A store must be selected for this role', path: ['storeId'] })
   }
 })
@@ -193,6 +193,7 @@ export default function UsersPage() {
                     <option value="STORE_ASSOCIATE">Store Associate</option>
                     <option value="REFILL_ASSOCIATE">Refill Associate</option>
                     <option value="STORE_MANAGER">Store Manager</option>
+                    <option value="SECURITY_GUARD">Security Guard</option>
                     <option value="ADMIN">Admin</option>
                   </select>
                 </div>
@@ -255,6 +256,7 @@ export default function UsersPage() {
                     <option value="STORE_ASSOCIATE">Store Associate</option>
                     <option value="REFILL_ASSOCIATE">Refill Associate</option>
                     <option value="STORE_MANAGER">Store Manager</option>
+                    <option value="SECURITY_GUARD">Security Guard</option>
                     <option value="ADMIN">Admin</option>
                   </select>
                 </div>
