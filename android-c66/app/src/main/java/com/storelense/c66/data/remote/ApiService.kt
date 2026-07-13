@@ -24,7 +24,7 @@ interface ApiService {
     @POST("api/gate/checks")
     suspend fun recordGateCheck(@Body req: GateCheckRequest): Response<ApiResponse<Unit>>
 
-    @GET("api/gate/bills/{billRef}")
+    @GET("api/gate/checks/bills/{billRef}")
     suspend fun lookupBill(
         @Path("billRef") billRef: String,
         @Query("storeId") storeId: String
