@@ -66,6 +66,9 @@ android {
 }
 
 dependencies {
+    // Chainway UHF RFID SDK (C66/C72 — chainway flavor only)
+    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
+
     implementation(libs.core.ktx)
     implementation(libs.splash)
     implementation(libs.coroutines.android)
@@ -109,4 +112,9 @@ dependencies {
 
     implementation(libs.security.crypto)
     implementation(libs.timber)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.turbine)
+    testImplementation(libs.coroutines.test)
 }

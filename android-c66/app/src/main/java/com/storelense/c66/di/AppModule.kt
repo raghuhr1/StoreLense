@@ -7,9 +7,11 @@ import com.storelense.c66.data.remote.AuthInterceptor
 import com.storelense.c66.rfid.C66RfidReader
 import com.storelense.c66.rfid.ChainwayRfidReader
 import com.storelense.c66.rfid.MockC66Reader
+import android.content.Context
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -50,7 +52,7 @@ object AppModule {
         retrofit.create(ApiService::class.java)
 
     @Provides @Singleton
-    fun provideRfidReader(): C66RfidReader =
+    fun provideRfidReader(@ApplicationContext context: Context): C66RfidReader =
         if (BuildConfig.USE_MOCK_RFID) MockC66Reader()
-        else ChainwayRfidReader()
+        else ChainwayRfidReader(context)
 }
