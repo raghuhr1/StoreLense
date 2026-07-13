@@ -69,7 +69,7 @@ public class BillService {
         var bill = jdbcClient.sql("""
                 SELECT id, bill_ref, store_id, created_at
                 FROM inventory.bills
-                WHERE bill_ref = :billRef AND store_id = CAST(:storeId AS uuid)
+                WHERE UPPER(bill_ref) = UPPER(:billRef) AND store_id = CAST(:storeId AS uuid)
                 """)
                 .param("billRef",  billRef)
                 .param("storeId",  storeId.toString())
