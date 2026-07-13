@@ -35,6 +35,7 @@ const editSchema = z.object({
   email:     z.string().email('Invalid email'),
   role:      z.enum(['ADMIN', 'STORE_MANAGER', 'STORE_ASSOCIATE', 'REFILL_ASSOCIATE', 'SECURITY_GUARD']),
   storeId:   z.string().optional(),
+  password:  z.string().min(8, 'Min 8 characters').optional().or(z.literal('')),
 }).superRefine((data, ctx) => {
   if (['STORE_MANAGER', 'STORE_ASSOCIATE', 'SECURITY_GUARD'].includes(data.role) && !data.storeId) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A store must be selected for this role', path: ['storeId'] })
@@ -67,8 +68,16 @@ export default function UsersPage() {
   })
 
   const updateMut = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: EditValues }) =>
-      usersApi.update(id, { ...body, roles: [body.role], storeId: body.storeId || undefined }),
+    mutationFn: ({ id, body }: { id: string; body: EditValues }) => {
+      const payload: Record<string, unknown> = {
+        ...body,
+        roles:    [body.role],
+        storeId:  body.storeId || undefined,
+        password: body.password && body.password.length > 0 ? body.password : undefined,
+      }
+      delete payload.role
+      return usersApi.update(id, payload)
+    },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); setEditing(null); editForm.reset() },
   })
 
@@ -249,6 +258,11 @@ export default function UsersPage() {
                   <label className="block text-xs font-medium text-gray-700 mb-1">Email *</label>
                   <input {...editForm.register('email')} type="email" className="input-field" />
                   {editForm.formState.errors.email && <p className="text-xs text-red-500 mt-0.5">{editForm.formState.errors.email.message}</p>}
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">New Password <span className="text-gray-400 font-normal">(leave blank to keep current)</span></label>
+                  <input {...editForm.register('password')} type="password" placeholder="••••••••" className="input-field" />
+                  {editForm.formState.errors.password && <p className="text-xs text-red-500 mt-0.5">{editForm.formState.errors.password.message}</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Role *</label>

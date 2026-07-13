@@ -12,5 +12,6 @@ public record UpdateUserRequest(
         @Size(max = 100) String lastName,
         UUID storeId,
         Set<String> roles,
-        Boolean active
+        Boolean active,
+        @Size(min = 8, max = 128) String password
 ) {}

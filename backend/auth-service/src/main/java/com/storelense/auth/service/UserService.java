@@ -86,6 +86,9 @@ public class UserService {
         if (request.roles() != null && !request.roles().isEmpty()) {
             user.setRoles(roleRepository.findByNameIn(request.roles()));
         }
+        if (request.password() != null && !request.password().isBlank()) {
+            user.setPasswordHash(passwordEncoder.encode(request.password()));
+        }
 
         return userMapper.toResponse(userRepository.save(user));
     }
