@@ -103,18 +103,39 @@ fun GateScanScreen(
 
 @Composable
 private fun NoBillView(onLoadDemo: () -> Unit, onQrScanned: (String) -> Unit) {
-    var showScanner by remember { mutableStateOf(false) }
+    val useMockRfid = com.storelense.c66.BuildConfig.USE_MOCK_RFID
+    var showCameraScanner by remember { mutableStateOf(false) }
 
-    if (showScanner) {
+    // chainway flavor: hardware barcode scanner always active on this screen
+    if (!useMockRfid) {
+        ChainwayBarcodeScanner(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp, vertical = 16.dp),
+            onBarcodeDetected = onQrScanned
+        )
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                "Waiting for barcode scan…",
+                fontSize = 14.sp, color = SubText, textAlign = TextAlign.Center
+            )
+        }
+        return
+    }
+
+    // mock flavor: camera scanner + demo button
+    if (showCameraScanner) {
         Box(modifier = Modifier.fillMaxSize()) {
             QrScannerComposable(
                 modifier = Modifier.fillMaxSize(),
                 onQrDetected = { qr ->
-                    showScanner = false
+                    showCameraScanner = false
                     onQrScanned(qr)
                 }
             )
-            // Cancel overlay
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -122,7 +143,7 @@ private fun NoBillView(onLoadDemo: () -> Unit, onQrScanned: (String) -> Unit) {
                     .align(androidx.compose.ui.Alignment.BottomCenter)
             ) {
                 OutlinedButton(
-                    onClick = { showScanner = false },
+                    onClick = { showCameraScanner = false },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White.copy(alpha = 0.9f))
                 ) {
@@ -166,7 +187,7 @@ private fun NoBillView(onLoadDemo: () -> Unit, onQrScanned: (String) -> Unit) {
         )
         Spacer(Modifier.height(32.dp))
         Button(
-            onClick  = { showScanner = true },
+            onClick  = { showCameraScanner = true },
             modifier = Modifier.fillMaxWidth().height(52.dp),
             colors   = ButtonDefaults.buttonColors(containerColor = TealPrimary)
         ) {
