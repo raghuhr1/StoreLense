@@ -57,10 +57,11 @@ data class GateState(
     val error: String?              = null,
     val hasBill: Boolean            = false
 ) {
-    val totalRequired: Int  get() = items.sumOf { it.qtyRequired }
-    val totalMatched: Int   get() = items.sumOf { it.matchedEpcs.size }
+    val totalRequired: Int    get() = items.sumOf { it.qtyRequired }
+    val totalMatched: Int     get() = items.sumOf { it.matchedEpcs.size }
     val allFulfilled: Boolean get() = items.isNotEmpty() && items.all { it.status == LineStatus.FULFILLED }
     val allResolved: Boolean  get() = items.isNotEmpty() && items.all { it.isResolved }
+    val hasExtraItems: Boolean get() = extraEpcs.isNotEmpty()
 }
 
 // ── QR payload ────────────────────────────────────────────────────────────────
@@ -89,33 +90,63 @@ class GateScanViewModel @Inject constructor(
     // ── Bill QR ───────────────────────────────────────────────────────────────
 
     fun onQrScanned(rawQr: String) {
-        try {
-            val payload = gson.fromJson(rawQr, BillQrPayload::class.java)
-            if (payload.items.isEmpty()) {
-                _state.update { it.copy(error = "QR contains no items") }
-                return
-            }
-            val initialItems = payload.items.map { qrItem ->
-                BillLineItem(
-                    ean         = qrItem.ean,
-                    sku         = "",
-                    productName = "Resolving…",
-                    qtyRequired = qrItem.qty.coerceAtLeast(1)
-                )
-            }
-            _state.update { it.copy(
-                billRef        = payload.billRef.ifBlank { "Bill" },
-                items          = initialItems,
-                extraEpcs      = emptyList(),
-                hasBill        = true,
-                released       = false,
-                isResolvingBill = true,
-                error          = null
-            ) }
-            resolveAllEans(payload.items)
-        } catch (e: Exception) {
-            _state.update { it.copy(error = "Invalid QR — expected JSON with 'items' list") }
+        val trimmed = rawQr.trim()
+
+        // Try JSON-embedded bill first ({"billRef":"...","items":[...]})
+        if (trimmed.startsWith("{")) {
+            try {
+                val payload = gson.fromJson(trimmed, BillQrPayload::class.java)
+                if (payload.items.isNotEmpty()) {
+                    processBillPayload(payload)
+                    return
+                }
+            } catch (_: Exception) { /* fall through to reference lookup */ }
         }
+
+        // Plain bill reference barcode (e.g. "BILL-2026-001") — look up from backend
+        lookupBillByRef(trimmed)
+    }
+
+    private fun lookupBillByRef(billRef: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(isResolvingBill = true, hasBill = true, billRef = billRef, error = null) }
+            when (val result = gateRepo.lookupBill(billRef)) {
+                is Result.Success -> {
+                    val payload = BillQrPayload(
+                        billRef = billRef,
+                        items   = result.data.items.map { BillQrItem(ean = it.ean, qty = it.qty) }
+                    )
+                    processBillPayload(payload)
+                }
+                is Result.Error -> _state.update { it.copy(
+                    isResolvingBill = false,
+                    hasBill  = false,
+                    billRef  = "",
+                    error    = result.message
+                )}
+            }
+        }
+    }
+
+    private fun processBillPayload(payload: BillQrPayload) {
+        val initialItems = payload.items.map { qrItem ->
+            BillLineItem(
+                ean         = qrItem.ean,
+                sku         = "",
+                productName = "Resolving…",
+                qtyRequired = qrItem.qty.coerceAtLeast(1)
+            )
+        }
+        _state.update { it.copy(
+            billRef         = payload.billRef.ifBlank { "Bill" },
+            items           = initialItems,
+            extraEpcs       = emptyList(),
+            hasBill         = true,
+            released        = false,
+            isResolvingBill = true,
+            error           = null
+        ) }
+        resolveAllEans(payload.items)
     }
 
     /** For each EAN on the bill, call the backend to get the list of in_store EPCs. */
@@ -216,7 +247,7 @@ class GateScanViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isReleasing = true, error = null) }
             stopRfidScan()
-            val outcome = if (flagged) "FLAGGED" else if (s.extraEpcs.isEmpty()) "RELEASED" else "RELEASED"
+            val outcome = if (flagged) "FLAGGED" else "RELEASED"
             when (val result = gateRepo.markSold(matchedEpcs)) {
                 is Result.Success -> {
                     // Fire-and-forget: record gate check event for dashboard

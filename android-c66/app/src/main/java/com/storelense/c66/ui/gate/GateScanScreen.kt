@@ -89,11 +89,12 @@ fun GateScanScreen(
             )
             state.isResolvingBill -> ResolvingView()
             else                -> ActiveGateView(
-                state     = state,
-                onStart   = { vm.startRfidScan() },
-                onStop    = { vm.stopRfidScan() },
-                onRelease = { vm.releaseCustomer() },
-                modifier  = Modifier.padding(padding)
+                state        = state,
+                onStart      = { vm.startRfidScan() },
+                onStop       = { vm.stopRfidScan() },
+                onRelease    = { vm.releaseCustomer(flagged = false) },
+                onFlagRelease = { vm.releaseCustomer(flagged = true) },
+                modifier     = Modifier.padding(padding)
             )
         }
     }
@@ -272,8 +273,39 @@ private fun ActiveGateView(
     onStart: () -> Unit,
     onStop: () -> Unit,
     onRelease: () -> Unit,
+    onFlagRelease: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var showFlagDialog by remember { mutableStateOf(false) }
+
+    if (showFlagDialog) {
+        AlertDialog(
+            onDismissRequest = { showFlagDialog = false },
+            icon = { Icon(Icons.Default.Warning, null, tint = OrangeExtra) },
+            title = { Text("Extra Items Detected", fontWeight = FontWeight.Bold) },
+            text  = {
+                Text(
+                    "${state.extraEpcs.size} item${if (state.extraEpcs.size != 1) "s" else ""} in the bag " +
+                    "are NOT on this bill.\n\nChoose an action:",
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showFlagDialog = false; onFlagRelease() },
+                    colors  = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                ) {
+                    Text("Flag & Release", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showFlagDialog = false }) {
+                    Text("Cancel — Keep Scanning")
+                }
+            }
+        )
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         ProgressHeader(
             totalMatched  = state.totalMatched,
@@ -313,15 +345,17 @@ private fun ActiveGateView(
         }
 
         ActionBar(
-            isScanning   = state.isScanning,
-            isReleasing  = state.isReleasing,
-            canRelease   = state.totalMatched > 0,
-            allFulfilled = state.allFulfilled,
-            totalMatched = state.totalMatched,
+            isScanning    = state.isScanning,
+            isReleasing   = state.isReleasing,
+            canRelease    = state.totalMatched > 0,
+            allFulfilled  = state.allFulfilled,
+            hasExtraItems = state.hasExtraItems,
+            totalMatched  = state.totalMatched,
             totalRequired = state.totalRequired,
-            onStart      = onStart,
-            onStop       = onStop,
-            onRelease    = onRelease
+            onStart       = onStart,
+            onStop        = onStop,
+            onRelease     = onRelease,
+            onFlagRelease = { showFlagDialog = true }
         )
     }
 }
@@ -515,15 +549,17 @@ private fun ExtraEpcsCard(count: Int) {
 
 @Composable
 private fun ActionBar(
-    isScanning: Boolean,
-    isReleasing: Boolean,
-    canRelease: Boolean,
-    allFulfilled: Boolean,
-    totalMatched: Int,
+    isScanning:    Boolean,
+    isReleasing:   Boolean,
+    canRelease:    Boolean,
+    allFulfilled:  Boolean,
+    hasExtraItems: Boolean,
+    totalMatched:  Int,
     totalRequired: Int,
-    onStart: () -> Unit,
-    onStop: () -> Unit,
-    onRelease: () -> Unit
+    onStart:       () -> Unit,
+    onStop:        () -> Unit,
+    onRelease:     () -> Unit,
+    onFlagRelease: () -> Unit
 ) {
     Surface(tonalElevation = 4.dp, color = SurfaceWhite) {
         Column(
@@ -542,35 +578,52 @@ private fun ActionBar(
                 Text(if (isScanning) "Stop RFID Scan" else "Start RFID Scan")
             }
 
-            Button(
-                onClick  = onRelease,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                enabled  = canRelease && !isScanning && !isReleasing,
-                colors   = ButtonDefaults.buttonColors(
-                    containerColor         = if (allFulfilled) GreenFulfilled else AmberPartial,
-                    disabledContainerColor = Color(0xFFD1D5DB)
-                )
-            ) {
-                if (isReleasing) {
-                    CircularProgressIndicator(
-                        color    = Color.White,
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp
+            if (hasExtraItems && canRelease) {
+                // Hard stop: extra items found — force explicit flag decision
+                Button(
+                    onClick  = onFlagRelease,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    enabled  = !isScanning && !isReleasing,
+                    colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                ) {
+                    if (isReleasing) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Updating ledger…")
+                    } else {
+                        Icon(Icons.Default.Flag, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Extra Items — Flag & Release",
+                            fontWeight = FontWeight.Bold,
+                            fontSize   = 15.sp
+                        )
+                    }
+                }
+            } else {
+                Button(
+                    onClick  = onRelease,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    enabled  = canRelease && !isScanning && !isReleasing,
+                    colors   = ButtonDefaults.buttonColors(
+                        containerColor         = if (allFulfilled) GreenFulfilled else AmberPartial,
+                        disabledContainerColor = Color(0xFFD1D5DB)
                     )
-                    Spacer(Modifier.width(8.dp))
-                    Text("Updating ledger…")
-                } else {
-                    Icon(
-                        if (allFulfilled) Icons.Default.CheckCircle else Icons.Default.Warning,
-                        null
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        if (allFulfilled) "Release — All Matched"
-                        else "Release ($totalMatched / $totalRequired matched)",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize   = 15.sp
-                    )
+                ) {
+                    if (isReleasing) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Updating ledger…")
+                    } else {
+                        Icon(if (allFulfilled) Icons.Default.CheckCircle else Icons.Default.Warning, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (allFulfilled) "Release — All Matched"
+                            else "Release ($totalMatched / $totalRequired matched)",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize   = 15.sp
+                        )
+                    }
                 }
             }
         }

@@ -3,9 +3,12 @@ package com.storelense.inventory.controller;
 import com.storelense.common.dto.ApiResponse;
 import com.storelense.common.dto.PageResponse;
 import com.storelense.common.security.StoreLensePrincipal;
+import com.storelense.inventory.dto.BillLookupResponse;
+import com.storelense.inventory.dto.BillRegistrationRequest;
 import com.storelense.inventory.dto.GateCheckDto;
 import com.storelense.inventory.dto.GateCheckRequest;
 import com.storelense.inventory.dto.GateCheckSummaryDto;
+import com.storelense.inventory.service.BillService;
 import com.storelense.inventory.service.GateCheckService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -30,6 +33,7 @@ import java.util.UUID;
 public class GateCheckController {
 
     private final GateCheckService gateCheckService;
+    private final BillService billService;
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE','SECURITY_GUARD')")
@@ -61,6 +65,25 @@ public class GateCheckController {
         var result = gateCheckService.list(effectiveStoreId, effectiveFrom, effectiveTo,
                 outcome, PageRequest.of(page, size));
         return ResponseEntity.ok(ApiResponse.ok(PageResponse.from(result)));
+    }
+
+    @PostMapping("/bills")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE','POS_SYSTEM')")
+    @Operation(summary = "Register a bill from POS (idempotent)")
+    public ResponseEntity<ApiResponse<BillLookupResponse>> registerBill(
+            @Valid @RequestBody BillRegistrationRequest req) {
+        return ResponseEntity.ok(ApiResponse.ok(billService.register(req)));
+    }
+
+    @GetMapping("/bills/{billRef}")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE','SECURITY_GUARD')")
+    @Operation(summary = "Look up bill items by reference - called by C66 app")
+    public ResponseEntity<ApiResponse<BillLookupResponse>> lookupBill(
+            @PathVariable String billRef,
+            @RequestParam(required = false) UUID storeId,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+        UUID effectiveStoreId = principal.isAdmin() && storeId != null ? storeId : principal.storeId();
+        return ResponseEntity.ok(ApiResponse.ok(billService.lookup(billRef, effectiveStoreId)));
     }
 
     @GetMapping("/summary")
