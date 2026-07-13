@@ -20,23 +20,35 @@ android {
         applicationId = "com.storelense.c66"
         minSdk        = 29
         targetSdk     = 35
-        versionCode   = 1
-        versionName   = "1.0.0"
+        versionCode   = 2
+        versionName   = "1.1.0"
+    }
+
+    flavorDimensions += "rfid"
+    productFlavors {
+        create("mock") {
+            dimension = "rfid"
+            buildConfigField("Boolean", "USE_MOCK_RFID", "true")
+            applicationIdSuffix = ".mock"
+            versionNameSuffix   = "-mock"
+        }
+        create("chainway") {
+            dimension = "rfid"
+            buildConfigField("Boolean", "USE_MOCK_RFID", "false")
+        }
     }
 
     buildTypes {
         debug {
             val url = localProps.getProperty("storelense.debug.url", "http://10.0.2.2:8080/")
                 .trimEnd('/') + "/"
-            buildConfigField("String",  "BASE_URL",      "\"$url\"")
-            buildConfigField("Boolean", "USE_MOCK_RFID", "true")
+            buildConfigField("String", "BASE_URL", "\"$url\"")
             isDebuggable = true
         }
         release {
             val url = localProps.getProperty("storelense.release.url", "https://api.storelense.internal/")
                 .trimEnd('/') + "/"
-            buildConfigField("String",  "BASE_URL",      "\"$url\"")
-            buildConfigField("Boolean", "USE_MOCK_RFID", "false")
+            buildConfigField("String", "BASE_URL", "\"$url\"")
             isMinifyEnabled   = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -71,12 +83,29 @@ dependencies {
 
     implementation(libs.hilt.android)
     implementation(libs.hilt.navigation)
+    implementation(libs.hilt.work)
     ksp(libs.hilt.compiler)
+    ksp(libs.hilt.work.compiler)
 
     implementation(libs.retrofit)
     implementation(libs.retrofit.gson)
     implementation(libs.okhttp.logging)
     implementation(libs.gson)
+
+    // CameraX + ML Kit barcode
+    implementation(libs.camerax.core)
+    implementation(libs.camerax.camera2)
+    implementation(libs.camerax.lifecycle)
+    implementation(libs.camerax.view)
+    implementation(libs.mlkit.barcode)
+
+    // Room (offline queue)
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
+
+    // WorkManager (background sync)
+    implementation(libs.work.runtime)
 
     implementation(libs.security.crypto)
     implementation(libs.timber)

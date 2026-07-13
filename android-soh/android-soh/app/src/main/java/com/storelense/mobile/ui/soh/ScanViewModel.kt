@@ -425,7 +425,8 @@ class ScanViewModel @Inject constructor(
         _state.update { it.copy(phase = ScanPhase.Paused) }
         when (val r = soh.markMyZoneDone(sessionId, deviceId)) {
             is Result.Success -> {
-                pollJob?.cancel()   // no need to poll once we're done
+                // Fix: Do NOT cancel pollJob here. We need to keep polling to see 
+                // when other participants finish so we can trigger the final complete.
                 _state.update { it.copy(isZoneDone = true, activeDeviceCount = r.data.activeCount) }
                 if (r.data.isLastActive) {
                     _state.update { it.copy(showLastDeviceDialog = true) }
@@ -522,7 +523,15 @@ class ScanViewModel @Inject constructor(
             while (true) {
                 delay(PARTICIPANTS_POLL_MS)
                 when (val r = soh.getParticipants(sessionId)) {
-                    is Result.Success -> _state.update { it.copy(activeDeviceCount = r.data.activeCount) }
+                    is Result.Success -> {
+                        _state.update { it.copy(activeDeviceCount = r.data.activeCount) }
+                        
+                        // If we are already done with our zone, but were waiting for others, 
+                        // and now they are all done (activeCount == 0), show the finish dialog.
+                        if (_state.value.isZoneDone && r.data.activeCount == 0 && !_state.value.showLastDeviceDialog) {
+                            _state.update { it.copy(showLastDeviceDialog = true, error = null) }
+                        }
+                    }
                     else -> {}
                 }
             }

@@ -347,3 +347,26 @@ export interface EpcLedgerRow {
   lastSeenAt:  string | null
   firstSeenAt: string | null
 }
+
+// ─── Gate Checks ──────────────────────────────────────────────────────────────
+export interface GateCheckSummary {
+  totalChecks:     number
+  released:        number
+  flagged:         number
+  abandoned:       number
+  totalExtraItems: number
+  flagRate:        number
+}
+
+export interface GateCheck {
+  id:            string
+  storeId:       string
+  billRef:       string | null
+  checkedAt:     string
+  expectedCount: number
+  matchedCount:  number
+  extraCount:    number
+  outcome:       'RELEASED' | 'FLAGGED' | 'ABANDONED'
+  epcsMatched:   string[]
+  epcsExtra:     string[]
+}

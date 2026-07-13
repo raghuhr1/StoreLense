@@ -1,5 +1,6 @@
 package com.storelense.c66.ui.gate
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
@@ -8,6 +9,7 @@ import com.storelense.c66.data.repository.GateRepository
 import com.storelense.c66.data.repository.Result
 import com.storelense.c66.rfid.C66RfidReader
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -77,7 +79,8 @@ class GateScanViewModel @Inject constructor(
     private val gateRepo: GateRepository,
     private val authRepo: AuthRepository,
     private val rfid: C66RfidReader,
-    private val gson: Gson
+    private val gson: Gson,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(GateState())
@@ -148,6 +151,7 @@ class GateScanViewModel @Inject constructor(
     // ── Demo bill (for testing without a QR scanner) ──────────────────────────
 
     fun loadDemoBill() {
+        if (!com.storelense.c66.BuildConfig.DEBUG) return
         val demoJson = """{"billRef":"DEMO-BILL-001","items":[{"ean":"8901234567890","qty":2},{"ean":"8901234567891","qty":1}]}"""
         onQrScanned(demoJson)
     }
@@ -166,8 +170,15 @@ class GateScanViewModel @Inject constructor(
     }
 
     private fun onEpcRead(epc: String) {
+        // Determine match status from snapshot before the update so we can
+        // trigger haptic feedback outside the pure update lambda.
+        val snapshot = _state.value
+        val snapshotIndex = snapshot.items.indexOfFirst { line ->
+            epc in line.validEpcs && line.matchedEpcs.size < line.qtyRequired
+        }
+        val isNewMatch = snapshotIndex != -1 && epc !in snapshot.items[snapshotIndex].matchedEpcs
+
         _state.update { s ->
-            // Find which bill line this EPC belongs to
             val targetIndex = s.items.indexOfFirst { line ->
                 epc in line.validEpcs && line.matchedEpcs.size < line.qtyRequired
             }
@@ -182,29 +193,50 @@ class GateScanViewModel @Inject constructor(
             } else {
                 // EPC is not in any bill line's valid set → extra item
                 val allValidEpcs = s.items.flatMap { it.validEpcs }.toSet()
-                val alreadyMatched = s.items.flatMap { it.matchedEpcs }.toSet()
                 if (epc !in allValidEpcs && epc !in s.extraEpcs) {
                     s.copy(extraEpcs = s.extraEpcs + epc)
                 } else s
             }
         }
+
+        if (isNewMatch) {
+            // Haptic feedback on successful match
+            val vibrator = context.getSystemService(android.os.Vibrator::class.java)
+            vibrator?.vibrate(android.os.VibrationEffect.createOneShot(80, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+        }
     }
 
     // ── Release ───────────────────────────────────────────────────────────────
 
-    fun releaseCustomer() {
-        val matchedEpcs = _state.value.items.flatMap { it.matchedEpcs }
+    fun releaseCustomer(flagged: Boolean = false) {
+        val s = _state.value
+        val matchedEpcs = s.items.flatMap { it.matchedEpcs }
         if (matchedEpcs.isEmpty()) return
 
         viewModelScope.launch {
             _state.update { it.copy(isReleasing = true, error = null) }
             stopRfidScan()
+            val outcome = if (flagged) "FLAGGED" else if (s.extraEpcs.isEmpty()) "RELEASED" else "RELEASED"
             when (val result = gateRepo.markSold(matchedEpcs)) {
-                is Result.Success -> _state.update { it.copy(
-                    isReleasing = false,
-                    released    = true,
-                    markedCount = result.data
-                ) }
+                is Result.Success -> {
+                    // Fire-and-forget: record gate check event for dashboard
+                    launch {
+                        gateRepo.recordGateCheck(
+                            billRef       = s.billRef,
+                            expectedCount = s.totalRequired,
+                            matchedCount  = s.totalMatched,
+                            extraCount    = s.extraEpcs.size,
+                            outcome       = outcome,
+                            epcsMatched   = matchedEpcs,
+                            epcsExtra     = s.extraEpcs
+                        )
+                    }
+                    _state.update { it.copy(
+                        isReleasing = false,
+                        released    = true,
+                        markedCount = result.data
+                    ) }
+                }
                 is Result.Error -> _state.update { it.copy(
                     isReleasing = false,
                     error = result.message

@@ -9,7 +9,9 @@ interface ApiService {
     @POST("api/auth/login")
     suspend fun login(@Body req: LoginRequest): Response<ApiResponse<LoginData>>
 
-    /** Resolves an EAN barcode to all in_store EPCs for that product at the given store. */
+    @POST("api/auth/refresh")
+    suspend fun refresh(@Body req: RefreshRequest): Response<ApiResponse<RefreshData>>
+
     @GET("api/inventory/epc-by-ean/{ean}")
     suspend fun getEpcsByEan(
         @Path("ean") ean: String,
@@ -18,4 +20,7 @@ interface ApiService {
 
     @POST("api/inventory/epc/sold")
     suspend fun markEpcsSold(@Body req: MarkEpcsSoldRequest): Response<ApiResponse<MarkEpcsSoldResponse>>
+
+    @POST("api/gate/checks")
+    suspend fun recordGateCheck(@Body req: GateCheckRequest): Response<ApiResponse<Unit>>
 }

@@ -5,6 +5,7 @@ import com.storelense.c66.BuildConfig
 import com.storelense.c66.data.remote.ApiService
 import com.storelense.c66.data.remote.AuthInterceptor
 import com.storelense.c66.rfid.C66RfidReader
+import com.storelense.c66.rfid.ChainwayRfidReader
 import com.storelense.c66.rfid.MockC66Reader
 import dagger.Module
 import dagger.Provides
@@ -51,5 +52,5 @@ object AppModule {
     @Provides @Singleton
     fun provideRfidReader(): C66RfidReader =
         if (BuildConfig.USE_MOCK_RFID) MockC66Reader()
-        else MockC66Reader() // swap with ChainwayRfidReader() when SDK is available
+        else ChainwayRfidReader()
 }

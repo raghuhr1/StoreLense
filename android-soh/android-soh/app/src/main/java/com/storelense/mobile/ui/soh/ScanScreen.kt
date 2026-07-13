@@ -387,33 +387,45 @@ fun ScanScreen(
                             )
                         }
 
-                        // Finish Zone / Pending
+                        // Finish Zone / Pending / Force Finish
+                        val isWaiting = state.isZoneDone && state.activeDeviceCount > 0
+                        val canForceFinish = state.isZoneDone && state.activeDeviceCount == 0
+
                         Button(
-                            onClick  = vm::markZoneDone,
+                            onClick  = {
+                                if (canForceFinish) vm.completeAsLastDevice()
+                                else if (!state.isZoneDone) vm.markZoneDone()
+                            },
                             modifier = Modifier.weight(1.5f).height(60.dp),
                             shape    = RoundedCornerShape(18.dp),
                             colors   = ButtonDefaults.buttonColors(
-                                containerColor = EnergyEmerald,
+                                containerColor = if (canForceFinish) EnergyTeal else EnergyEmerald,
                                 disabledContainerColor = SurfaceSlate
                             ),
-                            enabled  = state.scannedCount > 0 && !state.isZoneDone
+                            enabled  = (state.scannedCount > 0 && !state.isZoneDone) || canForceFinish
                         ) {
-                            if (state.isZoneDone) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    CircularProgressIndicator(
-                                        color = MutedText,
-                                        modifier = Modifier.size(14.dp),
-                                        strokeWidth = 2.dp
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("PENDING…", fontWeight = FontWeight.Black, letterSpacing = 1.sp, color = MutedText)
+                            when {
+                                canForceFinish -> {
+                                    Text("FINISH AUDIT", fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                                 }
-                            } else {
-                                Text(
-                                    if (state.scannedCount == 0) "SCAN FIRST" else "FINISH ZONE",
-                                    fontWeight = FontWeight.Black,
-                                    letterSpacing = 1.sp
-                                )
+                                state.isZoneDone -> {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        CircularProgressIndicator(
+                                            color = MutedText,
+                                            modifier = Modifier.size(14.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("PENDING…", fontWeight = FontWeight.Black, letterSpacing = 1.sp, color = MutedText)
+                                    }
+                                }
+                                else -> {
+                                    Text(
+                                        if (state.scannedCount == 0) "SCAN FIRST" else "FINISH ZONE",
+                                        fontWeight = FontWeight.Black,
+                                        letterSpacing = 1.sp
+                                    )
+                                }
                             }
                         }
                     }

@@ -83,7 +83,10 @@ fun GateScanScreen(
                 markedCount    = state.markedCount,
                 onNextCustomer = { vm.reset() }
             )
-            !state.hasBill      -> NoBillView(onLoadDemo = { vm.loadDemoBill() })
+            !state.hasBill      -> NoBillView(
+                onLoadDemo  = { vm.loadDemoBill() },
+                onQrScanned = { vm.onQrScanned(it) }
+            )
             state.isResolvingBill -> ResolvingView()
             else                -> ActiveGateView(
                 state     = state,
@@ -99,7 +102,37 @@ fun GateScanScreen(
 // ── No-bill placeholder ───────────────────────────────────────────────────────
 
 @Composable
-private fun NoBillView(onLoadDemo: () -> Unit) {
+private fun NoBillView(onLoadDemo: () -> Unit, onQrScanned: (String) -> Unit) {
+    var showScanner by remember { mutableStateOf(false) }
+
+    if (showScanner) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            QrScannerComposable(
+                modifier = Modifier.fillMaxSize(),
+                onQrDetected = { qr ->
+                    showScanner = false
+                    onQrScanned(qr)
+                }
+            )
+            // Cancel overlay
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .align(androidx.compose.ui.Alignment.BottomCenter)
+            ) {
+                OutlinedButton(
+                    onClick = { showScanner = false },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White.copy(alpha = 0.9f))
+                ) {
+                    Text("Cancel", color = DarkText)
+                }
+            }
+        }
+        return
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -132,13 +165,25 @@ private fun NoBillView(onLoadDemo: () -> Unit) {
             textAlign = TextAlign.Center
         )
         Spacer(Modifier.height(32.dp))
-        OutlinedButton(
-            onClick = onLoadDemo,
-            colors  = ButtonDefaults.outlinedButtonColors(contentColor = TealPrimary)
+        Button(
+            onClick  = { showScanner = true },
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            colors   = ButtonDefaults.buttonColors(containerColor = TealPrimary)
         ) {
-            Icon(Icons.Default.BugReport, null, Modifier.size(16.dp))
-            Spacer(Modifier.width(6.dp))
-            Text("Load Demo Bill")
+            Icon(Icons.Default.QrCodeScanner, null)
+            Spacer(Modifier.width(8.dp))
+            Text("Open Camera Scanner", fontWeight = FontWeight.SemiBold)
+        }
+        if (com.storelense.c66.BuildConfig.DEBUG) {
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(
+                onClick = onLoadDemo,
+                colors  = ButtonDefaults.outlinedButtonColors(contentColor = TealPrimary)
+            ) {
+                Icon(Icons.Default.BugReport, null, Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Load Demo Bill")
+            }
         }
     }
 }
