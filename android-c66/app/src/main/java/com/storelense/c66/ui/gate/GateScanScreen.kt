@@ -88,8 +88,10 @@ fun GateScanScreen(
                 onNextCustomer = { vm.reset() }
             )
             !state.hasBill      -> NoBillView(
-                onLoadDemo  = { vm.loadDemoBill() },
-                onQrScanned = { vm.onQrScanned(it) }
+                onLoadDemo    = { vm.loadDemoBill() },
+                onQrScanned   = { vm.onQrScanned(it) },
+                errorMessage  = state.error,
+                modifier      = Modifier.padding(padding)
             )
             state.isResolvingBill -> ResolvingView()
             else                -> ActiveGateView(
@@ -107,104 +109,26 @@ fun GateScanScreen(
 // ── No-bill placeholder ───────────────────────────────────────────────────────
 
 @Composable
-private fun NoBillView(onLoadDemo: () -> Unit, onQrScanned: (String) -> Unit) {
-    val useMockRfid = com.storelense.c66.BuildConfig.USE_MOCK_RFID
+private fun NoBillView(
+    onLoadDemo:   () -> Unit,
+    onQrScanned:  (String) -> Unit,
+    errorMessage: String?  = null,
+    modifier:     Modifier = Modifier
+) {
+    val useMockRfid      = com.storelense.c66.BuildConfig.USE_MOCK_RFID
+    val focusRequester   = remember { FocusRequester() }
+    var scanInput        by remember { mutableStateOf("") }
     var showCameraScanner by remember { mutableStateOf(false) }
 
-    // chainway flavor: keyboard-wedge mode — scanner types barcode into focused field + Enter
-    if (!useMockRfid) {
-        val focusRequester = remember { FocusRequester() }
-        var scanInput by remember { mutableStateOf("") }
-
-        // Auto-focus so scanner output lands here immediately on screen open
-        LaunchedEffect(Unit) {
-            try { focusRequester.requestFocus() } catch (_: Exception) {}
-        }
-
-        Column(
-            modifier            = Modifier.fillMaxSize().padding(32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Box(
-                modifier        = Modifier.size(96.dp).clip(CircleShape)
-                    .background(TealPrimary.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.QrCodeScanner, null, Modifier.size(52.dp), tint = TealPrimary)
-            }
-            Spacer(Modifier.height(24.dp))
-            Text(
-                "Scan Customer Bill",
-                fontSize   = 22.sp, fontWeight = FontWeight.SemiBold,
-                color      = DarkText, textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Press the yellow trigger button and point at the bill barcode.",
-                fontSize = 14.sp, color = SubText, textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(32.dp))
-
-            // Visible input field — receives keyboard-wedge scanner output
-            OutlinedTextField(
-                value          = scanInput,
-                onValueChange  = { v ->
-                    // Scanner appends \n (Enter) after the barcode in wedge mode
-                    if (v.contains('\n')) {
-                        val code = v.replace("\n", "").trim()
-                        if (code.isNotBlank()) onQrScanned(code)
-                        scanInput = ""
-                    } else {
-                        scanInput = v
-                    }
-                },
-                modifier        = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(focusRequester),
-                label           = { Text("Bill barcode / reference") },
-                placeholder     = { Text("Scan or type here…") },
-                singleLine      = true,
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                    imeAction = ImeAction.Done
-                ),
-                keyboardActions = KeyboardActions(
-                    onDone = {
-                        val code = scanInput.trim()
-                        if (code.isNotBlank()) { onQrScanned(code); scanInput = "" }
-                    }
-                ),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor   = TealPrimary,
-                    focusedLabelColor    = TealPrimary
-                )
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Or type the bill reference and press Done",
-                fontSize = 12.sp, color = SubText
-            )
-
-            if (com.storelense.c66.BuildConfig.DEBUG) {
-                Spacer(Modifier.height(20.dp))
-                OutlinedButton(
-                    onClick = onLoadDemo,
-                    colors  = ButtonDefaults.outlinedButtonColors(contentColor = TealPrimary)
-                ) {
-                    Icon(Icons.Default.BugReport, null, Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Load Demo Bill")
-                }
-            }
-        }
-        return
+    // Request focus on entry so keyboard-wedge scanner output lands here immediately
+    LaunchedEffect(Unit) {
+        try { focusRequester.requestFocus() } catch (_: Exception) {}
     }
 
-    // mock flavor: camera scanner + demo button
     if (showCameraScanner) {
         Box(modifier = Modifier.fillMaxSize()) {
             QrScannerComposable(
-                modifier = Modifier.fillMaxSize(),
+                modifier    = Modifier.fillMaxSize(),
                 onQrDetected = { qr ->
                     showCameraScanner = false
                     onQrScanned(qr)
@@ -217,58 +141,109 @@ private fun NoBillView(onLoadDemo: () -> Unit, onQrScanned: (String) -> Unit) {
                     .align(androidx.compose.ui.Alignment.BottomCenter)
             ) {
                 OutlinedButton(
-                    onClick = { showCameraScanner = false },
+                    onClick  = { showCameraScanner = false },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White.copy(alpha = 0.9f))
-                ) {
-                    Text("Cancel", color = DarkText)
-                }
+                    colors   = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color.White.copy(alpha = 0.9f)
+                    )
+                ) { Text("Cancel", color = DarkText) }
             }
         }
         return
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
+        modifier            = modifier.fillMaxSize().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Box(
-            modifier = Modifier
-                .size(96.dp)
-                .clip(CircleShape)
+            modifier         = Modifier.size(80.dp).clip(CircleShape)
                 .background(TealPrimary.copy(alpha = 0.12f)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Default.QrCodeScanner, null, Modifier.size(52.dp), tint = TealPrimary)
+            Icon(Icons.Default.QrCodeScanner, null, Modifier.size(44.dp), tint = TealPrimary)
         }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(20.dp))
         Text(
             "Scan Customer Bill",
-            fontSize   = 22.sp,
-            fontWeight = FontWeight.SemiBold,
-            color      = DarkText,
-            textAlign  = TextAlign.Center
+            fontSize   = 22.sp, fontWeight = FontWeight.SemiBold,
+            color      = DarkText, textAlign = TextAlign.Center
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         Text(
-            "Point camera at the QR code on the customer's printed or digital receipt.",
-            fontSize  = 14.sp,
-            color     = SubText,
-            textAlign = TextAlign.Center
+            if (useMockRfid) "Scan QR or enter bill reference below"
+            else             "Press yellow trigger button to scan, or type bill reference",
+            fontSize  = 14.sp, color = SubText, textAlign = TextAlign.Center
         )
-        Spacer(Modifier.height(32.dp))
-        Button(
-            onClick  = { showCameraScanner = true },
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-            colors   = ButtonDefaults.buttonColors(containerColor = TealPrimary)
-        ) {
-            Icon(Icons.Default.QrCodeScanner, null)
-            Spacer(Modifier.width(8.dp))
-            Text("Open Camera Scanner", fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(28.dp))
+
+        // Single input field — works for keyboard-wedge scanner AND manual typing
+        OutlinedTextField(
+            value         = scanInput,
+            onValueChange = { v ->
+                // Keyboard-wedge scanners append \n or \r\n after the barcode
+                val hasTerminator = v.contains('\n') || v.contains('\r')
+                if (hasTerminator) {
+                    val code = v.replace("\r", "").replace("\n", "").trim()
+                    if (code.isNotBlank()) onQrScanned(code)
+                    scanInput = ""
+                } else {
+                    scanInput = v
+                }
+            },
+            modifier        = Modifier.fillMaxWidth().focusRequester(focusRequester),
+            label           = { Text("Bill barcode / reference") },
+            placeholder     = { Text("Scan or type here…") },
+            singleLine      = true,
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                imeAction = ImeAction.Done
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    val code = scanInput.trim()
+                    if (code.isNotBlank()) { onQrScanned(code); scanInput = "" }
+                }
+            ),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = TealPrimary,
+                focusedLabelColor  = TealPrimary
+            )
+        )
+        Spacer(Modifier.height(4.dp))
+        Text("Type bill reference and press Done on keyboard", fontSize = 11.sp, color = SubText)
+
+        if (!errorMessage.isNullOrBlank()) {
+            Spacer(Modifier.height(12.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFEE2E2)),
+                shape  = RoundedCornerShape(8.dp)
+            ) {
+                Row(
+                    Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Warning, null, Modifier.size(18.dp), tint = Color(0xFFDC2626))
+                    Spacer(Modifier.width(8.dp))
+                    Text(errorMessage, fontSize = 13.sp, color = Color(0xFFDC2626))
+                }
+            }
         }
+
+        // Camera scanner button — mock flavor only (C66 has no camera)
+        if (useMockRfid) {
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick  = { showCameraScanner = true },
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                colors   = ButtonDefaults.buttonColors(containerColor = TealPrimary)
+            ) {
+                Icon(Icons.Default.QrCodeScanner, null)
+                Spacer(Modifier.width(8.dp))
+                Text("Open Camera Scanner", fontWeight = FontWeight.SemiBold)
+            }
+        }
+
         if (com.storelense.c66.BuildConfig.DEBUG) {
             Spacer(Modifier.height(12.dp))
             OutlinedButton(
