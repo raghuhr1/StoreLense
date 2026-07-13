@@ -6,7 +6,7 @@ export type Feature =
 export interface StoreFeature { feature: Feature; enabled: boolean }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
-export type Role = 'ADMIN' | 'STORE_MANAGER' | 'STORE_ASSOCIATE' | 'REFILL_ASSOCIATE'
+export type Role = 'ADMIN' | 'STORE_MANAGER' | 'STORE_ASSOCIATE' | 'REFILL_ASSOCIATE' | 'SECURITY_GUARD'
 
 export interface AuthUser {
   userId: string
