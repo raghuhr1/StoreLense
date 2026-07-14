@@ -7,9 +7,11 @@ data class BillLookupItem(
 )
 
 data class BillLookupResponse(
-    val id:        String,
-    val billRef:   String,
-    val storeId:   String,
-    val createdAt: String,
-    val items:     List<BillLookupItem>
+    val id:            String,
+    val billRef:       String,
+    val storeId:       String,
+    val createdAt:     String,
+    val items:         List<BillLookupItem>,
+    val status:        String = "PENDING",
+    val gateCheckedAt: String? = null
 )

@@ -27,12 +27,16 @@ public class BillService {
     public BillLookupResponse register(BillRegistrationRequest req) {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
+        // A fresh registration means a new sale — reset gate-check status even if
+        // this bill_ref was previously released/flagged (e.g. ref reused after rollover).
         UUID billId = jdbcClient.sql("""
                 INSERT INTO inventory.bills (bill_ref, store_id, cashier_id, total_items, created_at)
                 VALUES (:billRef, CAST(:storeId AS uuid), CAST(:cashierId AS uuid), :totalItems, :now)
                 ON CONFLICT (bill_ref, store_id) DO UPDATE
-                    SET total_items = EXCLUDED.total_items,
-                        cashier_id  = EXCLUDED.cashier_id
+                    SET total_items     = EXCLUDED.total_items,
+                        cashier_id      = EXCLUDED.cashier_id,
+                        status          = 'PENDING',
+                        gate_checked_at = NULL
                 RETURNING id
                 """)
                 .param("billRef",     req.billRef())
@@ -61,13 +65,13 @@ public class BillService {
         }
 
         log.info("Bill registered: ref={} store={} items={}", req.billRef(), req.storeId(), req.items().size());
-        return new BillLookupResponse(billId, req.billRef(), req.storeId(), now, req.items());
+        return new BillLookupResponse(billId, req.billRef(), req.storeId(), now, req.items(), "PENDING", null);
     }
 
     @Transactional(readOnly = true)
     public BillLookupResponse lookup(String billRef, UUID storeId) {
         var bill = jdbcClient.sql("""
-                SELECT id, bill_ref, store_id, created_at
+                SELECT id, bill_ref, store_id, created_at, status, gate_checked_at
                 FROM inventory.bills
                 WHERE UPPER(bill_ref) = UPPER(:billRef) AND store_id = CAST(:storeId AS uuid)
                 """)
@@ -77,7 +81,9 @@ public class BillService {
                         rs.getObject("id", UUID.class),
                         rs.getString("bill_ref"),
                         rs.getObject("store_id", UUID.class),
-                        rs.getObject("created_at", OffsetDateTime.class)
+                        rs.getObject("created_at", OffsetDateTime.class),
+                        rs.getString("status"),
+                        rs.getObject("gate_checked_at", OffsetDateTime.class)
                 })
                 .optional()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -101,6 +107,6 @@ public class BillService {
                 .list();
 
         return new BillLookupResponse(billId, (String) bill[1], (UUID) bill[2],
-                (OffsetDateTime) bill[3], items);
+                (OffsetDateTime) bill[3], items, (String) bill[4], (OffsetDateTime) bill[5]);
     }
 }

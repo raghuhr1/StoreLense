@@ -58,6 +58,20 @@ public class GateCheckService {
                 .query(UUID.class)
                 .single();
 
+        // Stamp the outcome onto the bill so it can't be reopened for another scan.
+        if (req.billRef() != null && !req.billRef().isBlank()) {
+            jdbcClient.sql("""
+                    UPDATE inventory.bills
+                    SET status = :outcome, gate_checked_at = :now
+                    WHERE UPPER(bill_ref) = UPPER(:billRef) AND store_id = CAST(:storeId AS uuid)
+                    """)
+                    .param("outcome", req.outcome().toUpperCase())
+                    .param("now",     now)
+                    .param("billRef", req.billRef())
+                    .param("storeId", req.storeId().toString())
+                    .update();
+        }
+
         log.info("Gate check recorded: id={} store={} outcome={} matched={}/{}",
                 id, req.storeId(), req.outcome(), req.matchedCount(), req.expectedCount());
 

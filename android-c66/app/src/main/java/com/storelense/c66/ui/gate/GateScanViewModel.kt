@@ -12,11 +12,20 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+/** One-shot scan outcome, consumed by the UI to trigger sound/haptic feedback. */
+sealed class ScanEvent {
+    data class Matched(val ean: String)   : ScanEvent()
+    object Extra                          : ScanEvent()
+    object Duplicate                      : ScanEvent()
+}
 
 // ── Data model ────────────────────────────────────────────────────────────────
 
@@ -87,6 +96,9 @@ class GateScanViewModel @Inject constructor(
     private val _state = MutableStateFlow(GateState())
     val state = _state.asStateFlow()
 
+    private val _scanEvents = MutableSharedFlow<ScanEvent>(extraBufferCapacity = 16)
+    val scanEvents = _scanEvents.asSharedFlow()
+
     // ── Bill QR ───────────────────────────────────────────────────────────────
 
     fun onQrScanned(rawQr: String) {
@@ -112,6 +124,17 @@ class GateScanViewModel @Inject constructor(
             _state.update { it.copy(isResolvingBill = true, hasBill = true, billRef = billRef, error = null) }
             when (val result = gateRepo.lookupBill(billRef)) {
                 is Result.Success -> {
+                    if (result.data.status != "PENDING") {
+                        _state.update { it.copy(
+                            isResolvingBill = false,
+                            hasBill  = false,
+                            billRef  = "",
+                            error    = "Bill '$billRef' was already ${result.data.status.lowercase()} at the gate" +
+                                (result.data.gateCheckedAt?.let { ts -> " ($ts)" } ?: "") +
+                                " — contact your manager if it needs re-checking."
+                        )}
+                        return@launch
+                    }
                     val payload = BillQrPayload(
                         billRef = billRef,
                         items   = result.data.items.map { BillQrItem(ean = it.ean, qty = it.qty) }
@@ -201,13 +224,20 @@ class GateScanViewModel @Inject constructor(
     }
 
     private fun onEpcRead(epc: String) {
-        // Determine match status from snapshot before the update so we can
-        // trigger haptic feedback outside the pure update lambda.
+        // Classify the outcome from a snapshot before the update, so we can
+        // emit a scan event / haptic outside the pure update lambda.
         val snapshot = _state.value
-        val snapshotIndex = snapshot.items.indexOfFirst { line ->
+        val snapshotTarget = snapshot.items.indexOfFirst { line ->
             epc in line.validEpcs && line.matchedEpcs.size < line.qtyRequired
         }
-        val isNewMatch = snapshotIndex != -1 && epc !in snapshot.items[snapshotIndex].matchedEpcs
+        val snapshotEan = if (snapshotTarget != -1) snapshot.items[snapshotTarget].ean else null
+        val allValidEpcs = snapshot.items.flatMap { it.validEpcs }.toSet()
+
+        val event: ScanEvent? = when {
+            snapshotTarget != -1 -> ScanEvent.Matched(snapshotEan!!)
+            epc !in allValidEpcs && epc !in snapshot.extraEpcs -> ScanEvent.Extra
+            else -> ScanEvent.Duplicate
+        }
 
         _state.update { s ->
             val targetIndex = s.items.indexOfFirst { line ->
@@ -223,17 +253,24 @@ class GateScanViewModel @Inject constructor(
                 } else s
             } else {
                 // EPC is not in any bill line's valid set → extra item
-                val allValidEpcs = s.items.flatMap { it.validEpcs }.toSet()
-                if (epc !in allValidEpcs && epc !in s.extraEpcs) {
+                val allValid = s.items.flatMap { it.validEpcs }.toSet()
+                if (epc !in allValid && epc !in s.extraEpcs) {
                     s.copy(extraEpcs = s.extraEpcs + epc)
                 } else s
             }
         }
 
-        if (isNewMatch) {
-            // Haptic feedback on successful match
-            val vibrator = context.getSystemService(android.os.Vibrator::class.java)
-            vibrator?.vibrate(android.os.VibrationEffect.createOneShot(80, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+        event?.let { _scanEvents.tryEmit(it) }
+
+        val vibrator = context.getSystemService(android.os.Vibrator::class.java)
+        when (event) {
+            is ScanEvent.Matched -> vibrator?.vibrate(
+                android.os.VibrationEffect.createOneShot(80, android.os.VibrationEffect.DEFAULT_AMPLITUDE)
+            )
+            ScanEvent.Extra -> vibrator?.vibrate(
+                android.os.VibrationEffect.createWaveform(longArrayOf(0, 100, 60, 100), -1)
+            )
+            ScanEvent.Duplicate, null -> { /* no haptic — already counted */ }
         }
     }
 

@@ -2,6 +2,10 @@ package com.storelense.c66.ui.gate
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,6 +29,11 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
+import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
@@ -50,6 +59,33 @@ fun GateScanScreen(
     vm: GateScanViewModel = hiltViewModel()
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+
+    var flashEan by remember { mutableStateOf<String?>(null) }
+    val toneGenerator = remember {
+        android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 80)
+    }
+    DisposableEffect(Unit) { onDispose { toneGenerator.release() } }
+
+    LaunchedEffect(vm) {
+        vm.scanEvents.collect { event ->
+            when (event) {
+                is ScanEvent.Matched -> {
+                    toneGenerator.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 120)
+                    flashEan = event.ean
+                }
+                ScanEvent.Extra -> {
+                    toneGenerator.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 250)
+                }
+                ScanEvent.Duplicate -> { /* silent — already counted */ }
+            }
+        }
+    }
+    LaunchedEffect(flashEan) {
+        if (flashEan != null) {
+            kotlinx.coroutines.delay(600)
+            flashEan = null
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -96,6 +132,7 @@ fun GateScanScreen(
             state.isResolvingBill -> ResolvingView()
             else                -> ActiveGateView(
                 state        = state,
+                flashEan     = flashEan,
                 onStart      = { vm.startRfidScan() },
                 onStop       = { vm.stopRfidScan() },
                 onRelease    = { vm.releaseCustomer(flagged = false) },
@@ -116,9 +153,34 @@ private fun NoBillView(
     modifier:     Modifier = Modifier
 ) {
     val useMockRfid      = com.storelense.c66.BuildConfig.USE_MOCK_RFID
+    val context          = LocalContext.current
     val focusRequester   = remember { FocusRequester() }
     var scanInput        by remember { mutableStateOf("") }
     var showCameraScanner by remember { mutableStateOf(false) }
+    var cameraPermissionDenied by remember { mutableStateOf(false) }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            cameraPermissionDenied = false
+            showCameraScanner = true
+        } else {
+            cameraPermissionDenied = true
+        }
+    }
+
+    fun openCameraScanner() {
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+        if (hasPermission) {
+            cameraPermissionDenied = false
+            showCameraScanner = true
+        } else {
+            cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+        }
+    }
 
     // Request focus on entry so keyboard-wedge scanner output lands here immediately
     LaunchedEffect(Unit) {
@@ -230,18 +292,36 @@ private fun NoBillView(
             }
         }
 
-        // Camera scanner button — mock flavor only (C66 has no camera)
-        if (useMockRfid) {
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick  = { showCameraScanner = true },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                colors   = ButtonDefaults.buttonColors(containerColor = TealPrimary)
+        if (cameraPermissionDenied) {
+            Spacer(Modifier.height(12.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFEE2E2)),
+                shape  = RoundedCornerShape(8.dp)
             ) {
-                Icon(Icons.Default.QrCodeScanner, null)
-                Spacer(Modifier.width(8.dp))
-                Text("Open Camera Scanner", fontWeight = FontWeight.SemiBold)
+                Row(
+                    Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Warning, null, Modifier.size(18.dp), tint = Color(0xFFDC2626))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Camera permission denied — enable it in Settings to use the camera scanner",
+                        fontSize = 13.sp, color = Color(0xFFDC2626)
+                    )
+                }
             }
+        }
+
+        // Camera scanner button — available on all flavors; requests CAMERA permission on demand
+        Spacer(Modifier.height(16.dp))
+        Button(
+            onClick  = { openCameraScanner() },
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            colors   = ButtonDefaults.buttonColors(containerColor = TealPrimary)
+        ) {
+            Icon(Icons.Default.QrCodeScanner, null)
+            Spacer(Modifier.width(8.dp))
+            Text("Open Camera Scanner", fontWeight = FontWeight.SemiBold)
         }
 
         if (com.storelense.c66.BuildConfig.DEBUG) {
@@ -318,6 +398,7 @@ private fun ReleasedView(markedCount: Int, onNextCustomer: () -> Unit) {
 @Composable
 private fun ActiveGateView(
     state: GateState,
+    flashEan: String?,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onRelease: () -> Unit,
@@ -385,10 +466,10 @@ private fun ActiveGateView(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(state.items, key = { it.ean }) { line ->
-                BillLineCard(line)
+                BillLineCard(line, justMatched = line.ean == flashEan)
             }
             if (state.extraEpcs.isNotEmpty()) {
-                item { ExtraEpcsCard(count = state.extraEpcs.size) }
+                item { ExtraEpcsCard(epcs = state.extraEpcs) }
             }
         }
 
@@ -435,11 +516,22 @@ private fun ProgressHeader(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                val infiniteTransition = rememberInfiniteTransition(label = "scanPulse")
+                val pulseAlpha by infiniteTransition.animateFloat(
+                    initialValue = 1f,
+                    targetValue  = 0.3f,
+                    animationSpec = infiniteRepeatable(
+                        animation  = tween(700),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "pulseAlpha"
+                )
                 Icon(
                     if (allFulfilled) Icons.Default.CheckCircle else Icons.Default.Nfc,
                     null,
                     Modifier.size(22.dp),
-                    tint = if (allFulfilled) Color.White else TealAccent
+                    tint = if (allFulfilled) Color.White
+                           else TealAccent.copy(alpha = if (isScanning) pulseAlpha else 1f)
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
@@ -484,16 +576,21 @@ private fun ProgressHeader(
 // ── Bill line card ────────────────────────────────────────────────────────────
 
 @Composable
-private fun BillLineCard(line: BillLineItem) {
+private fun BillLineCard(line: BillLineItem, justMatched: Boolean = false) {
     val statusColor = when (line.status) {
         LineStatus.FULFILLED -> GreenFulfilled
         LineStatus.PARTIAL   -> AmberPartial
         LineStatus.PENDING   -> GrayPending
     }
+    val cardBg by animateColorAsState(
+        targetValue   = if (justMatched) GreenFulfilled.copy(alpha = 0.18f) else SurfaceWhite,
+        animationSpec = tween(600),
+        label         = "lineFlash"
+    )
 
     Card(
         modifier  = Modifier.fillMaxWidth(),
-        colors    = CardDefaults.cardColors(containerColor = SurfaceWhite),
+        colors    = CardDefaults.cardColors(containerColor = cardBg),
         shape     = RoundedCornerShape(10.dp),
         elevation = CardDefaults.cardElevation(1.dp)
     ) {
@@ -549,44 +646,51 @@ private fun BillLineCard(line: BillLineItem) {
                 )
             }
         }
-        if (line.qtyRequired > 1) {
-            LinearProgressIndicator(
-                progress   = { (line.matchedEpcs.size.toFloat() / line.qtyRequired).coerceIn(0f, 1f) },
-                modifier   = Modifier.fillMaxWidth().height(3.dp),
-                color      = statusColor,
-                trackColor = statusColor.copy(alpha = 0.15f)
-            )
-        }
+        LinearProgressIndicator(
+            progress   = { (line.matchedEpcs.size.toFloat() / line.qtyRequired.coerceAtLeast(1)).coerceIn(0f, 1f) },
+            modifier   = Modifier.fillMaxWidth().height(3.dp),
+            color      = statusColor,
+            trackColor = statusColor.copy(alpha = 0.15f)
+        )
     }
 }
 
 // ── Extra EPC warning ─────────────────────────────────────────────────────────
 
 @Composable
-private fun ExtraEpcsCard(count: Int) {
+private fun ExtraEpcsCard(epcs: List<String>) {
+    val count = epcs.size
     Card(
         modifier  = Modifier.fillMaxWidth(),
         colors    = CardDefaults.cardColors(containerColor = Color(0xFFFFF7ED)),
         shape     = RoundedCornerShape(10.dp),
         elevation = CardDefaults.cardElevation(1.dp)
     ) {
-        Row(
-            modifier          = Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Default.Warning, null, Modifier.size(22.dp), tint = OrangeExtra)
-            Spacer(Modifier.width(12.dp))
-            Column {
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Warning, null, Modifier.size(22.dp), tint = OrangeExtra)
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(
+                        "Extra items detected",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize   = 14.sp,
+                        color      = OrangeExtra
+                    )
+                    Text(
+                        "$count item${if (count != 1) "s" else ""} in bag not on this bill — inspect bag",
+                        fontSize = 12.sp,
+                        color    = Color(0xFF92400E)
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            epcs.forEach { epc ->
                 Text(
-                    "Extra items detected",
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize   = 14.sp,
-                    color      = OrangeExtra
-                )
-                Text(
-                    "$count item${if (count != 1) "s" else ""} in bag not on this bill — inspect bag",
+                    "• $epc",
                     fontSize = 12.sp,
-                    color    = Color(0xFF92400E)
+                    color    = Color(0xFF92400E),
+                    modifier = Modifier.padding(start = 34.dp, top = 2.dp)
                 )
             }
         }

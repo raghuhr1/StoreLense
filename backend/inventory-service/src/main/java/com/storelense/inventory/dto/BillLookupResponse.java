@@ -9,5 +9,7 @@ public record BillLookupResponse(
         String          billRef,
         UUID            storeId,
         OffsetDateTime  createdAt,
-        List<BillItemDto> items
+        List<BillItemDto> items,
+        String          status,
+        OffsetDateTime  gateCheckedAt
 ) {}
