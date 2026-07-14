@@ -32,6 +32,7 @@ fun WorkflowsScreen(
     onTransferOut: () -> Unit,
     onExceptions: () -> Unit,
     onProductSearch: () -> Unit,
+    onTagItems: () -> Unit = {},
     onHome: () -> Unit,
     onScan: () -> Unit,
     onLocate: () -> Unit,
@@ -154,6 +155,15 @@ fun WorkflowsScreen(
                             badge    = null,
                             badgeColor = Color.Gray,
                             onClick  = onProductSearch
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        WorkflowRow(
+                            icon     = Icons.Default.Sell,
+                            label    = "Tag Items",
+                            subtitle = "Assign EPC to product",
+                            badge    = null,
+                            badgeColor = Color.Gray,
+                            onClick  = onTagItems
                         )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         WorkflowRow(

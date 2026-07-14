@@ -183,4 +183,9 @@ interface ApiService {
         @Path("sku")      sku: String,
         @Query("storeId") storeId: String
     ): Response<ApiResponse<InventorySkuDto>>
+
+    // ── Tag Items (commission an EPC onto a product) ──────────────────────────
+
+    @POST("api/inventory/commission")
+    suspend fun commissionTag(@Body req: CommissionRequest): Response<ApiResponse<CommissionResponseDto>>
 }

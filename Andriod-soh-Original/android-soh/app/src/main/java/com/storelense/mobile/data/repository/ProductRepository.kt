@@ -3,6 +3,8 @@ package com.storelense.mobile.data.repository
 import com.storelense.mobile.data.local.dao.ProductDao
 import com.storelense.mobile.data.local.entity.ProductEntity
 import com.storelense.mobile.data.remote.ApiService
+import com.storelense.mobile.data.remote.dto.CommissionRequest
+import com.storelense.mobile.data.remote.dto.CommissionResponseDto
 import com.storelense.mobile.data.remote.dto.ProductDto
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
@@ -54,6 +56,24 @@ class ProductRepository @Inject constructor(
     }
 
     suspend fun catalogCount(storeId: String): Int = productDao.countForStore(storeId)
+
+    suspend fun commissionTag(
+        storeId: String,
+        sku: String,
+        epc: String,
+        zone: String,
+        replacesEpc: String? = null
+    ): Result<CommissionResponseDto> = try {
+        val resp = api.commissionTag(CommissionRequest(storeId, sku, epc, zone, replacesEpc))
+        val body = resp.body()
+        if (resp.isSuccessful && body?.success == true && body.data != null) {
+            Result.Success(body.data)
+        } else {
+            Result.Error(body?.message ?: "Failed to tag item")
+        }
+    } catch (e: Exception) {
+        Result.Error(e.message ?: "Network error")
+    }
 
     private fun ProductDto.toEntity(storeId: String) = ProductEntity(
         id           = id,

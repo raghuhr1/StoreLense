@@ -45,6 +45,7 @@ import com.storelense.mobile.ui.soh.SessionListScreen
 import com.storelense.mobile.ui.soh.SohResultScreen
 import com.storelense.mobile.ui.spotcount.QuickSpotCountScreen
 import com.storelense.mobile.ui.sync.SyncStatusScreen
+import com.storelense.mobile.ui.tagitems.TagItemsScreen
 
 object Routes {
     const val LOGIN            = "login"
@@ -63,6 +64,7 @@ object Routes {
     const val ITEM_LOCATOR     = "item_locator"
     const val ITEM_LOCATOR_EPC = "item_locator/{epc}"
     const val SPOT_COUNT       = "spot_count"
+    const val TAG_ITEMS        = "tag_items"
 
     // ── Block 14 ─────────────────────────────────────────────────────────
     const val GEIGER_LOCATE    = "geiger_locate/{epc}"
@@ -141,6 +143,7 @@ fun AppNavigation() {
                 onTransferOut   = { nav.navigate(Routes.TRANSFER_OUT) },
                 onExceptions    = { nav.navigate(Routes.EXCEPTIONS) },
                 onProductSearch = { nav.navigate(Routes.PRODUCT_SEARCH) },
+                onTagItems      = { nav.navigate(Routes.TAG_ITEMS) },
                 onHome          = { nav.navigate(Routes.HOME) { popUpTo(Routes.HOME) { inclusive = true } } },
                 onScan          = { nav.navigate(Routes.SOH_LIST) },
                 onLocate        = { nav.navigate(Routes.ITEM_LOCATOR) },
@@ -283,6 +286,10 @@ fun AppNavigation() {
 
         composable(Routes.SPOT_COUNT) {
             QuickSpotCountScreen(onBack = { nav.popBackStack() })
+        }
+
+        composable(Routes.TAG_ITEMS) {
+            TagItemsScreen(onBack = { nav.popBackStack() })
         }
 
         // ── Geiger Locate ─────────────────────────────────────────────────

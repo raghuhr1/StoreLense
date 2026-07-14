@@ -541,39 +541,44 @@ public class InventoryService {
                 .orElseThrow(() -> new ResourceNotFoundException("Zone", req.zone()));
 
         String epc = req.epc().toUpperCase();
+        String replacesEpc = req.replacesEpc() != null ? req.replacesEpc().toUpperCase() : null;
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
-        // Detect EPC replacement: if this product already has in_store EPCs at this store
-        // (other than the new one being commissioned), those are old physical tags being replaced.
-        // Mark them 'replaced' so the in-store count doesn't inflate.
-        int replacedEpcCount = jdbcClient.sql("""
-                UPDATE inventory.epc_registry
-                SET status = 'replaced', updated_at = :now
-                WHERE store_id   = CAST(:storeId AS uuid)
-                  AND product_id = CAST(:productId AS uuid)
-                  AND status     = 'in_store'
-                  AND epc        != :epc
-                """)
-                .param("storeId", req.storeId().toString())
-                .param("productId", product.id().toString())
-                .param("epc", epc)
-                .param("now", now)
-                .update();
-
-        boolean isReplacement = replacedEpcCount > 0;
-
-        // Deactivate old epc_tags for this product when replacing
-        if (isReplacement) {
-            jdbcClient.sql("""
-                    UPDATE products.epc_tags
-                    SET is_active = false, updated_at = :now
-                    WHERE product_id = CAST(:productId AS uuid)
-                      AND epc        != :epc
+        // Commissioning is additive by default — each call tags one more physical unit
+        // of this SKU, and should NOT disturb any other EPC already tagged for it (a
+        // product with 100 physical units ends up with 100 in_store EPCs). A tag is only
+        // ever retired when the associate explicitly names it via replacesEpc (e.g. the
+        // old sticker fell off / was damaged) — never inferred from "some other EPC
+        // happens to already be in_store for this product."
+        boolean isReplacement = false;
+        if (replacesEpc != null) {
+            int replacedEpcCount = jdbcClient.sql("""
+                    UPDATE inventory.epc_registry
+                    SET status = 'replaced', updated_at = :now
+                    WHERE store_id   = CAST(:storeId AS uuid)
+                      AND product_id = CAST(:productId AS uuid)
+                      AND epc        = :replacesEpc
+                      AND status     = 'in_store'
                     """)
+                    .param("storeId", req.storeId().toString())
                     .param("productId", product.id().toString())
-                    .param("epc", epc)
+                    .param("replacesEpc", replacesEpc)
                     .param("now", now)
                     .update();
+            isReplacement = replacedEpcCount > 0;
+
+            if (isReplacement) {
+                jdbcClient.sql("""
+                        UPDATE products.epc_tags
+                        SET is_active = false, updated_at = :now
+                        WHERE product_id = CAST(:productId AS uuid)
+                          AND epc        = :replacesEpc
+                        """)
+                        .param("productId", product.id().toString())
+                        .param("replacesEpc", replacesEpc)
+                        .param("now", now)
+                        .update();
+            }
         }
 
         jdbcClient.sql("""
@@ -587,7 +592,9 @@ public class InventoryService {
                 .param("now", now)
                 .update();
 
-        jdbcClient.sql("""
+        // Row count tells us whether this EPC was genuinely new to this store's registry —
+        // guards against double-incrementing on-hand if the same EPC is scanned/submitted twice.
+        int registryInsertCount = jdbcClient.sql("""
                 INSERT INTO inventory.epc_registry
                        (epc, store_id, product_id, zone_id, status,
                         first_seen_at, last_seen_at, created_at, updated_at)
@@ -602,12 +609,15 @@ public class InventoryService {
                 .param("now", now)
                 .update();
 
-        // Only increment quantity_on_hand when this is a genuinely new item being tagged.
-        // When replacing an old damaged/wrong EPC, the item was already counted — don't double-count.
+        boolean isNewEpcForStore = registryInsertCount > 0;
+
+        // Only increment quantity_on_hand for a genuinely new physical unit: a fresh EPC
+        // for this store, and not standing in for a named replaced tag (that unit was
+        // already counted).
         inventoryStateRepository.findByStoreIdAndProductIdAndZoneId(req.storeId(), product.id(), zoneId)
                 .ifPresentOrElse(
                         state -> {
-                            if (!isReplacement) {
+                            if (isNewEpcForStore && !isReplacement) {
                                 state.setQuantityOnHand(state.getQuantityOnHand() + 1);
                             }
                             state.setAccuracyPct(calcAccuracy(state.getQuantityOnHand(), state.getQuantityExpected()));
@@ -618,7 +628,7 @@ public class InventoryService {
                                         .storeId(req.storeId())
                                         .productId(product.id())
                                         .zoneId(zoneId)
-                                        .quantityOnHand(1)
+                                        .quantityOnHand(isNewEpcForStore && !isReplacement ? 1 : 0)
                                         .quantityExpected(0)
                                         .build()));
 
