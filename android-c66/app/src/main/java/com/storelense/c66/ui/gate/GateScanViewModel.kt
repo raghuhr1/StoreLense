@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
+import com.storelense.c66.data.remote.dto.BillLookupItem
 import com.storelense.c66.data.remote.dto.GateCheckDto
 import com.storelense.c66.data.repository.AuthRepository
 import com.storelense.c66.data.repository.GateRepository
@@ -66,7 +67,10 @@ data class GateState(
     val markedCount: Int            = 0,
     val error: String?              = null,
     val hasBill: Boolean            = false,
-    val recentBills: List<GateCheckDto> = emptyList()
+    val recentBills: List<GateCheckDto> = emptyList(),
+    /** billRef -> its item list, fetched on demand when a guard expands a recent bill. */
+    val billDetailsCache: Map<String, List<BillLookupItem>> = emptyMap(),
+    val loadingBillDetailsFor: String? = null
 ) {
     val totalRequired: Int    get() = items.sumOf { it.qtyRequired }
     val totalMatched: Int     get() = items.sumOf { it.matchedEpcs.size }
@@ -110,6 +114,26 @@ class GateScanViewModel @Inject constructor(
             when (val result = gateRepo.getMyRecentChecks()) {
                 is Result.Success -> _state.update { it.copy(recentBills = result.data) }
                 is Result.Error   -> { /* non-critical — leave existing list as-is */ }
+            }
+        }
+    }
+
+    /** Fetch a bill's full item list on demand (e.g. a guard expanding a recent bill
+     *  entry to see what was on it). Only ever displays real inventory items — an
+     *  extra/non-inventory EPC scanned against a bill never appears here since this
+     *  reads the bill's registered line items, not scanned EPCs. */
+    fun loadBillDetails(billRef: String) {
+        if (billRef.isBlank() || _state.value.billDetailsCache.containsKey(billRef)) return
+        viewModelScope.launch {
+            _state.update { it.copy(loadingBillDetailsFor = billRef) }
+            when (val result = gateRepo.lookupBill(billRef)) {
+                is Result.Success -> _state.update {
+                    it.copy(
+                        billDetailsCache = it.billDetailsCache + (billRef to result.data.items),
+                        loadingBillDetailsFor = null
+                    )
+                }
+                is Result.Error -> _state.update { it.copy(loadingBillDetailsFor = null) }
             }
         }
     }

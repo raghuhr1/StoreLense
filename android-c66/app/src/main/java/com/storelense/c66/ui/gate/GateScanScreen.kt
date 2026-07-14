@@ -7,6 +7,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -127,14 +128,19 @@ fun GateScanScreen(
         when {
             state.released      -> ReleasedView(
                 markedCount    = state.markedCount,
+                items          = state.items,
+                extraEpcs      = state.extraEpcs,
                 onNextCustomer = { vm.reset() }
             )
             !state.hasBill      -> NoBillView(
-                onLoadDemo    = { vm.loadDemoBill() },
-                onQrScanned   = { vm.onQrScanned(it) },
-                errorMessage  = state.error,
-                recentBills   = state.recentBills,
-                modifier      = Modifier.padding(padding)
+                onLoadDemo       = { vm.loadDemoBill() },
+                onQrScanned      = { vm.onQrScanned(it) },
+                errorMessage     = state.error,
+                recentBills      = state.recentBills,
+                billDetailsCache = state.billDetailsCache,
+                loadingBillRef   = state.loadingBillDetailsFor,
+                onExpandBill     = { vm.loadBillDetails(it) },
+                modifier         = Modifier.padding(padding)
             )
             state.isResolvingBill -> ResolvingView()
             else                -> ActiveGateView(
@@ -154,11 +160,14 @@ fun GateScanScreen(
 
 @Composable
 private fun NoBillView(
-    onLoadDemo:   () -> Unit,
-    onQrScanned:  (String) -> Unit,
-    errorMessage: String?  = null,
-    recentBills:  List<com.storelense.c66.data.remote.dto.GateCheckDto> = emptyList(),
-    modifier:     Modifier = Modifier
+    onLoadDemo:       () -> Unit,
+    onQrScanned:      (String) -> Unit,
+    errorMessage:     String?  = null,
+    recentBills:      List<com.storelense.c66.data.remote.dto.GateCheckDto> = emptyList(),
+    billDetailsCache: Map<String, List<com.storelense.c66.data.remote.dto.BillLookupItem>> = emptyMap(),
+    loadingBillRef:   String?  = null,
+    onExpandBill:     (String) -> Unit = {},
+    modifier:         Modifier = Modifier
 ) {
     val useMockRfid      = com.storelense.c66.BuildConfig.USE_MOCK_RFID
     val context          = LocalContext.current
@@ -349,7 +358,7 @@ private fun NoBillView(
 
         if (recentBills.isNotEmpty()) {
             Spacer(Modifier.height(28.dp))
-            RecentlyScannedSection(recentBills)
+            RecentlyScannedSection(recentBills, billDetailsCache, loadingBillRef, onExpandBill)
         }
     }
 }
@@ -357,13 +366,20 @@ private fun NoBillView(
 // ── Recently scanned bills (already processed — informational only) ──────────
 
 @Composable
-private fun RecentlyScannedSection(recentBills: List<com.storelense.c66.data.remote.dto.GateCheckDto>) {
+private fun RecentlyScannedSection(
+    recentBills:      List<com.storelense.c66.data.remote.dto.GateCheckDto>,
+    billDetailsCache: Map<String, List<com.storelense.c66.data.remote.dto.BillLookupItem>>,
+    loadingBillRef:   String?,
+    onExpandBill:     (String) -> Unit
+) {
+    var expandedBillRef by remember { mutableStateOf<String?>(null) }
+
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.History, null, Modifier.size(16.dp), tint = SubText)
             Spacer(Modifier.width(6.dp))
             Text(
-                "Recently scanned (already done — won't reopen)",
+                "Recently scanned (already done — won't reopen, tap for items)",
                 fontSize   = 12.sp,
                 fontWeight = FontWeight.SemiBold,
                 color      = SubText
@@ -372,6 +388,8 @@ private fun RecentlyScannedSection(recentBills: List<com.storelense.c66.data.rem
         Spacer(Modifier.height(8.dp))
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             recentBills.take(10).forEach { check ->
+                val billRef = check.billRef
+                val isExpanded = billRef != null && expandedBillRef == billRef
                 val outcomeColor = when (check.outcome) {
                     "RELEASED"  -> GreenFulfilled
                     "FLAGGED"   -> Color(0xFFDC2626)
@@ -384,32 +402,81 @@ private fun RecentlyScannedSection(recentBills: List<com.storelense.c66.data.rem
                     shape     = RoundedCornerShape(8.dp),
                     elevation = CardDefaults.cardElevation(1.dp)
                 ) {
-                    Row(
-                        modifier          = Modifier.fillMaxWidth().padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            check.billRef ?: "—",
-                            fontSize   = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            color      = DarkText,
-                            maxLines   = 1,
-                            overflow   = TextOverflow.Ellipsis,
-                            modifier   = Modifier.weight(1f)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "${check.matchedCount}/${check.expectedCount}",
-                            fontSize = 11.sp,
-                            color    = SubText
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            check.outcome,
-                            fontSize   = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color      = outcomeColor
-                        )
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    if (billRef != null) Modifier.clickable {
+                                        expandedBillRef = if (isExpanded) null else billRef
+                                        if (!isExpanded) onExpandBill(billRef)
+                                    } else Modifier
+                                )
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                billRef ?: "—",
+                                fontSize   = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color      = DarkText,
+                                maxLines   = 1,
+                                overflow   = TextOverflow.Ellipsis,
+                                modifier   = Modifier.weight(1f)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "${check.matchedCount}/${check.expectedCount}",
+                                fontSize = 11.sp,
+                                color    = SubText
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                check.outcome,
+                                fontSize   = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color      = outcomeColor
+                            )
+                            if (billRef != null) {
+                                Spacer(Modifier.width(4.dp))
+                                Icon(
+                                    if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    null, Modifier.size(16.dp), tint = SubText
+                                )
+                            }
+                        }
+
+                        if (isExpanded && billRef != null) {
+                            val details = billDetailsCache[billRef]
+                            Column(modifier = Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 10.dp)) {
+                                when {
+                                    loadingBillRef == billRef -> Text(
+                                        "Loading items…", fontSize = 12.sp, color = SubText
+                                    )
+                                    details == null -> Text(
+                                        "Could not load items", fontSize = 12.sp, color = Color(0xFFDC2626)
+                                    )
+                                    details.isEmpty() -> Text(
+                                        "No items on this bill", fontSize = 12.sp, color = SubText
+                                    )
+                                    else -> details.forEach { item ->
+                                        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                                            Text(
+                                                item.productName ?: "EAN ${item.ean}",
+                                                fontSize = 12.sp,
+                                                color    = DarkText,
+                                                modifier = Modifier.weight(1f),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text("EAN ${item.ean}", fontSize = 11.sp, color = SubText)
+                                            Spacer(Modifier.width(8.dp))
+                                            Text("x${item.qty}", fontSize = 11.sp, color = SubText)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -435,39 +502,72 @@ private fun ResolvingView() {
 // ── Released ──────────────────────────────────────────────────────────────────
 
 @Composable
-private fun ReleasedView(markedCount: Int, onNextCustomer: () -> Unit) {
+private fun ReleasedView(
+    markedCount: Int,
+    items: List<BillLineItem>,
+    extraEpcs: List<String>,
+    onNextCustomer: () -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(GreenFulfilled)
-            .padding(40.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .background(BgPage)
     ) {
-        Icon(Icons.Default.CheckCircle, null, Modifier.size(96.dp), tint = Color.White)
-        Spacer(Modifier.height(24.dp))
-        Text(
-            "Customer Released",
-            color      = Color.White,
-            fontSize   = 28.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "$markedCount EPC${if (markedCount != 1) "s" else ""} marked as sold in RFID ledger",
-            color     = Color.White.copy(alpha = 0.85f),
-            fontSize  = 16.sp,
-            textAlign = TextAlign.Center
-        )
-        Spacer(Modifier.height(48.dp))
-        Button(
-            onClick  = onNextCustomer,
-            colors   = ButtonDefaults.buttonColors(containerColor = Color.White),
-            modifier = Modifier.fillMaxWidth().height(52.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(GreenFulfilled)
+                .padding(horizontal = 32.dp, vertical = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(Icons.Default.PersonAdd, null, tint = GreenFulfilled)
-            Spacer(Modifier.width(8.dp))
-            Text("Next Customer", color = GreenFulfilled, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Icon(Icons.Default.CheckCircle, null, Modifier.size(64.dp), tint = Color.White)
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Customer Released",
+                color      = Color.White,
+                fontSize   = 24.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "$markedCount EPC${if (markedCount != 1) "s" else ""} marked as sold in RFID ledger",
+                color     = Color.White.copy(alpha = 0.85f),
+                fontSize  = 14.sp,
+                textAlign = TextAlign.Center
+            )
+        }
+
+        LazyColumn(
+            modifier            = Modifier.weight(1f),
+            contentPadding      = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            item {
+                Text(
+                    "Items in this bill",
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize   = 14.sp,
+                    color      = DarkText
+                )
+            }
+            items(items, key = { it.ean }) { line -> BillLineCard(line) }
+            if (extraEpcs.isNotEmpty()) {
+                // Non-inventory / off-bill EPCs — shown as raw tags only, never with
+                // synthesized product details since we have no real product for them.
+                item { ExtraEpcsCard(epcs = extraEpcs) }
+            }
+        }
+
+        Surface(tonalElevation = 4.dp, color = SurfaceWhite) {
+            Button(
+                onClick  = onNextCustomer,
+                colors   = ButtonDefaults.buttonColors(containerColor = GreenFulfilled),
+                modifier = Modifier.fillMaxWidth().padding(16.dp).height(52.dp)
+            ) {
+                Icon(Icons.Default.PersonAdd, null, tint = Color.White)
+                Spacer(Modifier.width(8.dp))
+                Text("Next Customer", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            }
         }
     }
 }
