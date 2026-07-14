@@ -22,6 +22,7 @@ import org.springframework.retry.annotation.Backoff;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -105,7 +106,7 @@ public class RfidReadConsumer {
             Optional<LocationPair> location = Optional.empty();
             if (event.readerId() != null && event.antennaPort() != null) {
                 location = locationMappingService.resolve(
-                        event.readerId(),
+                        event.readerId() != null ? event.readerId().toString() : null,
                         event.antennaPort() != null ? event.antennaPort().shortValue() : null);
             }
 
@@ -156,7 +157,7 @@ public class RfidReadConsumer {
             }
         }
 
-        return event.rssi() < threshold;
+        return event.rssi().compareTo(java.math.BigDecimal.valueOf(threshold)) < 0;
     }
 
     private RfidRead persistRead(RfidReadEvent event) {
