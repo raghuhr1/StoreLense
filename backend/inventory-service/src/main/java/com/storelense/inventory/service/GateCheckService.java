@@ -87,11 +87,14 @@ public class GateCheckService {
                                     String outcome, Pageable pageable) {
         String outcomeFilter = (outcome != null && !outcome.isBlank()) ? outcome.toUpperCase() : null;
 
+        // Cast the standalone `:outcome IS NULL` occurrence explicitly — Postgres
+        // can't infer a bound-null parameter's type from that check alone, since
+        // each occurrence of a named parameter gets its own placeholder.
         String countSql = """
                 SELECT COUNT(*) FROM inventory.gate_checks
                 WHERE store_id = CAST(:storeId AS uuid)
                   AND checked_at BETWEEN :from AND :to
-                  AND (:outcome IS NULL OR outcome = :outcome)
+                  AND (CAST(:outcome AS varchar) IS NULL OR outcome = CAST(:outcome AS varchar))
                 """;
 
         long total = jdbcClient.sql(countSql)
@@ -107,7 +110,7 @@ public class GateCheckService {
                 FROM inventory.gate_checks
                 WHERE store_id = CAST(:storeId AS uuid)
                   AND checked_at BETWEEN :from AND :to
-                  AND (:outcome IS NULL OR outcome = :outcome)
+                  AND (CAST(:outcome AS varchar) IS NULL OR outcome = CAST(:outcome AS varchar))
                 ORDER BY checked_at DESC
                 LIMIT :limit OFFSET :offset
                 """;
@@ -160,7 +163,7 @@ public class GateCheckService {
                 FROM inventory.gate_checks
                 WHERE store_id  = CAST(:storeId AS uuid)
                   AND checked_at BETWEEN :start AND :end
-                  AND (:guardId IS NULL OR guard_user_id = CAST(:guardId AS uuid))
+                  AND (CAST(:guardId AS uuid) IS NULL OR guard_user_id = CAST(:guardId AS uuid))
                 GROUP BY outcome
                 """)
                 .param("storeId", storeId.toString())
