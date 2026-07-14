@@ -205,7 +205,7 @@ public class InventoryController {
         UUID storeId = principal.isAdmin() ? req.storeId() : principal.storeId();
         CommissionRequest effective = storeId.equals(req.storeId())
                 ? req
-                : new CommissionRequest(storeId, req.sku(), req.epc(), req.zone());
+                : new CommissionRequest(storeId, req.sku(), req.epc(), req.zone(), req.replacesEpc());
         return ResponseEntity.ok(ApiResponse.ok(inventoryService.commissionTagItem(effective)));
     }
 
