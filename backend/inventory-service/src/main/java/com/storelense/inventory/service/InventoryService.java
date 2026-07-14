@@ -550,7 +550,7 @@ public class InventoryService {
         // ever retired when the associate explicitly names it via replacesEpc (e.g. the
         // old sticker fell off / was damaged) — never inferred from "some other EPC
         // happens to already be in_store for this product."
-        boolean isReplacement = false;
+        boolean replacementDetected = false;
         if (replacesEpc != null) {
             int replacedEpcCount = jdbcClient.sql("""
                     UPDATE inventory.epc_registry
@@ -565,9 +565,9 @@ public class InventoryService {
                     .param("replacesEpc", replacesEpc)
                     .param("now", now)
                     .update();
-            isReplacement = replacedEpcCount > 0;
+            replacementDetected = replacedEpcCount > 0;
 
-            if (isReplacement) {
+            if (replacementDetected) {
                 jdbcClient.sql("""
                         UPDATE products.epc_tags
                         SET is_active = false, updated_at = :now
@@ -580,6 +580,7 @@ public class InventoryService {
                         .update();
             }
         }
+        final boolean isReplacement = replacementDetected;
 
         jdbcClient.sql("""
                 INSERT INTO products.epc_tags
