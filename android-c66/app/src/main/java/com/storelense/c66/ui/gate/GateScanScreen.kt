@@ -10,6 +10,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -131,6 +133,7 @@ fun GateScanScreen(
                 onLoadDemo    = { vm.loadDemoBill() },
                 onQrScanned   = { vm.onQrScanned(it) },
                 errorMessage  = state.error,
+                recentBills   = state.recentBills,
                 modifier      = Modifier.padding(padding)
             )
             state.isResolvingBill -> ResolvingView()
@@ -154,6 +157,7 @@ private fun NoBillView(
     onLoadDemo:   () -> Unit,
     onQrScanned:  (String) -> Unit,
     errorMessage: String?  = null,
+    recentBills:  List<com.storelense.c66.data.remote.dto.GateCheckDto> = emptyList(),
     modifier:     Modifier = Modifier
 ) {
     val useMockRfid      = com.storelense.c66.BuildConfig.USE_MOCK_RFID
@@ -219,7 +223,10 @@ private fun NoBillView(
     }
 
     Column(
-        modifier            = modifier.fillMaxSize().padding(32.dp),
+        modifier            = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -337,6 +344,74 @@ private fun NoBillView(
                 Icon(Icons.Default.BugReport, null, Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("Load Demo Bill")
+            }
+        }
+
+        if (recentBills.isNotEmpty()) {
+            Spacer(Modifier.height(28.dp))
+            RecentlyScannedSection(recentBills)
+        }
+    }
+}
+
+// ── Recently scanned bills (already processed — informational only) ──────────
+
+@Composable
+private fun RecentlyScannedSection(recentBills: List<com.storelense.c66.data.remote.dto.GateCheckDto>) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.History, null, Modifier.size(16.dp), tint = SubText)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "Recently scanned (already done — won't reopen)",
+                fontSize   = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color      = SubText
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            recentBills.take(10).forEach { check ->
+                val outcomeColor = when (check.outcome) {
+                    "RELEASED"  -> GreenFulfilled
+                    "FLAGGED"   -> Color(0xFFDC2626)
+                    "ABANDONED" -> GrayPending
+                    else        -> SubText
+                }
+                Card(
+                    modifier  = Modifier.fillMaxWidth(),
+                    colors    = CardDefaults.cardColors(containerColor = SurfaceWhite),
+                    shape     = RoundedCornerShape(8.dp),
+                    elevation = CardDefaults.cardElevation(1.dp)
+                ) {
+                    Row(
+                        modifier          = Modifier.fillMaxWidth().padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            check.billRef ?: "—",
+                            fontSize   = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color      = DarkText,
+                            maxLines   = 1,
+                            overflow   = TextOverflow.Ellipsis,
+                            modifier   = Modifier.weight(1f)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "${check.matchedCount}/${check.expectedCount}",
+                            fontSize = 11.sp,
+                            color    = SubText
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            check.outcome,
+                            fontSize   = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color      = outcomeColor
+                        )
+                    }
+                }
             }
         }
     }

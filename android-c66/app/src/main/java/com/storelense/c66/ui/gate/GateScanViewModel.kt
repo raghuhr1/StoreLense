@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
+import com.storelense.c66.data.remote.dto.GateCheckDto
 import com.storelense.c66.data.repository.AuthRepository
 import com.storelense.c66.data.repository.GateRepository
 import com.storelense.c66.data.repository.Result
@@ -64,7 +65,8 @@ data class GateState(
     val released: Boolean           = false,
     val markedCount: Int            = 0,
     val error: String?              = null,
-    val hasBill: Boolean            = false
+    val hasBill: Boolean            = false,
+    val recentBills: List<GateCheckDto> = emptyList()
 ) {
     val totalRequired: Int    get() = items.sumOf { it.qtyRequired }
     val totalMatched: Int     get() = items.sumOf { it.matchedEpcs.size }
@@ -98,6 +100,19 @@ class GateScanViewModel @Inject constructor(
 
     private val _scanEvents = MutableSharedFlow<ScanEvent>(extraBufferCapacity = 16)
     val scanEvents = _scanEvents.asSharedFlow()
+
+    init { loadRecentBills() }
+
+    /** Bills this guard has already scanned/processed — shown on the scan entry
+     *  screen so a bill that can no longer be reopened isn't a surprise. */
+    fun loadRecentBills() {
+        viewModelScope.launch {
+            when (val result = gateRepo.getMyRecentChecks()) {
+                is Result.Success -> _state.update { it.copy(recentBills = result.data) }
+                is Result.Error   -> { /* non-critical — leave existing list as-is */ }
+            }
+        }
+    }
 
     // ── Bill QR ───────────────────────────────────────────────────────────────
 
@@ -318,6 +333,7 @@ class GateScanViewModel @Inject constructor(
                         released    = true,
                         markedCount = result.data
                     ) }
+                    loadRecentBills()
                 }
                 is Result.Error -> _state.update { it.copy(
                     isReleasing = false,
@@ -331,7 +347,7 @@ class GateScanViewModel @Inject constructor(
 
     fun reset() {
         stopRfidScan()
-        _state.update { GateState() }
+        _state.update { GateState(recentBills = it.recentBills) }
     }
 
     fun logout() {
