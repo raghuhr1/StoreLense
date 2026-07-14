@@ -88,7 +88,7 @@ public class GateCheckController {
 
     @GetMapping("/summary")
     @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER')")
-    @Operation(summary = "KPI summary for guard dashboard")
+    @Operation(summary = "Store-wide KPI summary for manager dashboard")
     public ResponseEntity<ApiResponse<GateCheckSummaryDto>> summary(
             @RequestParam(required = false) UUID storeId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
@@ -99,5 +99,30 @@ public class GateCheckController {
 
         return ResponseEntity.ok(ApiResponse.ok(
                 gateCheckService.summary(effectiveStoreId, effectiveDate)));
+    }
+
+    @GetMapping("/my-summary")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE','SECURITY_GUARD')")
+    @Operation(summary = "KPI summary for the logged-in guard's own shift, for the C66 dashboard")
+    public ResponseEntity<ApiResponse<GateCheckSummaryDto>> mySummary(
+            @RequestParam UUID storeId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+
+        LocalDate effectiveDate = date != null ? date : LocalDate.now(ZoneOffset.UTC);
+        return ResponseEntity.ok(ApiResponse.ok(
+                gateCheckService.mySummary(storeId, principal.userId(), effectiveDate)));
+    }
+
+    @GetMapping("/my-recent")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE','SECURITY_GUARD')")
+    @Operation(summary = "The logged-in guard's own recent gate checks, for the C66 dashboard")
+    public ResponseEntity<ApiResponse<java.util.List<GateCheckDto>>> myRecent(
+            @RequestParam UUID storeId,
+            @RequestParam(defaultValue = "20") int limit,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+
+        return ResponseEntity.ok(ApiResponse.ok(
+                gateCheckService.myRecent(storeId, principal.userId(), limit)));
     }
 }

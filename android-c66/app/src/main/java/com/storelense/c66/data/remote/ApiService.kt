@@ -29,4 +29,15 @@ interface ApiService {
         @Path("billRef") billRef: String,
         @Query("storeId") storeId: String
     ): Response<ApiResponse<BillLookupResponse>>
+
+    @GET("api/gate/checks/my-summary")
+    suspend fun getMyGateCheckSummary(
+        @Query("storeId") storeId: String
+    ): Response<ApiResponse<GateCheckSummaryDto>>
+
+    @GET("api/gate/checks/my-recent")
+    suspend fun getMyRecentGateChecks(
+        @Query("storeId") storeId: String,
+        @Query("limit") limit: Int = 20
+    ): Response<ApiResponse<List<GateCheckDto>>>
 }

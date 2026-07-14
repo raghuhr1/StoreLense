@@ -138,6 +138,16 @@ public class GateCheckService {
 
     @Transactional(readOnly = true)
     public GateCheckSummaryDto summary(UUID storeId, LocalDate date) {
+        return summarize(storeId, null, date);
+    }
+
+    /** Same KPI shape as {@link #summary}, scoped to a single guard's own checks. */
+    @Transactional(readOnly = true)
+    public GateCheckSummaryDto mySummary(UUID storeId, UUID guardUserId, LocalDate date) {
+        return summarize(storeId, guardUserId, date);
+    }
+
+    private GateCheckSummaryDto summarize(UUID storeId, UUID guardUserId, LocalDate date) {
         OffsetDateTime start = date.atStartOfDay().atOffset(ZoneOffset.UTC);
         OffsetDateTime end   = date.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
 
@@ -150,11 +160,13 @@ public class GateCheckService {
                 FROM inventory.gate_checks
                 WHERE store_id  = CAST(:storeId AS uuid)
                   AND checked_at BETWEEN :start AND :end
+                  AND (:guardId IS NULL OR guard_user_id = CAST(:guardId AS uuid))
                 GROUP BY outcome
                 """)
                 .param("storeId", storeId.toString())
                 .param("start", start)
                 .param("end",   end)
+                .param("guardId", guardUserId != null ? guardUserId.toString() : null)
                 .query((rs, n) -> new Row(
                         rs.getString("outcome"),
                         rs.getLong("cnt"),
@@ -169,6 +181,36 @@ public class GateCheckService {
         double flagRate = total > 0 ? Math.round((flagged * 100.0 / total) * 10.0) / 10.0 : 0.0;
 
         return new GateCheckSummaryDto(total, released, flagged, abandoned, extraItems, flagRate);
+    }
+
+    /** Guard's own last N gate checks, most recent first — for a mobile "recent activity" list. */
+    @Transactional(readOnly = true)
+    public List<GateCheckDto> myRecent(UUID storeId, UUID guardUserId, int limit) {
+        return jdbcClient.sql("""
+                SELECT id, store_id, bill_ref, checked_at, expected_count,
+                       matched_count, extra_count, outcome, epcs_matched, epcs_extra
+                FROM inventory.gate_checks
+                WHERE store_id = CAST(:storeId AS uuid)
+                  AND guard_user_id = CAST(:guardId AS uuid)
+                ORDER BY checked_at DESC
+                LIMIT :limit
+                """)
+                .param("storeId", storeId.toString())
+                .param("guardId", guardUserId.toString())
+                .param("limit",   limit)
+                .query((rs, n) -> new GateCheckDto(
+                        rs.getObject("id", UUID.class),
+                        rs.getObject("store_id", UUID.class),
+                        rs.getString("bill_ref"),
+                        rs.getObject("checked_at", OffsetDateTime.class),
+                        rs.getInt("expected_count"),
+                        rs.getInt("matched_count"),
+                        rs.getInt("extra_count"),
+                        rs.getString("outcome"),
+                        arrayToList((String[]) rs.getArray("epcs_matched").getArray()),
+                        arrayToList((String[]) rs.getArray("epcs_extra").getArray())
+                ))
+                .list();
     }
 
     private List<String> arrayToList(String[] arr) {

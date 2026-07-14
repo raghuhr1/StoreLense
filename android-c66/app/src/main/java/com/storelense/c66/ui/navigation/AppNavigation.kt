@@ -4,12 +4,14 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.storelense.c66.ui.gate.DashboardScreen
 import com.storelense.c66.ui.gate.GateScanScreen
 import com.storelense.c66.ui.login.LoginScreen
 
 private object Routes {
-    const val LOGIN = "login"
-    const val GATE  = "gate"
+    const val LOGIN     = "login"
+    const val GATE      = "gate"
+    const val DASHBOARD = "dashboard"
 }
 
 @Composable
@@ -28,11 +30,18 @@ fun AppNavigation(startLoggedIn: Boolean) {
         }
 
         composable(Routes.GATE) {
-            GateScanScreen(onLogout = {
-                nav.navigate(Routes.LOGIN) {
-                    popUpTo(0) { inclusive = true }
-                }
-            })
+            GateScanScreen(
+                onLogout = {
+                    nav.navigate(Routes.LOGIN) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                },
+                onDashboard = { nav.navigate(Routes.DASHBOARD) }
+            )
+        }
+
+        composable(Routes.DASHBOARD) {
+            DashboardScreen(onBack = { nav.popBackStack() })
         }
     }
 }

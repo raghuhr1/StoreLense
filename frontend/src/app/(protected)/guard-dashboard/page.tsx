@@ -1,11 +1,11 @@
 'use client'
 
 import { useQuery }          from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useRouter }         from 'next/navigation'
 import {
   ShieldCheck, CheckCircle2, AlertTriangle, PackageOpen, RefreshCw,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import Header                from '@/components/layout/Header'
 import StatCard              from '@/components/ui/StatCard'
@@ -58,6 +58,7 @@ export default function GuardDashboardPage() {
   const [selectedDate, setSelectedDate]       = useState(todayIso)
   const [outcomeFilter, setOutcomeFilter]     = useState('')
   const [page, setPage]                       = useState(0)
+  const [expandedId, setExpandedId]           = useState<string | null>(null)
 
   // Reset page when filters change
   const handleDateChange    = (d: string)  => { setSelectedDate(d);  setPage(0) }
@@ -86,8 +87,12 @@ export default function GuardDashboardPage() {
   })
 
   // ── Checks list query ─────────────────────────────────────────────────────
-  const from = `${selectedDate}T00:00:00`
-  const to   = `${selectedDate}T23:59:59`
+  // Must match GateCheckService's UTC day window for `selectedDate` exactly —
+  // an unqualified (no offset) datetime here would parse against the server's
+  // local zone instead of UTC, shifting the window relative to what the
+  // summary endpoint counted and causing the list to miss/include rows.
+  const from = `${selectedDate}T00:00:00Z`
+  const to   = new Date(new Date(`${selectedDate}T00:00:00Z`).getTime() + 24 * 60 * 60 * 1000).toISOString()
 
   const {
     data:    checksPage,
@@ -149,7 +154,7 @@ export default function GuardDashboardPage() {
           <StatCard
             title="Flagged"
             value={summaryLoading ? '…' : (summary?.flagged ?? 0).toLocaleString()}
-            sub={summary?.flagRate != null ? `${(summary.flagRate * 100).toFixed(1)}% flag rate` : undefined}
+            sub={summary?.flagRate != null ? `${summary.flagRate.toFixed(1)}% flag rate` : undefined}
             icon={AlertTriangle}
             color="red"
           />
@@ -201,6 +206,7 @@ export default function GuardDashboardPage() {
               <table className="min-w-full divide-y divide-gray-100">
                 <thead className="bg-gray-50">
                   <tr>
+                    <th className="table-th" />
                     <th className="table-th">Time</th>
                     <th className="table-th">Guard</th>
                     <th className="table-th">Bill Ref</th>
@@ -213,56 +219,109 @@ export default function GuardDashboardPage() {
                 <tbody className="bg-white divide-y divide-gray-50">
                   {checksLoading ? (
                     <tr>
-                      <td colSpan={7} className="table-td text-center text-gray-400 py-12">
+                      <td colSpan={8} className="table-td text-center text-gray-400 py-12">
                         Loading…
                       </td>
                     </tr>
                   ) : checks.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="table-td text-center text-gray-400 py-12">
+                      <td colSpan={8} className="table-td text-center text-gray-400 py-12">
                         <ShieldCheck size={24} className="mx-auto mb-2 opacity-30" />
                         No gate checks found for this date
                         {outcomeFilter ? ` with outcome "${outcomeFilter.toLowerCase()}"` : ''}.
                       </td>
                     </tr>
                   ) : (
-                    checks.map((row: GateCheck) => (
-                      <tr key={row.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="table-td">
-                          <span className="font-mono text-xs text-gray-700">{fmtTime(row.checkedAt)}</span>
-                        </td>
-                        <td className="table-td">
-                          <span className="text-xs text-gray-400">—</span>
-                        </td>
-                        <td className="table-td">
-                          {row.billRef
-                            ? <span className="font-mono text-xs text-blue-600">{row.billRef}</span>
-                            : <span className="text-xs text-gray-400">—</span>
-                          }
-                        </td>
-                        <td className="table-td text-right">
-                          <span className="text-sm text-gray-700">{row.expectedCount}</span>
-                        </td>
-                        <td className="table-td text-right">
-                          <span className="text-sm text-gray-700">{row.matchedCount}</span>
-                        </td>
-                        <td className="table-td text-right">
-                          {row.extraCount > 0
-                            ? <span className="text-sm font-semibold text-amber-600">{row.extraCount}</span>
-                            : <span className="text-sm text-gray-400">—</span>
-                          }
-                        </td>
-                        <td className="table-td">
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${
-                              OUTCOME_BADGE[row.outcome] ?? 'bg-gray-100 text-gray-600 ring-gray-200'
-                            }`}
+                    checks.map((row: GateCheck) => {
+                      const isExpanded = expandedId === row.id
+                      const hasEpcs = row.epcsMatched.length > 0 || row.epcsExtra.length > 0
+                      return (
+                        <Fragment key={row.id}>
+                          <tr
+                            className={`hover:bg-gray-50 transition-colors ${hasEpcs ? 'cursor-pointer' : ''}`}
+                            onClick={() => hasEpcs && setExpandedId(isExpanded ? null : row.id)}
                           >
-                            {row.outcome}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
+                            <td className="table-td w-6">
+                              {hasEpcs && (
+                                isExpanded
+                                  ? <ChevronUp size={14} className="text-gray-400" />
+                                  : <ChevronDown size={14} className="text-gray-400" />
+                              )}
+                            </td>
+                            <td className="table-td">
+                              <span className="font-mono text-xs text-gray-700">{fmtTime(row.checkedAt)}</span>
+                            </td>
+                            <td className="table-td">
+                              <span className="text-xs text-gray-400">—</span>
+                            </td>
+                            <td className="table-td">
+                              {row.billRef
+                                ? <span className="font-mono text-xs text-blue-600">{row.billRef}</span>
+                                : <span className="text-xs text-gray-400">—</span>
+                              }
+                            </td>
+                            <td className="table-td text-right">
+                              <span className="text-sm text-gray-700">{row.expectedCount}</span>
+                            </td>
+                            <td className="table-td text-right">
+                              <span className="text-sm text-gray-700">{row.matchedCount}</span>
+                            </td>
+                            <td className="table-td text-right">
+                              {row.extraCount > 0
+                                ? <span className="text-sm font-semibold text-amber-600">{row.extraCount}</span>
+                                : <span className="text-sm text-gray-400">—</span>
+                              }
+                            </td>
+                            <td className="table-td">
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${
+                                  OUTCOME_BADGE[row.outcome] ?? 'bg-gray-100 text-gray-600 ring-gray-200'
+                                }`}
+                              >
+                                {row.outcome}
+                              </span>
+                            </td>
+                          </tr>
+                          {isExpanded && (
+                            <tr className="bg-gray-50">
+                              <td />
+                              <td colSpan={7} className="table-td py-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                  <div>
+                                    <p className="text-xs font-semibold text-gray-500 mb-1">
+                                      Matched EPCs ({row.epcsMatched.length})
+                                    </p>
+                                    {row.epcsMatched.length > 0 ? (
+                                      <div className="flex flex-wrap gap-1">
+                                        {row.epcsMatched.map(epc => (
+                                          <span key={epc} className="font-mono text-[11px] px-1.5 py-0.5 bg-green-50 text-green-700 rounded ring-1 ring-green-200">
+                                            {epc}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    ) : <span className="text-xs text-gray-400">None</span>}
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-semibold text-gray-500 mb-1">
+                                      Extra EPCs ({row.epcsExtra.length})
+                                    </p>
+                                    {row.epcsExtra.length > 0 ? (
+                                      <div className="flex flex-wrap gap-1">
+                                        {row.epcsExtra.map(epc => (
+                                          <span key={epc} className="font-mono text-[11px] px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded ring-1 ring-amber-200">
+                                            {epc}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    ) : <span className="text-xs text-gray-400">None</span>}
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      )
+                    })
                   )}
                 </tbody>
               </table>

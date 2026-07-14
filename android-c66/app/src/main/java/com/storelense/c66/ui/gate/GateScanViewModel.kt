@@ -103,20 +103,27 @@ class GateScanViewModel @Inject constructor(
 
     fun onQrScanned(rawQr: String) {
         val trimmed = rawQr.trim()
+        if (trimmed.isBlank()) return
 
-        // Try JSON-embedded bill first ({"billRef":"...","items":[...]})
-        if (trimmed.startsWith("{")) {
-            try {
-                val payload = gson.fromJson(trimmed, BillQrPayload::class.java)
-                if (payload.items.isNotEmpty()) {
-                    processBillPayload(payload)
-                    return
-                }
-            } catch (_: Exception) { /* fall through to reference lookup */ }
-        }
+        // Extract just the bill reference — never trust an embedded item list from
+        // the QR itself. The backend is the sole source of truth for what's on the
+        // bill and whether it's already been processed at the gate; a QR (or a
+        // fabricated one) that bypasses that lookup would skip both checks.
+        val billRef = if (trimmed.startsWith("{")) {
+            val payload = try {
+                gson.fromJson(trimmed, BillQrPayload::class.java)
+            } catch (_: Exception) {
+                _state.update { it.copy(error = "Unrecognized QR code") }
+                return
+            }
+            if (payload.billRef.isBlank()) {
+                _state.update { it.copy(error = "QR code has no bill reference") }
+                return
+            }
+            payload.billRef
+        } else trimmed
 
-        // Plain bill reference barcode (e.g. "BILL-2026-001") — look up from backend
-        lookupBillByRef(trimmed)
+        lookupBillByRef(billRef)
     }
 
     private fun lookupBillByRef(billRef: String) {
@@ -206,8 +213,15 @@ class GateScanViewModel @Inject constructor(
 
     fun loadDemoBill() {
         if (!com.storelense.c66.BuildConfig.DEBUG) return
-        val demoJson = """{"billRef":"DEMO-BILL-001","items":[{"ean":"8901234567890","qty":2},{"ean":"8901234567891","qty":1}]}"""
-        onQrScanned(demoJson)
+        // Local fixture only — bypasses the backend lookup (and its
+        // already-processed check) since this bill isn't registered server-side.
+        processBillPayload(BillQrPayload(
+            billRef = "DEMO-BILL-001",
+            items = listOf(
+                BillQrItem(ean = "8901234567890", qty = 2),
+                BillQrItem(ean = "8901234567891", qty = 1)
+            )
+        ))
     }
 
     // ── RFID scan ─────────────────────────────────────────────────────────────

@@ -56,6 +56,7 @@ private val SubText        = Color(0xFF64748B)
 @Composable
 fun GateScanScreen(
     onLogout: () -> Unit,
+    onDashboard: () -> Unit = {},
     vm: GateScanViewModel = hiltViewModel()
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -105,6 +106,9 @@ fun GateScanScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0F172A)),
                 actions = {
+                    IconButton(onClick = onDashboard) {
+                        Icon(Icons.Default.Dashboard, "My shift dashboard", tint = Color.White)
+                    }
                     if (state.hasBill) {
                         IconButton(onClick = { vm.reset() }) {
                             Icon(Icons.Default.Refresh, "New customer", tint = Color.White)
