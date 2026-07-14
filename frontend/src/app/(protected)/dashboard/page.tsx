@@ -1,8 +1,8 @@
 'use client'
 
-import { useQuery }     from '@tanstack/react-query'
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { useMemo, useState }     from 'react'
-import { BarChart3, ScanLine, CheckCircle2, AlertTriangle, PackageOpen, MapPin, TrendingDown } from 'lucide-react'
+import { BarChart3, ScanLine, CheckCircle2, AlertTriangle, PackageOpen, MapPin, TrendingDown, RefreshCw } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid } from 'recharts'
 import Link             from 'next/link'
 import Header           from '@/components/layout/Header'
@@ -30,6 +30,24 @@ export default function DashboardPage() {
   const { user, isAdmin } = useAuth()
   const [selectedStoreId, setSelectedStoreId] = useState<string>('')
   const [range, setRange] = useState<Range>('30d')
+
+  const queryClient = useQueryClient()
+
+  const refreshKpi = useMutation({
+    mutationFn: async (sid: string) => {
+      const today = new Date()
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(today)
+        d.setDate(d.getDate() - i)
+        const date = d.toISOString().slice(0, 10)
+        await fetch(`/api/reporting/kpi/aggregate?storeId=${sid}&date=${date}`, { method: 'POST' })
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['kpi-range-dash'] })
+      queryClient.invalidateQueries({ queryKey: ['soh-sessions-recent'] })
+    },
+  })
 
   const { data: allStores } = useQuery({
     queryKey: ['stores-all'],
@@ -147,6 +165,18 @@ export default function DashboardPage() {
               {r.label}
             </button>
           ))}
+
+          {isAdmin && storeId && (
+            <button
+              onClick={() => refreshKpi.mutate(storeId)}
+              disabled={refreshKpi.isPending}
+              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              title="Recalculate KPI for last 7 days"
+            >
+              <RefreshCw size={13} className={refreshKpi.isPending ? 'animate-spin' : ''} />
+              {refreshKpi.isPending ? 'Refreshing…' : 'Refresh KPI'}
+            </button>
+          )}
 
           {/* Actual data span badge */}
           {actualDays > 0 && actualDays < days && (
