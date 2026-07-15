@@ -552,19 +552,29 @@ public class SohSessionService {
     private List<String> fetchExpectedEpcs(SohSession session) {
         if ("erp_triggered".equals(session.getSource()) && session.getStartedBy() != null) {
             try {
+                // Resolve by product match against this batch's imported EANs — NOT just
+                // erp_soh_snapshot_epcs, which only holds EPCs already linked/resolved and is
+                // empty right after import, silently falling through to the unscoped
+                // store-wide query below (the same bug already fixed in fetchExpectedCount).
                 List<String> erpEpcs = jdbcClient.sql("""
-                        SELECT e.epc
-                        FROM erp.erp_soh_snapshot_epcs e
-                        JOIN erp.erp_soh_snapshot s ON s.id = e.snapshot_id
+                        SELECT DISTINCT er.epc
+                        FROM inventory.epc_registry er
+                        JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
+                        JOIN products.barcodes b  ON b.product_id = et.product_id
+                        JOIN erp.erp_soh_snapshot s ON UPPER(b.barcode_value) = UPPER(s.ean)
                         WHERE s.batch_id = :batchId::uuid
+                          AND er.store_id = :storeId
+                          AND er.status NOT IN ('sold', 'damaged', 'transferred')
                         LIMIT 10000
                         """)
                         .param("batchId", session.getStartedBy().toString())
+                        .param("storeId", session.getStoreId())
                         .query(String.class).list();
-                if (!erpEpcs.isEmpty()) return erpEpcs;
+                return erpEpcs;
             } catch (Exception ex) {
                 log.warn("Could not fetch ERP expected EPCs for session {}: {}",
                         session.getId(), ex.getMessage());
+                return List.of();
             }
         }
         try {
