@@ -189,7 +189,13 @@ public class SohSessionService {
 
     @Transactional
     public SohResultResponse completeSession(UUID sessionId) {
-        SohSession session = findOrThrow(sessionId);
+        SohSession session = sessionRepository.findByIdForUpdate(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("SohSession", sessionId));
+        if ("completed".equals(session.getStatus())) {
+            // Idempotent: a duplicate/retried "Finish Zone" call (double-tap, network retry)
+            // must not recompute and re-insert SohResult — session_id is unique on soh_results.
+            return sohMapper.toResultResponse(session.getResult());
+        }
         if (!"in_progress".equals(session.getStatus()) && !"paused".equals(session.getStatus())) {
             throw new BusinessException("SESSION_NOT_ACTIVE",
                     "Session must be in_progress or paused to complete");
