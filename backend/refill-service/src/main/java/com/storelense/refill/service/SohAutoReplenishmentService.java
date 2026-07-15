@@ -1,5 +1,6 @@
 package com.storelense.refill.service;
 
+import com.storelense.common.event.EpcSoldEvent;
 import com.storelense.common.event.SohSessionCompletedEvent;
 import com.storelense.refill.dto.CreateRefillTaskRequest;
 import com.storelense.refill.dto.TaskItemRequest;
@@ -12,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -59,6 +61,117 @@ public class SohAutoReplenishmentService {
             log.info("Auto-created refill task from SOH session {} for product {} (shortage {})",
                     event.sessionId(), s.productId(), s.shortage());
         }
+    }
+
+    /**
+     * Live trigger: reacts to a sale (gate-exit confirmed) without waiting for the next SOH
+     * session. Estimates current Sales Floor qty as (last completed session's Sales Floor
+     * count for this product) minus (units of this product sold since that session completed),
+     * and compares against store_location_par_levels — same rule-matching and dedup as the
+     * session-completion trigger, just keyed on product instead of a specific session.
+     */
+    @Transactional
+    public void onItemSold(EpcSoldEvent event) {
+        findLiveShortage(event.storeId(), event.productId()).ifPresent(s -> {
+            if (hasOpenTaskForProduct(event.storeId(), s.productId())) {
+                return;
+            }
+            refillTaskService.createTask(
+                    new CreateRefillTaskRequest(
+                            event.storeId(),
+                            "replenishment",
+                            "critical".equals(s.status()) ? 3 : 6,
+                            "soh_auto_live",
+                            null,
+                            null,
+                            "Auto-created from a sale: live Sales Floor estimate %d/%d (par %d)"
+                                    .formatted(s.floorCounted(), s.parQty(), s.parQty()),
+                            List.of(new TaskItemRequest(s.productId(), null, s.shortage()))
+                    ),
+                    SYSTEM_USER_ID
+            );
+            log.info("Auto-created refill task from sale of product {} at store {} (live shortage {})",
+                    s.productId(), event.storeId(), s.shortage());
+        });
+    }
+
+    /**
+     * Cross-schema query: live Sales Floor estimate = last completed SOH session's Sales
+     * Floor count for this product, minus units sold since that session completed.
+     */
+    private Optional<Shortage> findLiveShortage(UUID storeId, UUID productId) {
+        return jdbcClient.sql("""
+                WITH latest_session AS (
+                    SELECT id, completed_at FROM soh.soh_sessions
+                    WHERE store_id = :storeId AND status = 'completed'
+                    ORDER BY completed_at DESC
+                    LIMIT 1
+                ),
+                floor_count AS (
+                    SELECT COALESCE(SUM(i.counted_quantity), 0) AS cnt
+                    FROM soh.soh_session_items i
+                    WHERE i.session_id = (SELECT id FROM latest_session)
+                      AND i.location_code = 'SALES_FLOOR'
+                      AND i.product_id = :productId
+                ),
+                sold_since AS (
+                    SELECT COUNT(*) AS cnt
+                    FROM inventory.epc_registry er
+                    WHERE er.store_id = :storeId
+                      AND er.product_id = :productId
+                      AND er.status = 'sold'
+                      AND er.last_seen_at > (SELECT completed_at FROM latest_session)
+                ),
+                live AS (
+                    SELECT
+                        GREATEST(0, (SELECT cnt FROM floor_count) - (SELECT cnt FROM sold_since)) AS live_floor_qty,
+                        pl.par_qty,
+                        pl.min_qty,
+                        pl.par_qty - GREATEST(0, (SELECT cnt FROM floor_count) - (SELECT cnt FROM sold_since)) AS shortage,
+                        CASE
+                            WHEN GREATEST(0, (SELECT cnt FROM floor_count) - (SELECT cnt FROM sold_since)) <= pl.min_qty THEN 'critical'
+                            ELSE 'low'
+                        END AS status
+                    FROM inventory.store_location_par_levels pl
+                    WHERE pl.store_id = :storeId AND pl.product_id = :productId
+                      AND pl.location_code = 'SALES_FLOOR' AND pl.active = true
+                      AND pl.par_qty > GREATEST(0, (SELECT cnt FROM floor_count) - (SELECT cnt FROM sold_since))
+                )
+                SELECT l.live_floor_qty, l.par_qty, l.min_qty, l.shortage, l.status
+                FROM live l
+                JOIN inventory.replenishment_rules rl
+                    ON rl.store_id = :storeId AND rl.active = true
+                   AND (
+                           (rl.trigger_status = 'low'      AND l.status IN ('low', 'critical'))
+                        OR (rl.trigger_status = 'critical' AND l.status = 'critical')
+                   )
+                """)
+                .param("storeId", storeId)
+                .param("productId", productId)
+                .query((rs, n) -> new Shortage(
+                        productId,
+                        rs.getInt("live_floor_qty"),
+                        rs.getInt("par_qty"),
+                        rs.getInt("min_qty"),
+                        rs.getInt("shortage"),
+                        rs.getString("status")
+                ))
+                .optional();
+    }
+
+    private boolean hasOpenTaskForProduct(UUID storeId, UUID productId) {
+        Integer count = jdbcClient.sql("""
+                SELECT COUNT(*)
+                FROM refill.refill_tasks t
+                JOIN refill.refill_task_items i ON i.task_id = t.id
+                WHERE t.store_id = :storeId
+                  AND i.product_id = :productId
+                  AND t.status NOT IN ('completed', 'cancelled')
+                """)
+                .param("storeId", storeId)
+                .param("productId", productId)
+                .query(Integer.class).optional().orElse(0);
+        return count != null && count > 0;
     }
 
     /**

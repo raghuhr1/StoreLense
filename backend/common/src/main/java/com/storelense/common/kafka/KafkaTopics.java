@@ -22,6 +22,10 @@ public final class KafkaTopics {
     /** SOH session completed with result → notification-service, erp-integration */
     public static final String SOH_SESSION_COMPLETED = "soh.session.completed";
 
+    // ── Inventory pipeline ─────────────────────────────────────────────────
+    /** EPC(s) marked sold (gate-exit confirmed) → refill-service (live Sales Floor trigger) */
+    public static final String INVENTORY_EPC_SOLD    = "inventory.epc.sold";
+
     // ── Refill pipeline ────────────────────────────────────────────────────
     /** New refill task created → notification-service */
     public static final String REFILL_TASK_CREATED   = "refill.task.created";
