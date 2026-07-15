@@ -399,21 +399,63 @@ public class SohSessionService {
     }
 
     /**
-     * Numeric "expected" target for the audit. For ERP-triggered sessions this must be the
-     * ERP's declared expected_qty summed across every imported row for the batch — NOT the
-     * count of EPCs already resolved/linked in erp_soh_snapshot_epcs (fetchExpectedEpcs),
-     * which silently drops any row whose EAN hasn't been matched to an EPC yet and would
-     * otherwise make "Expected" shrink every time a product is unresolved.
+     * Resolves the ERP import batch this session's audit should be scoped to. The Android
+     * "start audit" flow (CreateSohSessionRequest, storeId only) never sets source=erp_triggered
+     * or links a batch — only the internal Kafka consumer (createFromErpImport) does, and no
+     * REST path ever creates a session that way. So for the manual sessions actually used in
+     * practice, fall back to the latest COMPLETED ERP import for this store/zone instead of
+     * requiring an explicit erp_triggered link — otherwise "Expected" always falls through to
+     * the unscoped store-wide EPC count.
+     */
+    private java.util.Optional<UUID> resolveErpBatchId(SohSession session) {
+        if ("erp_triggered".equals(session.getSource()) && session.getStartedBy() != null) {
+            return java.util.Optional.of(session.getStartedBy());
+        }
+        try {
+            boolean hasZone = session.getZoneRegion() != null && !session.getZoneRegion().isBlank();
+            String sql = hasZone
+                    ? """
+                      SELECT b.id FROM erp.erp_import_batch b
+                      WHERE b.store_id = :storeId AND b.status = 'COMPLETED'
+                        AND EXISTS (
+                            SELECT 1 FROM erp.erp_soh_snapshot s
+                            WHERE s.batch_id = b.id AND s.zone_region = :zoneRegion
+                        )
+                      ORDER BY b.imported_at DESC
+                      LIMIT 1
+                      """
+                    : """
+                      SELECT b.id FROM erp.erp_import_batch b
+                      WHERE b.store_id = :storeId AND b.status = 'COMPLETED'
+                      ORDER BY b.imported_at DESC
+                      LIMIT 1
+                      """;
+            var q = jdbcClient.sql(sql).param("storeId", session.getStoreId());
+            if (hasZone) q = q.param("zoneRegion", session.getZoneRegion());
+            return q.query(UUID.class).optional();
+        } catch (Exception ex) {
+            log.warn("Could not resolve ERP batch for session {}: {}", session.getId(), ex.getMessage());
+            return java.util.Optional.empty();
+        }
+    }
+
+    /**
+     * Numeric "expected" target for the audit — the ERP's declared expected_qty summed across
+     * every imported row for the resolved batch. NOT the count of EPCs already resolved/linked
+     * in erp_soh_snapshot_epcs (fetchExpectedEpcs), which silently drops any row whose EAN
+     * hasn't been matched to an EPC yet and would otherwise make "Expected" shrink below the
+     * true ERP total whenever a product is unresolved.
      */
     private int fetchExpectedCount(SohSession session) {
-        if ("erp_triggered".equals(session.getSource()) && session.getStartedBy() != null) {
+        var batchId = resolveErpBatchId(session);
+        if (batchId.isPresent()) {
             try {
                 Integer sum = jdbcClient.sql("""
                         SELECT COALESCE(SUM(expected_qty), 0)
                         FROM erp.erp_soh_snapshot
                         WHERE batch_id = :batchId::uuid
                         """)
-                        .param("batchId", session.getStartedBy().toString())
+                        .param("batchId", batchId.get().toString())
                         .query(Integer.class).single();
                 if (sum != null) return sum;
             } catch (Exception ex) {
@@ -550,13 +592,14 @@ public class SohSessionService {
     }
 
     private List<String> fetchExpectedEpcs(SohSession session) {
-        if ("erp_triggered".equals(session.getSource()) && session.getStartedBy() != null) {
+        var batchId = resolveErpBatchId(session);
+        if (batchId.isPresent()) {
             try {
                 // Resolve by product match against this batch's imported EANs — NOT just
                 // erp_soh_snapshot_epcs, which only holds EPCs already linked/resolved and is
                 // empty right after import, silently falling through to the unscoped
                 // store-wide query below (the same bug already fixed in fetchExpectedCount).
-                List<String> erpEpcs = jdbcClient.sql("""
+                return jdbcClient.sql("""
                         SELECT DISTINCT er.epc
                         FROM inventory.epc_registry er
                         JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
@@ -567,10 +610,9 @@ public class SohSessionService {
                           AND er.status NOT IN ('sold', 'damaged', 'transferred')
                         LIMIT 10000
                         """)
-                        .param("batchId", session.getStartedBy().toString())
+                        .param("batchId", batchId.get().toString())
                         .param("storeId", session.getStoreId())
                         .query(String.class).list();
-                return erpEpcs;
             } catch (Exception ex) {
                 log.warn("Could not fetch ERP expected EPCs for session {}: {}",
                         session.getId(), ex.getMessage());
