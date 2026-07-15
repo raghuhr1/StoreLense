@@ -12,7 +12,7 @@ import { storesApi }          from '@/lib/api/stores'
 import { sohApi }             from '@/lib/api/soh'
 import { refillApi }          from '@/lib/api/refill'
 import { erpImportApi }       from '@/lib/api/erp'
-import { zoneIntelligenceApi } from '@/lib/api/inventory'
+import { replenishmentRulesApi } from '@/lib/api/inventory'
 import { useAuth }            from '@/lib/auth/AuthContext'
 import { fmtPct, fmtDateTime } from '@/lib/utils'
 import Badge                  from '@/components/ui/Badge'
@@ -107,16 +107,16 @@ export default function DashboardPage() {
     ? Math.max(0, Math.floor(Math.min(...chartData.map(d => d.accuracy)) / 10) * 10)
     : 0
 
-  const { data: zoneHealth = [] } = useQuery({
-    queryKey: ['zone-health', storeId],
-    queryFn:  () => zoneIntelligenceApi.zoneHealth(storeId),
+  const { data: floorSuggestions = [] } = useQuery({
+    queryKey: ['replenishment-suggestions', storeId],
+    queryFn:  () => replenishmentRulesApi.suggest(storeId),
     enabled:  !!storeId,
   })
 
-  const zoneTotals = useMemo(() => ({
-    critical: zoneHealth.reduce((s, z) => s + z.criticalCount, 0),
-    low:      zoneHealth.reduce((s, z) => s + z.lowCount,      0),
-  }), [zoneHealth])
+  const floorTotals = useMemo(() => ({
+    critical: floorSuggestions.filter(s => s.status === 'critical').length,
+    low:      floorSuggestions.filter(s => s.status === 'low').length,
+  }), [floorSuggestions])
 
   const sessionCount = kpi?.reduce((s, k) => s + k.sohSessionsCount, 0) ?? 0
   const selectedStore = allStores?.content.find(s => s.id === storeId)
@@ -265,32 +265,32 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Zone Health Widget */}
-        {zoneHealth.length > 0 && (
+        {/* Sales Floor Stock Health Widget — sourced from the latest completed SOH session */}
+        {floorSuggestions.length > 0 && (
           <div className="card">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <MapPin size={16} className="text-amber-500" />
-                <h3 className="text-sm font-semibold text-gray-700">Zone Stock Health (live)</h3>
+                <h3 className="text-sm font-semibold text-gray-700">Sales Floor Stock Health</h3>
               </div>
-              <Link href="/reports/zone-intelligence" className="text-xs text-brand-600 hover:underline">
-                Full intelligence →
+              <Link href="/replenishment/auto" className="text-xs text-brand-600 hover:underline">
+                View suggestions →
               </Link>
             </div>
 
-            {(zoneTotals.critical > 0 || zoneTotals.low > 0) ? (
+            {(floorTotals.critical > 0 || floorTotals.low > 0) ? (
               <div className="flex items-center gap-4 mb-4 p-3 bg-amber-50 border border-amber-100 rounded-xl">
-                {zoneTotals.critical > 0 && (
+                {floorTotals.critical > 0 && (
                   <div className="flex items-center gap-1.5 text-red-700">
                     <AlertTriangle size={15} />
-                    <span className="text-sm font-bold">{zoneTotals.critical}</span>
+                    <span className="text-sm font-bold">{floorTotals.critical}</span>
                     <span className="text-xs">critical</span>
                   </div>
                 )}
-                {zoneTotals.low > 0 && (
+                {floorTotals.low > 0 && (
                   <div className="flex items-center gap-1.5 text-amber-700">
                     <TrendingDown size={15} />
-                    <span className="text-sm font-bold">{zoneTotals.low}</span>
+                    <span className="text-sm font-bold">{floorTotals.low}</span>
                     <span className="text-xs">low stock</span>
                   </div>
                 )}
@@ -301,34 +301,23 @@ export default function DashboardPage() {
             ) : (
               <div className="flex items-center gap-2 mb-4 p-3 bg-green-50 border border-green-100 rounded-xl text-green-700 text-sm">
                 <CheckCircle2 size={15} />
-                All zones at or above par level
+                Sales Floor is at or above par level
               </div>
             )}
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {zoneHealth.slice(0, 8).map(z => {
-                const hasIssue = z.criticalCount > 0 || z.lowCount > 0
-                return (
-                  <div key={z.zoneId} className={`rounded-xl p-3 border ${
-                    z.criticalCount > 0 ? 'border-red-200 bg-red-50'
-                    : z.lowCount > 0    ? 'border-amber-200 bg-amber-50'
-                    : 'border-gray-100 bg-gray-50'
-                  }`}>
-                    <p className="text-xs font-medium text-gray-700 truncate">{z.zoneName ?? z.zoneId}</p>
-                    <div className="flex items-center gap-1.5 mt-1.5">
-                      {z.criticalCount > 0 && (
-                        <span className="text-xs font-bold text-red-600">{z.criticalCount}⚠</span>
-                      )}
-                      {z.lowCount > 0 && (
-                        <span className="text-xs font-semibold text-amber-600">{z.lowCount}↓</span>
-                      )}
-                      {!hasIssue && (
-                        <span className="text-xs text-green-600 font-medium">✓ OK</span>
-                      )}
-                    </div>
+              {floorSuggestions.slice(0, 8).map(s => (
+                <div key={s.productId} className={`rounded-xl p-3 border ${
+                  s.status === 'critical' ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'
+                }`}>
+                  <p className="text-xs font-medium text-gray-700 truncate">{s.productName ?? s.sku ?? s.productId}</p>
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    {s.status === 'critical'
+                      ? <span className="text-xs font-bold text-red-600">-{s.shortage}⚠</span>
+                      : <span className="text-xs font-semibold text-amber-600">-{s.shortage}↓</span>}
                   </div>
-                )
-              })}
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -338,7 +327,7 @@ export default function DashboardPage() {
           <div className="card">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-gray-700">Recent SOH Sessions</h3>
-              <Link href="/cycle-count" className="text-xs text-brand-600 hover:underline">View all</Link>
+              <Link href="/soh-sessions" className="text-xs text-brand-600 hover:underline">View all</Link>
             </div>
             {!sessions || sessions.content.length === 0 ? (
               <p className="text-sm text-gray-400">No sessions yet.</p>

@@ -20,6 +20,12 @@ data class SohResultState(
     val variance: Int       = 0,
     val overcount: Int      = 0,
     val undercount: Int     = 0,
+    val floorCounted: Int     = 0,
+    val floorExpected: Int    = 0,
+    val floorVariance: Int    = 0,
+    val backroomCounted: Int  = 0,
+    val backroomExpected: Int = 0,
+    val backroomVariance: Int = 0,
     val error: String?      = null
 )
 
@@ -46,7 +52,13 @@ class SohResultViewModel @Inject constructor(
                             expected    = result?.totalUnitsExpected ?: 0,
                             variance    = result?.varianceCount ?: 0,
                             overcount   = result?.overcountItems ?: 0,
-                            undercount  = result?.undercountItems ?: 0
+                            undercount  = result?.undercountItems ?: 0,
+                            floorCounted     = result?.floorUnitsCounted ?: 0,
+                            floorExpected    = result?.floorUnitsExpected ?: 0,
+                            floorVariance    = result?.floorVariance ?: 0,
+                            backroomCounted  = result?.backroomUnitsCounted ?: 0,
+                            backroomExpected = result?.backroomUnitsExpected ?: 0,
+                            backroomVariance = result?.backroomVariance ?: 0
                         )
                     }
                 }

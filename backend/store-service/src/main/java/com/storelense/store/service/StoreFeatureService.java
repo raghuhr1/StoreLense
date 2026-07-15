@@ -23,8 +23,16 @@ import java.util.stream.Collectors;
 public class StoreFeatureService {
 
     static final Set<String> ALL_FEATURES = Set.of(
+            // Web portal modules
             "INVENTORY", "INBOUND", "REPLENISHMENT", "CYCLE_COUNT",
-            "TRANSFERS", "ANALYTICS", "SALES", "DEVICES", "ERP_INTEGRATION"
+            "TRANSFERS", "ANALYTICS", "SALES", "DEVICES", "ERP_INTEGRATION",
+            // Guard (C66) app feature flags
+            "GATE_CAMERA_SCANNER", "GATE_RFID_VERIFY", "GATE_STRICT_MODE", "GATE_MANUAL_ENTRY"
+    );
+
+    // Guard flags are OFF by default (manual entry is the safe fallback)
+    private static final Set<String> DEFAULT_OFF_FEATURES = Set.of(
+            "GATE_CAMERA_SCANNER", "GATE_RFID_VERIFY", "GATE_STRICT_MODE"
     );
 
     private static final String REDIS_KEY = "store:features:";
@@ -78,15 +86,22 @@ public class StoreFeatureService {
         return getFeatures(storeId);
     }
 
-    /** Called when a new store is created — seeds all features ON. */
+    /** Called when a new store is created — seeds web modules ON, guard flags to their defaults. */
     @Transactional
     public void seedDefaults(UUID storeId) {
         List<StoreFeature> defaults = ALL_FEATURES.stream()
-                .map(f -> StoreFeature.builder().storeId(storeId).feature(f).enabled(true).build())
+                .map(f -> StoreFeature.builder()
+                        .storeId(storeId)
+                        .feature(f)
+                        .enabled(!DEFAULT_OFF_FEATURES.contains(f))
+                        .build())
                 .toList();
         featureRepository.saveAll(defaults);
 
         String redisKey = REDIS_KEY + storeId;
-        redisTemplate.opsForSet().add(redisKey, ALL_FEATURES.toArray(new String[0]));
+        Set<String> enabledByDefault = ALL_FEATURES.stream()
+                .filter(f -> !DEFAULT_OFF_FEATURES.contains(f))
+                .collect(Collectors.toSet());
+        redisTemplate.opsForSet().add(redisKey, enabledByDefault.toArray(new String[0]));
     }
 }

@@ -34,12 +34,13 @@ public class UserController {
     @Operation(summary = "List users, optionally filtered by store")
     public ResponseEntity<ApiResponse<PageResponse<UserResponse>>> list(
             @RequestParam(required = false) UUID storeId,
+            @RequestParam(defaultValue = "false") boolean includeInactive,
             @PageableDefault(size = 20) Pageable pageable,
             @AuthenticationPrincipal StoreLensePrincipal principal) {
 
-        // Non-admins can only see their own store's users
         UUID effectiveStoreId = principal.isAdmin() ? storeId : principal.storeId();
-        return ResponseEntity.ok(ApiResponse.ok(userService.listUsers(effectiveStoreId, pageable)));
+        boolean effective = principal.isAdmin() && includeInactive;
+        return ResponseEntity.ok(ApiResponse.ok(userService.listUsers(effectiveStoreId, effective, pageable)));
     }
 
     @GetMapping("/{id}")

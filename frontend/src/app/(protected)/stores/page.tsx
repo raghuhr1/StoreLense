@@ -15,16 +15,28 @@ import { storesApi }          from '@/lib/api/stores'
 import { fmt }                from '@/lib/utils'
 import type { Store, Feature, StoreFeature } from '@/types'
 
-const FEATURE_LABELS: Record<Feature, string> = {
-  INVENTORY:       'Inventory & RFID Ledger',
-  INBOUND:         'Inbound Shipments',
-  REPLENISHMENT:   'Replenishment',
-  CYCLE_COUNT:     'Cycle Count & Variance',
-  TRANSFERS:       'Stock Transfers',
-  ANALYTICS:       'Analytics & Reports',
-  SALES:           'Sales Tracking',
-  DEVICES:         'Device Management',
-  ERP_INTEGRATION: 'ERP Integration',
+const WEB_FEATURES: Feature[] = [
+  'INVENTORY', 'INBOUND', 'REPLENISHMENT', 'CYCLE_COUNT',
+  'TRANSFERS', 'ANALYTICS', 'SALES', 'DEVICES', 'ERP_INTEGRATION',
+]
+const GUARD_FEATURES: Feature[] = [
+  'GATE_MANUAL_ENTRY', 'GATE_CAMERA_SCANNER', 'GATE_RFID_VERIFY', 'GATE_STRICT_MODE',
+]
+
+const FEATURE_LABELS: Record<Feature, { label: string; desc: string }> = {
+  INVENTORY:            { label: 'Inventory & RFID Ledger',   desc: 'Stock levels, EPC ledger, accuracy tracking' },
+  INBOUND:              { label: 'Inbound Shipments',         desc: 'Receive and process inbound stock' },
+  REPLENISHMENT:        { label: 'Replenishment',             desc: 'Backroom-to-floor refill tasks' },
+  CYCLE_COUNT:          { label: 'Cycle Count & Variance',    desc: 'SOH sessions and variance reports' },
+  TRANSFERS:            { label: 'Stock Transfers',           desc: 'Inter-store transfers' },
+  ANALYTICS:            { label: 'Analytics & Reports',       desc: 'KPI dashboards and export reports' },
+  SALES:                { label: 'Sales Tracking',            desc: 'Point-of-sale visibility' },
+  DEVICES:              { label: 'Device Management',         desc: 'RFID readers and antenna mapping' },
+  ERP_INTEGRATION:      { label: 'ERP Integration',           desc: 'CSV imports and EAN sync' },
+  GATE_MANUAL_ENTRY:    { label: 'Manual Bill Entry',         desc: 'Guard can type bill reference manually' },
+  GATE_CAMERA_SCANNER:  { label: 'Camera QR Scanner',         desc: 'Show camera scan button in Guard app' },
+  GATE_RFID_VERIFY:     { label: 'RFID Cross-check',          desc: 'Verify items against RFID reads at gate' },
+  GATE_STRICT_MODE:     { label: 'Strict Exit Mode',          desc: 'Block exit if EPC not found on bill' },
 }
 
 function FeaturesModal({ store, onClose }: { store: Store; onClose: () => void }) {
@@ -72,28 +84,41 @@ function FeaturesModal({ store, onClose }: { store: Store; onClose: () => void }
             Failed to load features. Ensure store-service is running with the latest build.
           </p>
         ) : (
-          <div className="space-y-2">
-            {features?.map(f => {
-              const on = effectiveValue(f)
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+            {[
+              { title: 'Web Portal Modules', keys: WEB_FEATURES },
+              { title: 'Guard App (C66)', keys: GUARD_FEATURES },
+            ].map(group => {
+              const groupFeatures = features?.filter(f => group.keys.includes(f.feature as Feature)) ?? []
+              if (groupFeatures.length === 0) return null
               return (
-                <div key={f.feature}
-                  className="flex items-center justify-between px-4 py-3 rounded-xl border border-gray-100 hover:bg-gray-50">
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">
-                      {FEATURE_LABELS[f.feature as Feature] ?? f.feature}
-                    </p>
-                    <p className="text-xs text-gray-400">{f.feature}</p>
+                <div key={group.title}>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2 px-1">{group.title}</p>
+                  <div className="space-y-1.5">
+                    {groupFeatures.map(f => {
+                      const on  = effectiveValue(f)
+                      const meta = FEATURE_LABELS[f.feature as Feature]
+                      return (
+                        <div key={f.feature}
+                          className="flex items-center justify-between px-4 py-3 rounded-xl border border-gray-100 hover:bg-gray-50">
+                          <div>
+                            <p className="text-sm font-medium text-gray-800">{meta?.label ?? f.feature}</p>
+                            <p className="text-xs text-gray-400">{meta?.desc ?? f.feature}</p>
+                          </div>
+                          <button
+                            onClick={() => toggle(f.feature, on)}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ml-4 ${
+                              on ? 'bg-brand-600' : 'bg-gray-200'
+                            }`}
+                          >
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                              on ? 'translate-x-6' : 'translate-x-1'
+                            }`} />
+                          </button>
+                        </div>
+                      )
+                    })}
                   </div>
-                  <button
-                    onClick={() => toggle(f.feature, on)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      on ? 'bg-brand-600' : 'bg-gray-200'
-                    }`}
-                  >
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                      on ? 'translate-x-6' : 'translate-x-1'
-                    }`} />
-                  </button>
                 </div>
               )
             })}

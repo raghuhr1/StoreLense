@@ -24,7 +24,11 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     Page<User> findByStoreIdAndActiveTrue(UUID storeId, Pageable pageable);
 
+    Page<User> findByStoreId(UUID storeId, Pageable pageable);
+
     Page<User> findByActiveTrue(Pageable pageable);
+
+    Page<User> findAllBy(Pageable pageable);
 
     @Modifying
     @Query("UPDATE User u SET u.failedLoginAttempts = u.failedLoginAttempts + 1, " +

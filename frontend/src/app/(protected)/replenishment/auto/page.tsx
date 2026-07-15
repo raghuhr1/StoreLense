@@ -49,7 +49,7 @@ export default function AutoReplenishmentPage() {
   const actionable = useMemo(() => suggestions.filter(s => !s.hasOpenTask), [suggestions])
   const alreadyCovered = useMemo(() => suggestions.filter(s => s.hasOpenTask), [suggestions])
 
-  const rowKey = (s: ReplenishmentSuggestion) => `${s.zoneId}:${s.productId}`
+  const rowKey = (s: ReplenishmentSuggestion) => `${s.locationCode}:${s.productId}`
 
   const toggleAll = () => {
     if (selected.size === actionable.length) setSelected(new Set())
@@ -78,8 +78,8 @@ export default function AutoReplenishmentPage() {
           taskType:  s.status === 'critical' ? 'urgency' : 'replenishment',
           priority:  s.priority,
           source:    'soh_trigger',
-          notes:     `Auto-triggered: ${s.status} stock in ${s.zoneName ?? s.zoneId}. Scanned ${s.scannedQty} vs par ${s.parQty}.`,
-          items: [{ productId: s.productId, zoneId: s.zoneId, requestedQuantity: s.shortage }],
+          notes:     `Auto-triggered: ${s.status} stock on ${s.locationCode}. Scanned ${s.scannedQty} vs par ${s.parQty}.`,
+          items: [{ productId: s.productId, requestedQuantity: s.shortage }],
         })
         created++
       }
@@ -124,11 +124,11 @@ export default function AutoReplenishmentPage() {
       ),
     },
     {
-      accessorFn: r => r.zoneName ?? r.zoneId,
-      id: 'zone',
-      header: 'Zone',
+      accessorFn: r => r.locationCode,
+      id: 'location',
+      header: 'Location',
       cell: ({ row: r }) => (
-        <span className="text-sm text-gray-700">{r.original.zoneName ?? r.original.zoneId}</span>
+        <span className="text-sm text-gray-700">{r.original.locationCode === 'SALES_FLOOR' ? 'Sales Floor' : r.original.locationCode}</span>
       ),
     },
     {
@@ -219,9 +219,10 @@ export default function AutoReplenishmentPage() {
         {suggestions.length === 0 && !isLoading && (
           <div className="card py-8 text-center">
             <CheckCircle2 size={32} className="mx-auto text-green-400 mb-2" />
-            <p className="text-sm font-medium text-gray-700">All zones are at or above par level</p>
+            <p className="text-sm font-medium text-gray-700">Sales Floor is at or above par level</p>
             <p className="text-xs text-gray-400 mt-1">
-              Configure par levels in Store Settings and replenishment rules to see suggestions here.
+              Based on the store&rsquo;s most recent completed SOH session. Configure Sales Floor par levels
+              and replenishment rules in Store Settings to see suggestions here.
             </p>
           </div>
         )}

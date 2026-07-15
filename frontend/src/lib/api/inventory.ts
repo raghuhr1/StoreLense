@@ -1,10 +1,9 @@
 import client from './client'
 import type {
   ApiResponse, EpcLedgerRow, InventoryState, InboundEpcRow,
-  PageResponse, ProductFrequencyRow, PutawayResponse,
+  PageResponse, PutawayResponse,
   ReplenishmentRule, ReplenishmentSuggestion,
-  SkuLedgerRow, ZoneHealthSummary, ZoneParLevel, ZoneScanRollupRow,
-  ZoneTrendPoint,
+  SkuLedgerRow, StoreLocationParLevel,
 } from '@/types'
 
 export const inventoryApi = {
@@ -38,34 +37,18 @@ export const inventoryApi = {
       .then(r => r.data.data),
 }
 
-export const parLevelsApi = {
-  list: (storeId: string, zoneId?: string) =>
-    client.get<ApiResponse<ZoneParLevel[]>>('/par-levels', {
-      params: { storeId, ...(zoneId ? { zoneId } : {}) },
+export const storeLocationParLevelsApi = {
+  list: (storeId: string, locationCode?: 'SALES_FLOOR' | 'BACKROOM') =>
+    client.get<ApiResponse<StoreLocationParLevel[]>>('/store-location-par-levels', {
+      params: { storeId, ...(locationCode ? { locationCode } : {}) },
     }).then(r => r.data.data ?? []),
 
-  upsert: (body: { storeId: string; zoneId: string; productId: string; parQty: number; minQty: number }) =>
-    client.post<ApiResponse<ZoneParLevel>>('/par-levels', body)
+  upsert: (body: { storeId: string; locationCode: 'SALES_FLOOR' | 'BACKROOM'; productId: string; parQty: number; minQty: number }) =>
+    client.post<ApiResponse<StoreLocationParLevel>>('/store-location-par-levels', body)
       .then(r => r.data.data),
 
   delete: (id: string, storeId: string) =>
-    client.delete(`/par-levels/${id}`, { params: { storeId } }),
-}
-
-export const zoneIntelligenceApi = {
-  zoneHealth: (storeId: string) =>
-    client.get<ApiResponse<ZoneHealthSummary[]>>('/zone-intelligence/zone-health', { params: { storeId } })
-      .then(r => r.data.data ?? []),
-
-  productFrequency: (storeId: string, days = 30, limit = 20) =>
-    client.get<ApiResponse<ProductFrequencyRow[]>>('/zone-intelligence/product-frequency', {
-      params: { storeId, days, limit },
-    }).then(r => r.data.data ?? []),
-
-  zoneTrend: (storeId: string, zoneId?: string, days = 30) =>
-    client.get<ApiResponse<ZoneTrendPoint[]>>('/zone-intelligence/zone-trend', {
-      params: { storeId, days, ...(zoneId ? { zoneId } : {}) },
-    }).then(r => r.data.data ?? []),
+    client.delete(`/store-location-par-levels/${id}`, { params: { storeId } }),
 }
 
 export const replenishmentRulesApi = {
@@ -83,21 +66,4 @@ export const replenishmentRulesApi = {
   suggest: (storeId: string) =>
     client.get<ApiResponse<ReplenishmentSuggestion[]>>('/replenishment-rules/suggest', { params: { storeId } })
       .then(r => r.data.data ?? []),
-}
-
-export const scanRollupApi = {
-  live: (storeId: string, zoneId?: string) =>
-    client.get<ApiResponse<ZoneScanRollupRow[]>>('/scan-rollup/live', {
-      params: { storeId, ...(zoneId ? { zoneId } : {}) },
-    }).then(r => r.data.data ?? []),
-
-  compute: (storeId: string, sessionId?: string) =>
-    client.post<ApiResponse<ZoneScanRollupRow[]>>('/scan-rollup/compute', null, {
-      params: { storeId, ...(sessionId ? { sessionId } : {}) },
-    }).then(r => r.data.data ?? []),
-
-  getBySession: (storeId: string, sessionId: string) =>
-    client.get<ApiResponse<ZoneScanRollupRow[]>>('/scan-rollup', {
-      params: { storeId, sessionId },
-    }).then(r => r.data.data ?? []),
 }

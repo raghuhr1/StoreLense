@@ -8,9 +8,9 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(schema = "inventory", name = "zone_par_levels")
+@Table(schema = "inventory", name = "store_location_par_levels")
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-public class ZoneParLevel {
+public class StoreLocationParLevel {
 
     @Id @UuidGenerator
     @Column(updatable = false, nullable = false)
@@ -19,8 +19,10 @@ public class ZoneParLevel {
     @Column(name = "store_id", nullable = false)
     private UUID storeId;
 
-    @Column(name = "zone_id", nullable = false)
-    private UUID zoneId;
+    /** SALES_FLOOR or BACKROOM. Par levels are set against Sales Floor; Backroom is the buffer. */
+    @Column(name = "location_code", nullable = false, length = 20)
+    @Builder.Default
+    private String locationCode = "SALES_FLOOR";
 
     @Column(name = "product_id", nullable = false)
     private UUID productId;

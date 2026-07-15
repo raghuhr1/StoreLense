@@ -59,26 +59,33 @@ public class ReplenishmentRuleService {
     // ── SUGGESTIONS ───────────────────────────────────────────────────────────
 
     /**
-     * Cross-schema SQL: joins zone_par_levels + epc_registry + replenishment_rules
-     * + stores.zones + products.products + refill.refill_task_items (dedup check).
-     * Returns one suggestion per zone+product that matches a rule and is below par.
+     * Phase 3 cutover: sources from the store's most recent completed SOH session's Sales
+     * Floor count (soh.soh_session_items) instead of live antenna/zone scans
+     * (inventory.epc_registry). Joined against store_location_par_levels +
+     * replenishment_rules, same dedup-against-open-tasks logic as before.
      * trigger_status='low'      matches rollup rows with status 'low' OR 'critical'.
      * trigger_status='critical' matches only 'critical' rows.
      */
     @Transactional(readOnly = true)
     public List<ReplenishmentSuggestion> getSuggestions(UUID storeId) {
         return jdbcClient.sql("""
-                WITH scan AS (
-                    SELECT product_id, zone_id, COUNT(*) AS cnt
-                    FROM inventory.epc_registry
-                    WHERE store_id = :storeId AND status = 'in_store'
-                    GROUP BY product_id, zone_id
+                WITH latest_session AS (
+                    SELECT id FROM soh.soh_sessions
+                    WHERE store_id = :storeId AND status = 'completed'
+                    ORDER BY completed_at DESC
+                    LIMIT 1
+                ),
+                scan AS (
+                    SELECT i.product_id, SUM(i.counted_quantity) AS cnt
+                    FROM soh.soh_session_items i
+                    WHERE i.session_id = (SELECT id FROM latest_session)
+                      AND i.location_code = 'SALES_FLOOR'
+                    GROUP BY i.product_id
                 ),
                 rollup AS (
                     SELECT
                         pl.store_id,
-                        pl.zone_id,
-                        z.name                          AS zone_name,
+                        pl.location_code,
                         pl.product_id,
                         p.sku,
                         p.name                          AS product_name,
@@ -90,18 +97,15 @@ public class ReplenishmentRuleService {
                             WHEN COALESCE(s.cnt, 0) <= pl.min_qty THEN 'critical'
                             WHEN COALESCE(s.cnt, 0) <  pl.par_qty THEN 'low'
                         END AS rollup_status
-                    FROM inventory.zone_par_levels pl
-                    LEFT JOIN stores.zones z      ON z.id = pl.zone_id
+                    FROM inventory.store_location_par_levels pl
                     LEFT JOIN products.products p ON p.id = pl.product_id
-                    LEFT JOIN scan s
-                           ON s.product_id = pl.product_id
-                          AND s.zone_id    = pl.zone_id
+                    LEFT JOIN scan s ON s.product_id = pl.product_id
                     WHERE pl.store_id = :storeId AND pl.active = true
+                      AND pl.location_code = 'SALES_FLOOR'
                 )
                 SELECT
                     r.store_id,
-                    r.zone_id,
-                    r.zone_name,
+                    r.location_code,
                     r.product_id,
                     r.sku,
                     r.product_name,
@@ -116,7 +120,6 @@ public class ReplenishmentRuleService {
                         JOIN refill.refill_task_items i ON i.task_id = t.id
                         WHERE t.store_id    = :storeId
                           AND i.product_id  = r.product_id
-                          AND (i.zone_id IS NULL OR i.zone_id = r.zone_id)
                           AND t.status NOT IN ('completed', 'cancelled')
                     )                          AS has_open_task
                 FROM rollup r
@@ -139,8 +142,7 @@ public class ReplenishmentRuleService {
     private ReplenishmentSuggestion mapSuggestion(ResultSet rs, int n) throws SQLException {
         return new ReplenishmentSuggestion(
                 UUID.fromString(rs.getString("store_id")),
-                UUID.fromString(rs.getString("zone_id")),
-                rs.getString("zone_name"),
+                rs.getString("location_code"),
                 UUID.fromString(rs.getString("product_id")),
                 rs.getString("sku"),
                 rs.getString("product_name"),

@@ -156,20 +156,11 @@ fun WorkflowsScreen(
                         if (showCycleCount) {
                             WorkflowRow(
                                 icon       = Icons.Default.BarChart,
-                                label      = "SOH Count",
-                                subtitle   = "Quick session scan",
+                                label      = "Scan Store",
+                                subtitle   = "Sales Floor, Backroom, or Full Store — each session shows its own floor/backroom breakdown",
                                 badge      = if (state.openSohSessions > 0) "${state.openSohSessions} open" else "No open sessions",
                                 badgeColor = if (state.openSohSessions > 0) AmberReplenish else MaterialTheme.colorScheme.onSurfaceVariant,
                                 onClick    = onSoh
-                            )
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                            WorkflowRow(
-                                icon       = Icons.Default.ChecklistRtl,
-                                label      = "Cycle Count",
-                                subtitle   = "Floor + Backroom count",
-                                badge      = null,
-                                badgeColor = Color.Gray,
-                                onClick    = onCycleCount
                             )
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         }

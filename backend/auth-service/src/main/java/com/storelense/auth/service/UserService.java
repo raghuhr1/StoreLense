@@ -29,10 +29,12 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
 
     @Transactional(readOnly = true)
-    public PageResponse<UserResponse> listUsers(UUID storeId, Pageable pageable) {
+    public PageResponse<UserResponse> listUsers(UUID storeId, boolean includeInactive, Pageable pageable) {
         var page = (storeId != null)
-                ? userRepository.findByStoreIdAndActiveTrue(storeId, pageable)
-                : userRepository.findByActiveTrue(pageable);
+                ? (includeInactive ? userRepository.findByStoreId(storeId, pageable)
+                                   : userRepository.findByStoreIdAndActiveTrue(storeId, pageable))
+                : (includeInactive ? userRepository.findAllBy(pageable)
+                                   : userRepository.findByActiveTrue(pageable));
         return PageResponse.from(page.map(userMapper::toResponse));
     }
 

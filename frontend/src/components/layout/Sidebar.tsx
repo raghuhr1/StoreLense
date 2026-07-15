@@ -6,7 +6,7 @@ import {
   type LucideIcon,
   LayoutDashboard, Package, RotateCw,
   ArrowLeftRight, BarChart3, Users, Store, Cpu, ScanLine, Tag, TrendingUp,
-  Truck, RefreshCw, ShoppingCart, GitCompare, PackageOpen, Radio, ShieldCheck,
+  Truck, RefreshCw, ShoppingCart, GitCompare, PackageOpen, Radio, ShieldCheck, KeyRound,
 } from 'lucide-react'
 import { useAuth }       from '@/lib/auth/AuthContext'
 import { useFeatures }  from '@/lib/features/FeaturesContext'
@@ -24,7 +24,7 @@ const allNavItems: NavItem[] = [
   { href: '/inventory',            label: 'Inventory',       icon: Package,         roles: ['ADMIN','STORE_MANAGER'],                          feature: 'INVENTORY' },
   { href: '/inbound',              label: 'Inbound',         icon: Truck,           roles: ['ADMIN','STORE_MANAGER','REFILL_ASSOCIATE'],        feature: 'INBOUND' },
   { href: '/replenishment',        label: 'Replenishment',   icon: RefreshCw,       roles: ['ADMIN','STORE_MANAGER','REFILL_ASSOCIATE'],        feature: 'REPLENISHMENT' },
-  { href: '/cycle-count',          label: 'Cycle Count',     icon: RotateCw,        roles: ['ADMIN','STORE_MANAGER','STORE_ASSOCIATE'],         feature: 'CYCLE_COUNT' },
+  { href: '/soh-sessions',         label: 'SOH Sessions',    icon: RotateCw,        roles: ['ADMIN','STORE_MANAGER','STORE_ASSOCIATE'],         feature: 'CYCLE_COUNT' },
   { href: '/transfers',            label: 'Transfers',       icon: ArrowLeftRight,  roles: ['ADMIN','STORE_MANAGER'],                          feature: 'TRANSFERS' },
   { href: '/reports',              label: 'Reports',         icon: BarChart3,       roles: ['ADMIN','STORE_MANAGER'],                          feature: 'ANALYTICS' },
   { href: '/analytics',            label: 'Analytics',       icon: TrendingUp,      roles: ['ADMIN','STORE_MANAGER'],                          feature: 'ANALYTICS' },
@@ -33,6 +33,7 @@ const allNavItems: NavItem[] = [
   { href: '/erp-imports',          label: 'ERP Imports',     icon: PackageOpen,     roles: ['ADMIN'],                                          feature: 'ERP_INTEGRATION' },
   { href: '/products',             label: 'Products',        icon: Tag,             roles: ['ADMIN'] },
   { href: '/users',                label: 'Users',           icon: Users,           roles: ['ADMIN'] },
+  { href: '/roles',                label: 'Roles',           icon: KeyRound,        roles: ['ADMIN'] },
   { href: '/stores',               label: 'Stores',          icon: Store,           roles: ['ADMIN'] },
   { href: '/devices',              label: 'Devices',         icon: Cpu,             roles: ['ADMIN','STORE_MANAGER'],                          feature: 'DEVICES' },
   { href: '/devices/antenna-mapping', label: 'Antenna Mapping', icon: Radio,        roles: ['ADMIN'],                                          feature: 'DEVICES' },

@@ -2,6 +2,7 @@
 export type Feature =
   | 'INVENTORY' | 'INBOUND' | 'REPLENISHMENT' | 'CYCLE_COUNT'
   | 'TRANSFERS' | 'ANALYTICS' | 'SALES' | 'DEVICES' | 'ERP_INTEGRATION'
+  | 'GATE_CAMERA_SCANNER' | 'GATE_RFID_VERIFY' | 'GATE_STRICT_MODE' | 'GATE_MANUAL_ENTRY'
 
 export interface StoreFeature { feature: Feature; enabled: boolean }
 
@@ -89,47 +90,22 @@ export interface InboundShipment {
   lineCount: number; notes: string | null; createdAt: string
 }
 
-export interface ZoneParLevel {
-  id: string; storeId: string; zoneId: string; productId: string
+export interface StoreLocationParLevel {
+  id: string; storeId: string; locationCode: 'SALES_FLOOR' | 'BACKROOM'; productId: string
   parQty: number; minQty: number; active: boolean
   createdAt: string; updatedAt: string
 }
-
-export type RollupStatus = 'critical' | 'low' | 'ok' | 'surplus'
 
 export interface ReplenishmentRule {
   id: string; storeId: string; triggerStatus: 'low' | 'critical'
   priority: number; active: boolean; createdAt: string; updatedAt: string
 }
 
-export interface ZoneHealthSummary {
-  zoneId: string; zoneName: string | null
-  criticalCount: number; lowCount: number; okCount: number; surplusCount: number
-  totalProducts: number
-}
-
-export interface ProductFrequencyRow {
-  productId: string; sku: string | null; productName: string | null
-  refillCount: number; totalUnitsRequested: number; lastRefillAt: string | null
-}
-
-export interface ZoneTrendPoint {
-  day: string; criticalCount: number; lowCount: number; okCount: number; surplusCount: number
-}
-
 export interface ReplenishmentSuggestion {
-  storeId: string; zoneId: string; zoneName: string | null
+  storeId: string; locationCode: string
   productId: string; sku: string | null; productName: string | null
   scannedQty: number; parQty: number; shortage: number
   status: 'critical' | 'low'; priority: number; hasOpenTask: boolean
-}
-
-export interface ZoneScanRollupRow {
-  id: string | null; storeId: string; zoneId: string; zoneName: string | null
-  productId: string; sku: string | null; productName: string | null
-  sessionId: string | null
-  scannedQty: number; parQty: number; minQty: number; variance: number
-  status: RollupStatus; computedAt: string
 }
 
 // ─── SOH / Cycle Count ────────────────────────────────────────────────────────

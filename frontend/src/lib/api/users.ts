@@ -2,7 +2,7 @@ import client from './client'
 import type { ApiResponse, PageResponse, User } from '@/types'
 
 export const usersApi = {
-  list: (params?: { storeId?: string; page?: number; size?: number }) =>
+  list: (params?: { storeId?: string; page?: number; size?: number; includeInactive?: boolean }) =>
     client.get<ApiResponse<PageResponse<User>>>('/users', { params }).then(r => r.data.data),
 
   get: (id: string) =>

@@ -124,6 +124,16 @@ export default function CycleCountListPage() {
       <Header title="Cycle Count" />
       <div className="p-6 space-y-4">
 
+        <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
+          <ClipboardList size={16} className="mt-0.5 flex-shrink-0" />
+          <span>
+            Cycle Count is deprecated — SOH sessions now carry their own Sales Floor / Backroom breakdown,
+            so grouping two sessions under one Cycle Count is no longer needed. New counts should use{' '}
+            <Link href="/soh-sessions" className="underline font-medium">SOH Sessions</Link>.
+            This page remains available to finish any in-flight Cycle Counts below.
+          </span>
+        </div>
+
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             {isAdmin && allStores && allStores.content.length > 0 && (

@@ -1,12 +1,15 @@
 package com.storelense.mobile.ui.soh
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -42,6 +45,34 @@ fun SohResultScreen(
                 ResultRow("Variance Items", state.variance.toString())
                 ResultRow("Overcount",      state.overcount.toString())
                 ResultRow("Undercount",     state.undercount.toString())
+
+                if (state.floorExpected > 0 || state.floorCounted > 0
+                    || state.backroomExpected > 0 || state.backroomCounted > 0) {
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "BY LOCATION",
+                        fontSize   = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color      = Color.Gray,
+                        modifier   = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    LocationBreakdownCard(
+                        label    = "Sales Floor",
+                        counted  = state.floorCounted,
+                        expected = state.floorExpected,
+                        variance = state.floorVariance,
+                        color    = Color(0xFF1565C0)
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    LocationBreakdownCard(
+                        label    = "Backroom",
+                        counted  = state.backroomCounted,
+                        expected = state.backroomExpected,
+                        variance = state.backroomVariance,
+                        color    = Color(0xFFE65100)
+                    )
+                }
             }
 
             Spacer(Modifier.weight(1f))
@@ -59,4 +90,29 @@ private fun ResultRow(label: String, value: String) {
         Text(value, fontSize = 16.sp, fontWeight = FontWeight.Bold)
     }
     HorizontalDivider()
+}
+
+@Composable
+private fun LocationBreakdownCard(label: String, counted: Int, expected: Int, variance: Int, color: Color) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(color.copy(alpha = 0.08f))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = color)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("$counted / $expected", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = if (variance >= 0) "+$variance" else "$variance",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = if (variance < 0) Color(0xFFC62828) else Color(0xFF2E7D32)
+            )
+        }
+    }
 }

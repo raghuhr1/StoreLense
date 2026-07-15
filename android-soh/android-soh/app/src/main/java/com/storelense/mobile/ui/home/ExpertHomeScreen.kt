@@ -164,25 +164,6 @@ fun ExpertHomeScreen(
             // ── 4. QUICK TOOLS ──────────────────────────────────────────────
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (showCycleCount) {
-                        Surface(
-                            onClick = onCycleCount,
-                            color = SurfaceSlate,
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier.fillMaxWidth().height(60.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 20.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.ChecklistRtl, null, tint = EnergyEmerald)
-                                Spacer(Modifier.width(16.dp))
-                                Text("Cycle Count", color = Color.White, fontWeight = FontWeight.SemiBold)
-                                Spacer(Modifier.weight(1f))
-                                Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, null, tint = MutedText, modifier = Modifier.size(14.dp))
-                            }
-                        }
-                    }
                     Surface(
                         onClick = onItemLocator,
                         color = SurfaceSlate,
