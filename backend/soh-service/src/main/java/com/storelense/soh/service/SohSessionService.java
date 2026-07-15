@@ -199,6 +199,7 @@ public class SohSessionService {
         session.setResult(result);
         session.setStatus("completed");
         session.setCompletedAt(OffsetDateTime.now());
+        applyRfidReadStats(session);
         sessionRepository.save(session);
 
         kafkaTemplate.send(KafkaTopics.SOH_SESSION_COMPLETED, sessionId.toString(),
@@ -305,6 +306,30 @@ public class SohSessionService {
                 .query(String.class).list();
     }
 
+    /**
+     * Populates totalEpcReads/uniqueEpcCount from the actual rfid.rfid_reads log so the
+     * session list (Dashboard/SOH Sessions) shows real numbers instead of the counters
+     * that only incrementEpcCount() (never invoked by any producer) would update.
+     */
+    private void applyRfidReadStats(SohSession session) {
+        try {
+            record ReadStats(int totalReads, int uniqueEpcs) {}
+            ReadStats stats = jdbcClient.sql("""
+                    SELECT COUNT(*) AS total_reads, COUNT(DISTINCT epc) AS unique_epcs
+                    FROM rfid.rfid_reads
+                    WHERE rfid_session_id = :sessionId::uuid
+                    """)
+                    .param("sessionId", session.getId().toString())
+                    .query((rs, n) -> new ReadStats(rs.getInt("total_reads"), rs.getInt("unique_epcs")))
+                    .single();
+            session.setTotalEpcReads(stats.totalReads());
+            session.setUniqueEpcCount(stats.uniqueEpcs());
+        } catch (Exception ex) {
+            log.warn("Could not compute RFID read stats for session {}: {}",
+                    session.getId(), ex.getMessage());
+        }
+    }
+
     // ── Result calculation ─────────────────────────────────────────────────────
 
     private SohResult calculateResult(SohSession session) {
@@ -367,7 +392,29 @@ public class SohSessionService {
                 .build();
     }
 
+    /**
+     * Numeric "expected" target for the audit. For ERP-triggered sessions this must be the
+     * ERP's declared expected_qty summed across every imported row for the batch — NOT the
+     * count of EPCs already resolved/linked in erp_soh_snapshot_epcs (fetchExpectedEpcs),
+     * which silently drops any row whose EAN hasn't been matched to an EPC yet and would
+     * otherwise make "Expected" shrink every time a product is unresolved.
+     */
     private int fetchExpectedCount(SohSession session) {
+        if ("erp_triggered".equals(session.getSource()) && session.getStartedBy() != null) {
+            try {
+                Integer sum = jdbcClient.sql("""
+                        SELECT COALESCE(SUM(expected_qty), 0)
+                        FROM erp.erp_soh_snapshot
+                        WHERE batch_id = :batchId::uuid
+                        """)
+                        .param("batchId", session.getStartedBy().toString())
+                        .query(Integer.class).single();
+                if (sum != null) return sum;
+            } catch (Exception ex) {
+                log.warn("Could not fetch ERP expected_qty sum for session {}: {}",
+                        session.getId(), ex.getMessage());
+            }
+        }
         return fetchExpectedEpcs(session).size();
     }
 
