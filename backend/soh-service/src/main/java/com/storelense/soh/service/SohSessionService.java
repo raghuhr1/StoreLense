@@ -368,25 +368,7 @@ public class SohSessionService {
     }
 
     private int fetchExpectedCount(SohSession session) {
-        try {
-            int n = jdbcClient.sql("""
-                    SELECT COUNT(*) FROM inventory.epc_registry
-                    WHERE store_id = :storeId
-                      AND status NOT IN ('sold','damaged','transferred')
-                    """)
-                    .param("storeId", session.getStoreId())
-                    .query(Integer.class).single();
-            if (n > 0) return n;
-        } catch (Exception ex) {
-            log.warn("epc_registry count failed for session {}: {}", session.getId(), ex.getMessage());
-        }
-        return jdbcClient.sql("""
-                SELECT COALESCE(SUM(quantity_expected), 0)
-                FROM inventory.inventory_state
-                WHERE store_id = :storeId
-                """)
-                .param("storeId", session.getStoreId())
-                .query(Integer.class).single();
+        return fetchExpectedEpcs(session).size();
     }
 
     // ── Cross-session EPC overlap check ───────────────────────────────────────

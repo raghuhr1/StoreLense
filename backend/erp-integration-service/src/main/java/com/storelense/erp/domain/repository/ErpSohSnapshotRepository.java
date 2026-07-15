@@ -18,4 +18,7 @@ public interface ErpSohSnapshotRepository extends JpaRepository<ErpSohSnapshot, 
 
     @Query("SELECT COUNT(s) FROM ErpSohSnapshot s WHERE s.batch.id = :batchId AND s.resolutionStatus <> 'RESOLVED'")
     long countUnresolvedByBatchId(@Param("batchId") UUID batchId);
+
+    @Query("SELECT s FROM ErpSohSnapshot s WHERE s.batch.id = :batchId AND s.resolutionStatus <> 'RESOLVED'")
+    List<ErpSohSnapshot> findNotResolvedByBatchId(@Param("batchId") UUID batchId);
 }

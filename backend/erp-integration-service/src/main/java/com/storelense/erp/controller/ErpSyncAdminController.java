@@ -180,7 +180,7 @@ public class ErpSyncAdminController {
     @GetMapping("/import/batches/{batchId}/unresolved")
     @Operation(summary = "List snapshots that could not be resolved to EPCs for a given batch")
     public ResponseEntity<ApiResponse<List<?>>> getUnresolvedSnapshots(@PathVariable UUID batchId) {
-        var rows = snapshotRepository.findByBatch_IdAndResolutionStatus(batchId, "UNRESOLVED");
+        var rows = snapshotRepository.findNotResolvedByBatchId(batchId);
         return ResponseEntity.ok(ApiResponse.ok(rows));
     }
 
