@@ -137,7 +137,7 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public boolean existsByEan(String ean) {
-        return barcodeRepository.existsByBarcodeValue(ean);
+        return barcodeRepository.existsByBarcodeValueIgnoreCase(ean);
     }
 
     @Transactional(readOnly = true)

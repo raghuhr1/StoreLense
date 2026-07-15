@@ -1,6 +1,7 @@
 package com.storelense.inventory.service;
 
 import com.storelense.common.dto.PageResponse;
+import com.storelense.common.event.EpcSoldEvent;
 import com.storelense.common.event.SohUpdatedEvent;
 import com.storelense.common.exception.ResourceNotFoundException;
 import com.storelense.common.kafka.KafkaTopics;
@@ -23,6 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Pageable;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +33,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -41,6 +44,7 @@ public class InventoryService {
     private final EpcRegistryRepository       epcRegistryRepository;
     private final EpcPositionHistoryRepository epcPositionHistoryRepository;
     private final JdbcClient                  jdbcClient;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
 
     @SuppressWarnings("null")
     @KafkaListener(topics = KafkaTopics.RFID_SOH_UPDATED, groupId = "inventory-service")
@@ -208,7 +212,7 @@ public class InventoryService {
                 SELECT p.sku, p.name
                 FROM products.products p
                 JOIN products.barcodes b ON b.product_id = p.id
-                WHERE b.barcode_value = :ean
+                WHERE UPPER(b.barcode_value) = UPPER(:ean)
                   AND b.barcode_type IN ('ean13', 'ean8', 'upc_a')
                   AND p.is_active = true
                 LIMIT 1
@@ -227,7 +231,7 @@ public class InventoryService {
                 FROM inventory.epc_registry er
                 JOIN products.products p ON p.id = er.product_id
                 JOIN products.barcodes b ON b.product_id = p.id
-                WHERE b.barcode_value = :ean
+                WHERE UPPER(b.barcode_value) = UPPER(:ean)
                   AND b.barcode_type IN ('ean13', 'ean8', 'upc_a')
                   AND er.store_id = :storeId
                   AND er.status = 'in_store'
@@ -349,6 +353,14 @@ public class InventoryService {
                     state.setAccuracyPct(calcAccuracy(state.getQuantityOnHand(), state.getQuantityExpected()));
                     inventoryStateRepository.save(state);
                 }));
+
+        // Notify refill-service so it can re-check Sales Floor par live, without waiting
+        // for the next completed SOH session.
+        toSell.stream()
+                .collect(Collectors.groupingBy(EpcRegistry::getProductId, Collectors.counting()))
+                .forEach((productId, qty) ->
+                        kafkaTemplate.send(KafkaTopics.INVENTORY_EPC_SOLD, productId.toString(),
+                                new EpcSoldEvent(storeId, productId, qty.intValue())));
 
         log.info("Marked {} / {} EPCs as sold at store {}", marked, epcs.size(), storeId);
         return marked;

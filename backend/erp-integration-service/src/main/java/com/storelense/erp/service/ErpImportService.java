@@ -164,7 +164,7 @@ public class ErpImportService {
                     Optional<UUID> productId = jdbcClient.sql("""
                             SELECT p.id FROM products.products p
                             JOIN products.barcodes b ON b.product_id = p.id
-                            WHERE b.barcode_value = :ean
+                            WHERE UPPER(b.barcode_value) = UPPER(:ean)
                               AND b.barcode_type IN ('ean13','ean8','upc_a')
                               AND p.is_active = true
                             LIMIT 1

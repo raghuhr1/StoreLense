@@ -15,6 +15,6 @@ public interface EpcTagRepository extends JpaRepository<EpcTag, UUID> {
     boolean existsByEpc(String epc);
     long countByProduct_IdAndActiveTrue(UUID productId);
 
-    @Query("SELECT e FROM EpcTag e JOIN e.product p JOIN p.barcodes b WHERE b.barcodeValue = :ean AND e.active = true")
+    @Query("SELECT e FROM EpcTag e JOIN e.product p JOIN p.barcodes b WHERE UPPER(b.barcodeValue) = UPPER(:ean) AND e.active = true")
     List<EpcTag> findActiveByBarcodeValue(@Param("ean") String ean);
 }
