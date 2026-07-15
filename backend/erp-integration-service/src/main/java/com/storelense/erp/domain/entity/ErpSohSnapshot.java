@@ -1,5 +1,6 @@
 package com.storelense.erp.domain.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
@@ -18,6 +19,7 @@ public class ErpSohSnapshot {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "batch_id", nullable = false)
+    @JsonIgnore
     private ErpImportBatch batch;
 
     @Column(nullable = false, length = 30)
