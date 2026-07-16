@@ -85,17 +85,31 @@ public class EpcResolutionService {
         return Optional.empty();
     }
 
+    /**
+     * Decoded EPCs carry a 14-digit GTIN, but barcodes are stored as 13-digit EAN
+     * values with no leading indicator digit. Try the EAN-13 form first (indicator
+     * digit stripped, the common case for retail packaging) and fall back to the
+     * raw 14-digit value in case a product was seeded with the full GTIN-14.
+     */
     private Optional<UUID> lookupByGtin(String gtin) {
+        if (gtin != null && gtin.length() == 14) {
+            Optional<UUID> byEan13 = lookupByEanValue(gtin.substring(1));
+            if (byEan13.isPresent()) return byEan13;
+        }
+        return lookupByEanValue(gtin);
+    }
+
+    private Optional<UUID> lookupByEanValue(String ean) {
         try {
             EpcLookupResponse resp = productServiceClient.get()
-                    .uri("/api/products/epc/{epc}", gtin)   // re-uses same endpoint
+                    .uri("/api/products/by-ean/{ean}/product", ean)
                     .retrieve()
                     .body(EpcLookupResponse.class);
             if (resp != null && resp.success() && resp.data() != null) {
                 return Optional.ofNullable(resp.data().productId());
             }
         } catch (RestClientException e) {
-            log.debug("GTIN lookup failed for {}: {}", gtin, e.getMessage());
+            log.debug("EAN lookup failed for {}: {}", ean, e.getMessage());
         }
         return Optional.empty();
     }

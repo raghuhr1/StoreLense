@@ -13,4 +13,7 @@ public interface BarcodeRepository extends JpaRepository<Barcode, UUID> {
 
     @Query("SELECT COUNT(b) > 0 FROM Barcode b WHERE UPPER(b.barcodeValue) = UPPER(:barcodeValue)")
     boolean existsByBarcodeValueIgnoreCase(@Param("barcodeValue") String barcodeValue);
+
+    @Query("SELECT b FROM Barcode b WHERE UPPER(b.barcodeValue) = UPPER(:barcodeValue)")
+    Optional<Barcode> findByBarcodeValueIgnoreCase(@Param("barcodeValue") String barcodeValue);
 }

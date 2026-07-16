@@ -91,10 +91,14 @@ public class EpcDecoderService {
             String itemRef       = String.format("%0" + irDigits + "d", itemRefVal);
             String serial        = Long.toString(serialVal);
 
-            // Build GTIN-14 = indicator(1) + company prefix + item ref + check digit
-            // indicator digit = 0 for SGTIN, company prefix + item ref = 12 digits total
-            String gtinBody = companyPrefix + itemRef; // 13 digits (12 + 1 from item ref)
-            String gtin14   = "0" + gtinBody + gs1CheckDigit("0" + gtinBody);
+            // Company Prefix + Item Reference together = 13 digits per the GS1 partition
+            // table above, and per the EPC TDS spec this 13-digit body's LEADING digit is
+            // already the GTIN's indicator digit — it must not be prepended again. Appending
+            // a check digit over these 13 digits yields the correct 14-digit GTIN.
+            // (Previous version prepended an extra "0", producing a bogus 15-character value
+            // that could never match a real 13/14-digit barcode.)
+            String gtinBody = companyPrefix + itemRef; // 13 digits, leading digit = indicator
+            String gtin14   = gtinBody + gs1CheckDigit(gtinBody);
 
             return Optional.of(new DecodedEpc(companyPrefix, itemRef, serial, gtin14));
 

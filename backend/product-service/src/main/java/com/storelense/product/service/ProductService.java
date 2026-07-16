@@ -141,6 +141,14 @@ public class ProductService {
     }
 
     @Transactional(readOnly = true)
+    public EpcLookupResponse lookupByEan(String ean) {
+        return barcodeRepository.findByBarcodeValueIgnoreCase(ean)
+                .filter(b -> b.getProduct() != null)
+                .map(b -> new EpcLookupResponse(ean, b.getProduct().getId(), false))
+                .orElseThrow(() -> new ResourceNotFoundException("Barcode", ean));
+    }
+
+    @Transactional(readOnly = true)
     public List<String> getEpcsByEan(String ean) {
         return epcTagRepository.findActiveByBarcodeValue(ean)
                 .stream()

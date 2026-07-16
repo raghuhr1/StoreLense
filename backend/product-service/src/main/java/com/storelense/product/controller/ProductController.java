@@ -95,6 +95,12 @@ public class ProductController {
         return ResponseEntity.ok(ApiResponse.ok(productService.existsByEan(ean)));
     }
 
+    @GetMapping("/by-ean/{ean}/product")
+    @Operation(summary = "Resolve a product by EAN/GTIN barcode value (used by RFID decode fallback)")
+    public ResponseEntity<ApiResponse<EpcLookupResponse>> lookupByEan(@PathVariable String ean) {
+        return ResponseEntity.ok(ApiResponse.ok(productService.lookupByEan(ean)));
+    }
+
     @GetMapping("/by-ean/{ean}/epcs")
     @Operation(summary = "Get all active EPC values for products matching an EAN barcode")
     public ResponseEntity<ApiResponse<List<String>>> getEpcsByEan(@PathVariable String ean) {
