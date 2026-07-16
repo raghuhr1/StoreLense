@@ -118,6 +118,8 @@ export interface SohSession {
   status: SessionStatus; startedBy: string; startedAt: string
   completedAt: string | null; totalEpcReads: number; uniqueEpcCount: number; notes: string | null
   cycleCountId: string | null
+  source: string | null
+  zoneRegion: string | null
   locationCode: string | null
   sectionCode: string | null
   pausedAt: string | null

@@ -14,20 +14,23 @@ import type { SohSession } from '@/types'
 const selectCls = 'text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500'
 
 function titleCase(s: string) {
-  return s.charAt(0) + s.slice(1).toLowerCase()
+  return s.split(' ').map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ')
 }
 
-function locationLabel(locationCode: string | null, sectionCode: string | null): string {
-  if (!locationCode) return 'Full Store'
+function locationLabel(locationCode: string | null, sectionCode: string | null, zoneRegion: string | null): string {
   if (locationCode === 'SALES_FLOOR') {
     return sectionCode ? `Sales Floor – ${titleCase(sectionCode)}` : 'Sales Floor'
   }
   if (locationCode === 'BACKROOM') return 'Backroom'
-  return titleCase(locationCode)
+  if (locationCode) return titleCase(locationCode)
+  // Sessions created without locationCode (e.g. ERP-triggered) still carry zoneRegion —
+  // normalize its enum-style text ("SALES_FLOOR"/"BACK_ROOM") to a readable label.
+  if (zoneRegion) return titleCase(zoneRegion.replace(/_/g, ' '))
+  return 'Full Store'
 }
 
 function SessionCard({ session }: { session: SohSession }) {
-  const label    = locationLabel(session.locationCode, session.sectionCode)
+  const label    = locationLabel(session.locationCode, session.sectionCode, session.zoneRegion)
   const isActive = session.status === 'in_progress' || session.status === 'paused'
 
   return (
