@@ -413,13 +413,19 @@ public class SohSessionService {
         }
         try {
             boolean hasZone = session.getZoneRegion() != null && !session.getZoneRegion().isBlank();
+            // The Android zone picker sends zoneRegion like "SALES_FLOOR"/"BACK_ROOM" (enum-style,
+            // underscored), while ERP CSV ZONE_REGION values are free text like "Sales Floor"
+            // (spaced, title case). Case-insensitive comparison alone doesn't bridge that — strip
+            // spaces/underscores from both sides before comparing so "SALES_FLOOR" == "Sales Floor".
             String sql = hasZone
                     ? """
                       SELECT b.id FROM erp.erp_import_batch b
                       WHERE b.store_id = :storeId AND b.status = 'COMPLETED'
                         AND EXISTS (
                             SELECT 1 FROM erp.erp_soh_snapshot s
-                            WHERE s.batch_id = b.id AND s.zone_region = :zoneRegion
+                            WHERE s.batch_id = b.id
+                              AND UPPER(REPLACE(REPLACE(s.zone_region, ' ', ''), '_', ''))
+                                = UPPER(REPLACE(REPLACE(:zoneRegion, ' ', ''), '_', ''))
                         )
                       ORDER BY b.imported_at DESC
                       LIMIT 1
@@ -450,13 +456,23 @@ public class SohSessionService {
         var batchId = resolveErpBatchId(session);
         if (batchId.isPresent()) {
             try {
-                Integer sum = jdbcClient.sql("""
-                        SELECT COALESCE(SUM(expected_qty), 0)
-                        FROM erp.erp_soh_snapshot
-                        WHERE batch_id = :batchId::uuid
-                        """)
-                        .param("batchId", batchId.get().toString())
-                        .query(Integer.class).single();
+                boolean hasZone = session.getZoneRegion() != null && !session.getZoneRegion().isBlank();
+                String sql = hasZone
+                        ? """
+                          SELECT COALESCE(SUM(expected_qty), 0)
+                          FROM erp.erp_soh_snapshot
+                          WHERE batch_id = :batchId::uuid
+                            AND UPPER(REPLACE(REPLACE(zone_region, ' ', ''), '_', ''))
+                              = UPPER(REPLACE(REPLACE(:zoneRegion, ' ', ''), '_', ''))
+                          """
+                        : """
+                          SELECT COALESCE(SUM(expected_qty), 0)
+                          FROM erp.erp_soh_snapshot
+                          WHERE batch_id = :batchId::uuid
+                          """;
+                var q = jdbcClient.sql(sql).param("batchId", batchId.get().toString());
+                if (hasZone) q = q.param("zoneRegion", session.getZoneRegion());
+                Integer sum = q.query(Integer.class).single();
                 if (sum != null) return sum;
             } catch (Exception ex) {
                 log.warn("Could not fetch ERP expected_qty sum for session {}: {}",
@@ -599,20 +615,37 @@ public class SohSessionService {
                 // erp_soh_snapshot_epcs, which only holds EPCs already linked/resolved and is
                 // empty right after import, silently falling through to the unscoped
                 // store-wide query below (the same bug already fixed in fetchExpectedCount).
-                return jdbcClient.sql("""
-                        SELECT DISTINCT er.epc
-                        FROM inventory.epc_registry er
-                        JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
-                        JOIN products.barcodes b  ON b.product_id = et.product_id
-                        JOIN erp.erp_soh_snapshot s ON UPPER(b.barcode_value) = UPPER(s.ean)
-                        WHERE s.batch_id = :batchId::uuid
-                          AND er.store_id = :storeId
-                          AND er.status NOT IN ('sold', 'damaged', 'transferred')
-                        LIMIT 10000
-                        """)
+                boolean hasZone = session.getZoneRegion() != null && !session.getZoneRegion().isBlank();
+                String sql = hasZone
+                        ? """
+                          SELECT DISTINCT er.epc
+                          FROM inventory.epc_registry er
+                          JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
+                          JOIN products.barcodes b  ON b.product_id = et.product_id
+                          JOIN erp.erp_soh_snapshot s ON UPPER(b.barcode_value) = UPPER(s.ean)
+                          WHERE s.batch_id = :batchId::uuid
+                            AND er.store_id = :storeId
+                            AND er.status NOT IN ('sold', 'damaged', 'transferred')
+                            AND UPPER(REPLACE(REPLACE(s.zone_region, ' ', ''), '_', ''))
+                              = UPPER(REPLACE(REPLACE(:zoneRegion, ' ', ''), '_', ''))
+                          LIMIT 10000
+                          """
+                        : """
+                          SELECT DISTINCT er.epc
+                          FROM inventory.epc_registry er
+                          JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
+                          JOIN products.barcodes b  ON b.product_id = et.product_id
+                          JOIN erp.erp_soh_snapshot s ON UPPER(b.barcode_value) = UPPER(s.ean)
+                          WHERE s.batch_id = :batchId::uuid
+                            AND er.store_id = :storeId
+                            AND er.status NOT IN ('sold', 'damaged', 'transferred')
+                          LIMIT 10000
+                          """;
+                var q = jdbcClient.sql(sql)
                         .param("batchId", batchId.get().toString())
-                        .param("storeId", session.getStoreId())
-                        .query(String.class).list();
+                        .param("storeId", session.getStoreId());
+                if (hasZone) q = q.param("zoneRegion", session.getZoneRegion());
+                return q.query(String.class).list();
             } catch (Exception ex) {
                 log.warn("Could not fetch ERP expected EPCs for session {}: {}",
                         session.getId(), ex.getMessage());
@@ -630,7 +663,8 @@ public class SohSessionService {
                              WHERE et.epc = er.epc AND et.is_active = true LIMIT 1
                            )
                        AND ist.store_id = er.store_id
-                       AND ist.zone_region = :zoneRegion
+                       AND UPPER(REPLACE(REPLACE(ist.zone_region, ' ', ''), '_', ''))
+                         = UPPER(REPLACE(REPLACE(:zoneRegion, ' ', ''), '_', ''))
                       WHERE er.store_id = :storeId
                         AND er.status NOT IN ('sold', 'damaged', 'transferred')
                       LIMIT 10000
