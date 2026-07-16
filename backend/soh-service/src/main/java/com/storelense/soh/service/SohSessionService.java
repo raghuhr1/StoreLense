@@ -101,6 +101,17 @@ public class SohSessionService {
                             HttpStatus.CONFLICT);
                 });
 
+        // Manual/handheld-started audits must be backed by an ERP import — scanning without
+        // ERP data isn't supported. erp_triggered sessions are exempt: they're only ever
+        // created internally (createFromErpImport) FROM a completed batch, so the check
+        // would be redundant there.
+        if (!"erp_triggered".equals(req.source()) && !hasCompletedErpImport(effectiveStoreId, req.zoneRegion())) {
+            throw new BusinessException("ERP_IMPORT_REQUIRED",
+                    "No completed ERP import found for this store/zone. "
+                            + "Import ERP data before starting a scan.",
+                    HttpStatus.UNPROCESSABLE_ENTITY);
+        }
+
         SohSession session = SohSession.builder()
                 .storeId(effectiveStoreId)
                 .cycleCountId(req.cycleCountId())
@@ -395,6 +406,43 @@ public class SohSessionService {
                 .backroomVariance(backCounted - backExpected)
                 .totalStoreVariance(totalCounted - totalExpected)
                 .build();
+    }
+
+    /**
+     * Gate for starting a manual scan: is there a completed ERP import to scope this
+     * store/zone against? Same normalized zone matching as resolveErpBatchId, but takes raw
+     * storeId/zoneRegion since no SohSession exists yet at request-validation time.
+     *
+     * Only Sales Floor and Back Room are recognized — the zone picker only offers those two
+     * (Full Store / Fitting Rooms were removed), so a missing or unrecognized zone must fail
+     * the gate rather than falling back to a store-wide "any completed batch" check, which
+     * would let a request bypass the per-zone requirement entirely by omitting zoneRegion.
+     */
+    private boolean hasCompletedErpImport(UUID storeId, String zoneRegion) {
+        String normalized = zoneRegion == null
+                ? ""
+                : zoneRegion.toUpperCase().replace(" ", "").replace("_", "");
+        boolean isSalesFloor = normalized.equals("SALESFLOOR");
+        boolean isBackRoom   = normalized.equals("BACKROOM");
+        if (!isSalesFloor && !isBackRoom) {
+            return false;
+        }
+        Boolean exists = jdbcClient.sql("""
+                SELECT EXISTS (
+                    SELECT 1 FROM erp.erp_import_batch b
+                    WHERE b.store_id = :storeId AND b.status = 'COMPLETED'
+                      AND EXISTS (
+                          SELECT 1 FROM erp.erp_soh_snapshot s
+                          WHERE s.batch_id = b.id
+                            AND UPPER(REPLACE(REPLACE(s.zone_region, ' ', ''), '_', ''))
+                              = UPPER(REPLACE(REPLACE(:zoneRegion, ' ', ''), '_', ''))
+                      )
+                )
+                """)
+                .param("storeId", storeId)
+                .param("zoneRegion", zoneRegion)
+                .query(Boolean.class).optional().orElse(false);
+        return Boolean.TRUE.equals(exists);
     }
 
     /**
