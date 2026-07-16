@@ -40,7 +40,12 @@ public class KafkaProducerConfig {
                 entry(ProducerConfig.COMPRESSION_TYPE_CONFIG,               "lz4"),
                 entry(ProducerConfig.LINGER_MS_CONFIG,                      5),
                 entry(ProducerConfig.BATCH_SIZE_CONFIG,                     65536),
-                entry(JsonSerializer.ADD_TYPE_INFO_HEADERS,                 false)
+                // Consumers rely on this header to know which class to deserialize into
+                // (no default type is configured on the shared listener factory, since one
+                // factory handles many different event types across topics). Disabling this
+                // broke every consumer with "No type information in headers and no default
+                // type provided" the moment a producer used this shared factory.
+                entry(JsonSerializer.ADD_TYPE_INFO_HEADERS,                 true)
         ));
     }
 
