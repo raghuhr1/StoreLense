@@ -112,9 +112,20 @@ public class SohSessionService {
                     HttpStatus.UNPROCESSABLE_ENTITY);
         }
 
+        // Auto-group independent Sales Floor / Back Room scans under one CycleCount so their
+        // combined results can be reconciled against the ERP's store-wide expected qty (the
+        // ERP feed has no per-zone breakdown — EAN/qty/storeId only — so a Sales Floor session
+        // and a Back Room session must be compared together, not each against a per-zone total
+        // that doesn't exist). Explicit cycleCountId (e.g. multi-zone Cycle Count flow) wins.
+        UUID effectiveCycleCountId = req.cycleCountId();
+        if (effectiveCycleCountId == null
+                && ("SALES_FLOOR".equals(req.locationCode()) || "BACKROOM".equals(req.locationCode()))) {
+            effectiveCycleCountId = cycleCountService.findOrCreateForZoneScan(effectiveStoreId, userId);
+        }
+
         SohSession session = SohSession.builder()
                 .storeId(effectiveStoreId)
-                .cycleCountId(req.cycleCountId())
+                .cycleCountId(effectiveCycleCountId)
                 .zoneId(req.zoneId())
                 .sessionType(req.sessionType() != null ? req.sessionType() : "manual")
                 .status("in_progress")
@@ -129,8 +140,8 @@ public class SohSessionService {
         SohSession saved = sessionRepository.save(session);
 
         // Advance parent cycle count from DRAFT → RUNNING on first session start
-        if (req.cycleCountId() != null) {
-            cycleCountService.onSessionStarted(req.cycleCountId());
+        if (effectiveCycleCountId != null) {
+            cycleCountService.onSessionStarted(effectiveCycleCountId);
         }
 
         return sohMapper.toResponse(saved);
@@ -409,14 +420,14 @@ public class SohSessionService {
     }
 
     /**
-     * Gate for starting a manual scan: is there a completed ERP import to scope this
-     * store/zone against? Same normalized zone matching as resolveErpBatchId, but takes raw
-     * storeId/zoneRegion since no SohSession exists yet at request-validation time.
+     * Gate for starting a manual scan: is there a completed ERP import for this store at all?
      *
      * Only Sales Floor and Back Room are recognized — the zone picker only offers those two
-     * (Full Store / Fitting Rooms were removed), so a missing or unrecognized zone must fail
-     * the gate rather than falling back to a store-wide "any completed batch" check, which
-     * would let a request bypass the per-zone requirement entirely by omitting zoneRegion.
+     * (Full Store / Fitting Rooms were removed) — so a missing/unrecognized zone still fails
+     * the gate. But the ERP feed itself carries no zone breakdown (EAN, qty, storeId only;
+     * erp_soh_snapshot.zone_region is NULL for every row in practice — the ZONE_REGION column
+     * seen in early test CSVs was test data, not the real feed shape), so this only checks for
+     * a completed batch at the store level, not a zone match.
      */
     private boolean hasCompletedErpImport(UUID storeId, String zoneRegion) {
         String normalized = zoneRegion == null
@@ -431,16 +442,9 @@ public class SohSessionService {
                 SELECT EXISTS (
                     SELECT 1 FROM erp.erp_import_batch b
                     WHERE b.store_id = :storeId AND b.status = 'COMPLETED'
-                      AND EXISTS (
-                          SELECT 1 FROM erp.erp_soh_snapshot s
-                          WHERE s.batch_id = b.id
-                            AND UPPER(REPLACE(REPLACE(s.zone_region, ' ', ''), '_', ''))
-                              = UPPER(REPLACE(REPLACE(:zoneRegion, ' ', ''), '_', ''))
-                      )
                 )
                 """)
                 .param("storeId", storeId)
-                .param("zoneRegion", zoneRegion)
                 .query(Boolean.class).optional().orElse(false);
         return Boolean.TRUE.equals(exists);
     }
@@ -450,41 +454,24 @@ public class SohSessionService {
      * "start audit" flow (CreateSohSessionRequest, storeId only) never sets source=erp_triggered
      * or links a batch — only the internal Kafka consumer (createFromErpImport) does, and no
      * REST path ever creates a session that way. So for the manual sessions actually used in
-     * practice, fall back to the latest COMPLETED ERP import for this store/zone instead of
+     * practice, fall back to the latest COMPLETED ERP import for this store instead of
      * requiring an explicit erp_triggered link — otherwise "Expected" always falls through to
      * the unscoped store-wide EPC count.
+     *
+     * Not zone-scoped: the ERP feed is EAN/qty/storeId only, with no per-zone breakdown, so
+     * batch selection is store-wide regardless of which zone the session was started for.
      */
     private java.util.Optional<UUID> resolveErpBatchId(SohSession session) {
         if ("erp_triggered".equals(session.getSource()) && session.getStartedBy() != null) {
             return java.util.Optional.of(session.getStartedBy());
         }
         try {
-            boolean hasZone = session.getZoneRegion() != null && !session.getZoneRegion().isBlank();
-            // The Android zone picker sends zoneRegion like "SALES_FLOOR"/"BACK_ROOM" (enum-style,
-            // underscored), while ERP CSV ZONE_REGION values are free text like "Sales Floor"
-            // (spaced, title case). Case-insensitive comparison alone doesn't bridge that — strip
-            // spaces/underscores from both sides before comparing so "SALES_FLOOR" == "Sales Floor".
-            String sql = hasZone
-                    ? """
-                      SELECT b.id FROM erp.erp_import_batch b
-                      WHERE b.store_id = :storeId AND b.status = 'COMPLETED'
-                        AND EXISTS (
-                            SELECT 1 FROM erp.erp_soh_snapshot s
-                            WHERE s.batch_id = b.id
-                              AND UPPER(REPLACE(REPLACE(s.zone_region, ' ', ''), '_', ''))
-                                = UPPER(REPLACE(REPLACE(:zoneRegion, ' ', ''), '_', ''))
-                        )
-                      ORDER BY b.imported_at DESC
-                      LIMIT 1
-                      """
-                    : """
-                      SELECT b.id FROM erp.erp_import_batch b
-                      WHERE b.store_id = :storeId AND b.status = 'COMPLETED'
-                      ORDER BY b.imported_at DESC
-                      LIMIT 1
-                      """;
-            var q = jdbcClient.sql(sql).param("storeId", session.getStoreId());
-            if (hasZone) q = q.param("zoneRegion", session.getZoneRegion());
+            var q = jdbcClient.sql("""
+                    SELECT b.id FROM erp.erp_import_batch b
+                    WHERE b.store_id = :storeId AND b.status = 'COMPLETED'
+                    ORDER BY b.imported_at DESC
+                    LIMIT 1
+                    """).param("storeId", session.getStoreId());
             return q.query(UUID.class).optional();
         } catch (Exception ex) {
             log.warn("Could not resolve ERP batch for session {}: {}", session.getId(), ex.getMessage());
@@ -503,23 +490,13 @@ public class SohSessionService {
         var batchId = resolveErpBatchId(session);
         if (batchId.isPresent()) {
             try {
-                boolean hasZone = session.getZoneRegion() != null && !session.getZoneRegion().isBlank();
-                String sql = hasZone
-                        ? """
-                          SELECT COALESCE(SUM(expected_qty), 0)
-                          FROM erp.erp_soh_snapshot
-                          WHERE batch_id = :batchId::uuid
-                            AND UPPER(REPLACE(REPLACE(zone_region, ' ', ''), '_', ''))
-                              = UPPER(REPLACE(REPLACE(:zoneRegion, ' ', ''), '_', ''))
-                          """
-                        : """
-                          SELECT COALESCE(SUM(expected_qty), 0)
-                          FROM erp.erp_soh_snapshot
-                          WHERE batch_id = :batchId::uuid
-                          """;
-                var q = jdbcClient.sql(sql).param("batchId", batchId.get().toString());
-                if (hasZone) q = q.param("zoneRegion", session.getZoneRegion());
-                Integer sum = q.query(Integer.class).single();
+                Integer sum = jdbcClient.sql("""
+                        SELECT COALESCE(SUM(expected_qty), 0)
+                        FROM erp.erp_soh_snapshot
+                        WHERE batch_id = :batchId::uuid
+                        """)
+                        .param("batchId", batchId.get().toString())
+                        .query(Integer.class).single();
                 if (sum != null) return sum;
             } catch (Exception ex) {
                 log.warn("Could not fetch ERP expected_qty sum for session {}: {}",
@@ -662,37 +639,24 @@ public class SohSessionService {
                 // erp_soh_snapshot_epcs, which only holds EPCs already linked/resolved and is
                 // empty right after import, silently falling through to the unscoped
                 // store-wide query below (the same bug already fixed in fetchExpectedCount).
-                boolean hasZone = session.getZoneRegion() != null && !session.getZoneRegion().isBlank();
-                String sql = hasZone
-                        ? """
-                          SELECT DISTINCT er.epc
-                          FROM inventory.epc_registry er
-                          JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
-                          JOIN products.barcodes b  ON b.product_id = et.product_id
-                          JOIN erp.erp_soh_snapshot s ON UPPER(b.barcode_value) = UPPER(s.ean)
-                          WHERE s.batch_id = :batchId::uuid
-                            AND er.store_id = :storeId
-                            AND er.status NOT IN ('sold', 'damaged', 'transferred')
-                            AND UPPER(REPLACE(REPLACE(s.zone_region, ' ', ''), '_', ''))
-                              = UPPER(REPLACE(REPLACE(:zoneRegion, ' ', ''), '_', ''))
-                          LIMIT 10000
-                          """
-                        : """
-                          SELECT DISTINCT er.epc
-                          FROM inventory.epc_registry er
-                          JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
-                          JOIN products.barcodes b  ON b.product_id = et.product_id
-                          JOIN erp.erp_soh_snapshot s ON UPPER(b.barcode_value) = UPPER(s.ean)
-                          WHERE s.batch_id = :batchId::uuid
-                            AND er.store_id = :storeId
-                            AND er.status NOT IN ('sold', 'damaged', 'transferred')
-                          LIMIT 10000
-                          """;
-                var q = jdbcClient.sql(sql)
+                // Not zone-scoped: the ERP feed has no per-zone breakdown (EAN/qty/storeId
+                // only), so every product expected at the store is expected regardless of
+                // which zone this particular session is scanning — the real zone split is
+                // discovered by scanning, not declared by ERP.
+                return jdbcClient.sql("""
+                        SELECT DISTINCT er.epc
+                        FROM inventory.epc_registry er
+                        JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
+                        JOIN products.barcodes b  ON b.product_id = et.product_id
+                        JOIN erp.erp_soh_snapshot s ON UPPER(b.barcode_value) = UPPER(s.ean)
+                        WHERE s.batch_id = :batchId::uuid
+                          AND er.store_id = :storeId
+                          AND er.status NOT IN ('sold', 'damaged', 'transferred')
+                        LIMIT 10000
+                        """)
                         .param("batchId", batchId.get().toString())
-                        .param("storeId", session.getStoreId());
-                if (hasZone) q = q.param("zoneRegion", session.getZoneRegion());
-                return q.query(String.class).list();
+                        .param("storeId", session.getStoreId())
+                        .query(String.class).list();
             } catch (Exception ex) {
                 log.warn("Could not fetch ERP expected EPCs for session {}: {}",
                         session.getId(), ex.getMessage());

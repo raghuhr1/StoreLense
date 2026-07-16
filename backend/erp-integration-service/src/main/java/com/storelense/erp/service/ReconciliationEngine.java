@@ -442,44 +442,31 @@ public class ReconciliationEngine {
     /**
      * Resolves expected EPCs for a batch by product/EAN match — NOT by relying on
      * erp_soh_snapshot_epcs (only pre-linked EPCs, empty right after a fresh ERP import) as
-     * findByBatchAndZone did. Also normalizes zone-text separators so a session's zoneRegion
-     * ("SALES_FLOOR", enum-style from the Android picker) matches the ERP CSV's zone_region
-     * ("Sales Floor", spaced text) — an exact-string match here silently fell through to the
-     * store-wide system-driven fallback for every zone-scoped session, bypassing ERP data
-     * entirely regardless of how much matching product/EPC data actually existed.
+     * findByBatchAndZone did.
+     *
+     * Not zone-scoped: the ERP feed is EAN/qty/storeId only, with no per-zone breakdown, so
+     * every product expected at the store is expected regardless of which single session is
+     * being reconciled. Per-session reconcile() calls this with the session's own zone purely
+     * as an unused parameter for API-shape consistency with reconcileByCount (zoneRegion is
+     * accepted but ignored) — the authoritative comparison for a zone-picker workflow is the
+     * COMBINED reconcileByCount() across all zone sessions in a cycle count, which is why
+     * SohSessionService.startSession auto-groups Sales Floor + Back Room sessions together.
      */
     private Map<String, String> resolveExpectedEpcs(UUID batchId, UUID storeId, String zoneRegion) {
-        boolean hasZone = zoneRegion != null && !zoneRegion.isBlank();
-        String sql = hasZone
-                ? """
-                  SELECT DISTINCT er.epc, s.ean
-                  FROM inventory.epc_registry er
-                  JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
-                  JOIN products.barcodes b  ON b.product_id = et.product_id
-                  JOIN erp.erp_soh_snapshot s ON UPPER(b.barcode_value) = UPPER(s.ean)
-                  WHERE s.batch_id = :batchId
-                    AND er.store_id = :storeId
-                    AND er.status NOT IN ('sold', 'damaged', 'transferred')
-                    AND UPPER(REPLACE(REPLACE(s.zone_region, ' ', ''), '_', ''))
-                      = UPPER(REPLACE(REPLACE(:zoneRegion, ' ', ''), '_', ''))
-                  """
-                : """
-                  SELECT DISTINCT er.epc, s.ean
-                  FROM inventory.epc_registry er
-                  JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
-                  JOIN products.barcodes b  ON b.product_id = et.product_id
-                  JOIN erp.erp_soh_snapshot s ON UPPER(b.barcode_value) = UPPER(s.ean)
-                  WHERE s.batch_id = :batchId
-                    AND er.store_id = :storeId
-                    AND er.status NOT IN ('sold', 'damaged', 'transferred')
-                  """;
-        var q = jdbcClient.sql(sql)
-                .param("batchId", batchId)
-                .param("storeId", storeId);
-        if (hasZone) q = q.param("zoneRegion", zoneRegion);
-
         record EpcEan(String epc, String ean) {}
-        return q.query((rs, n) -> new EpcEan(rs.getString("epc"), rs.getString("ean")))
+        return jdbcClient.sql("""
+                SELECT DISTINCT er.epc, s.ean
+                FROM inventory.epc_registry er
+                JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
+                JOIN products.barcodes b  ON b.product_id = et.product_id
+                JOIN erp.erp_soh_snapshot s ON UPPER(b.barcode_value) = UPPER(s.ean)
+                WHERE s.batch_id = :batchId
+                  AND er.store_id = :storeId
+                  AND er.status NOT IN ('sold', 'damaged', 'transferred')
+                """)
+                .param("batchId", batchId)
+                .param("storeId", storeId)
+                .query((rs, n) -> new EpcEan(rs.getString("epc"), rs.getString("ean")))
                 .list().stream()
                 .collect(Collectors.toMap(EpcEan::epc, EpcEan::ean, (a, b) -> a));
     }

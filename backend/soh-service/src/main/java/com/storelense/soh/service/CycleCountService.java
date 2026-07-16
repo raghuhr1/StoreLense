@@ -1,8 +1,10 @@
 package com.storelense.soh.service;
 
 import com.storelense.common.dto.PageResponse;
+import com.storelense.common.event.CycleCountCompletedEvent;
 import com.storelense.common.exception.BusinessException;
 import com.storelense.common.exception.ResourceNotFoundException;
+import com.storelense.common.kafka.KafkaTopics;
 import com.storelense.soh.domain.entity.CycleCount;
 import com.storelense.soh.domain.repository.CycleCountRepository;
 import com.storelense.soh.domain.repository.SohSessionRepository;
@@ -13,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +32,7 @@ public class CycleCountService {
     private final CycleCountRepository  cycleCountRepository;
     private final SohSessionRepository  sessionRepository;
     private final SohMapper             sohMapper;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
 
     // ── Allowed forward transitions ────────────────────────────────────────────
     // DRAFT → RUNNING (first session joined)
@@ -103,6 +107,30 @@ public class CycleCountService {
         return sohMapper.toCycleCountResponse(cycleCountRepository.save(cc));
     }
 
+    /**
+     * Finds today's open (DRAFT/RUNNING) cycle count for this store, or creates one.
+     * Used to auto-group independently-started Sales Floor / Back Room scan sessions under
+     * a shared CycleCount, since the ERP feed (EAN, qty, storeId — no zone breakdown) can
+     * only be reconciled against the COMBINED result of all zone sessions, not each zone
+     * individually. See ReconciliationEngine.reconcileByCount, which merges EPCs across every
+     * session in a cycle count before comparing against the ERP's store-wide expected qty.
+     */
+    @Transactional
+    public UUID findOrCreateForZoneScan(UUID storeId, UUID createdBy) {
+        LocalDate today = LocalDate.now();
+        return cycleCountRepository.findActiveByStore(storeId, OPEN_STATUSES).stream()
+                .filter(cc -> today.equals(cc.getCountDate()))
+                .findFirst()
+                .map(CycleCount::getId)
+                .orElseGet(() -> cycleCountRepository.save(CycleCount.builder()
+                        .storeId(storeId)
+                        .countDate(today)
+                        .status("DRAFT")
+                        .createdBy(createdBy)
+                        .notes("Auto-created to group Sales Floor / Back Room scans for combined ERP reconciliation")
+                        .build()).getId());
+    }
+
     /** Called by SohSessionService when a session under a count goes in_progress. */
     @Transactional
     public void onSessionStarted(UUID cycleCountId) {
@@ -134,6 +162,8 @@ public class CycleCountService {
                 cc.setStatus("COMPLETED");
                 cycleCountRepository.save(cc);
                 log.info("CycleCount {} auto-advanced to COMPLETED — all sessions done", cycleCountId);
+                kafkaTemplate.send(KafkaTopics.CYCLE_COUNT_COMPLETED, cycleCountId.toString(),
+                        new CycleCountCompletedEvent(cycleCountId, cc.getStoreId()));
             }
         });
     }
