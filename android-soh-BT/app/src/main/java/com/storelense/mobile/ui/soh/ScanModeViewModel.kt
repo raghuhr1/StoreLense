@@ -25,9 +25,7 @@ data class ZoneOption(
     val label: String,
     val description: String,
     val zoneRegion: String?,
-    val sessionType: String = "manual",
-    /** SALES_FLOOR or BACKROOM — drives the floor/backroom result breakdown. Null = spans both (Full Store). */
-    val locationCode: String? = null
+    val sessionType: String = "manual"
 )
 
 @HiltViewModel
@@ -63,18 +61,16 @@ class ScanModeViewModel @Inject constructor(
 
     val zoneOptions = listOf(
         ZoneOption(
-            label        = "Sales Floor",
-            description  = "Count items on display in the shopping area",
-            zoneRegion   = "SALES_FLOOR",
-            sessionType  = "zone_count",
-            locationCode = "SALES_FLOOR"
+            label       = "Sales Floor",
+            description = "Count items on display in the shopping area",
+            zoneRegion  = "SALES_FLOOR",
+            sessionType = "zone_count"
         ),
         ZoneOption(
-            label        = "Back Room",
-            description  = "Count stock in storage and receiving areas",
-            zoneRegion   = "BACK_ROOM",
-            sessionType  = "zone_count",
-            locationCode = "BACKROOM"
+            label       = "Back Room",
+            description = "Count stock in storage and receiving areas",
+            zoneRegion  = "BACK_ROOM",
+            sessionType = "zone_count"
         )
     )
 
@@ -84,11 +80,10 @@ class ScanModeViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val req = CreateSohSessionRequest(
-                    storeId      = storeId,
-                    sessionType  = zone.sessionType,
-                    source       = "manual",
-                    zoneRegion   = zone.zoneRegion,
-                    locationCode = zone.locationCode
+                    storeId     = storeId,
+                    sessionType = zone.sessionType,
+                    source      = "manual",
+                    zoneRegion  = zone.zoneRegion
                 )
                 val resp = api.createSohSession(req)
                 val body = resp.body()
