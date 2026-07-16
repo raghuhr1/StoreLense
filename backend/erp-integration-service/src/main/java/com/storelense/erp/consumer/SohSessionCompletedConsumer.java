@@ -15,7 +15,14 @@ public class SohSessionCompletedConsumer {
 
     private final ReconciliationEngine reconciliationEngine;
 
-    @KafkaListener(topics = KafkaTopics.SOH_SESSION_COMPLETED, groupId = "erp-reconciliation")
+    // default.type is a fallback used only when a message has no __TypeId__ header (older
+    // messages produced before headers were consistently set) — with type headers present
+    // (the normal case), those still take priority. Without this, any header-less message
+    // permanently dead-letters with "No type information in headers and no default type
+    // provided", silently breaking auto-reconciliation for every session after it in the
+    // same partition until manually cleared.
+    @KafkaListener(topics = KafkaTopics.SOH_SESSION_COMPLETED, groupId = "erp-reconciliation",
+            properties = "spring.json.value.default.type=com.storelense.common.event.SohSessionCompletedEvent")
     public void onSohSessionCompleted(SohSessionCompletedEvent event) {
         log.info("SOH session completed — auto-running reconciliation: sessionId={} storeId={}",
                 event.sessionId(), event.storeId());
