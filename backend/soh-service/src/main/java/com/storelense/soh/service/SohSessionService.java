@@ -300,16 +300,15 @@ public class SohSessionService {
                 .query(String.class).list();
     }
 
+    // GET /sessions/{id}/expected-epcs — this is what the Android app's live scan screen
+    // actually polls at session start (a separate REST path from getSession(includeEpcs=true)).
+    // Was previously its own unscoped `epc_registry WHERE store_id = ...` query, completely
+    // bypassing fetchExpectedEpcs()'s ERP-batch/zone scoping — the live "Expected" ring stayed
+    // store-wide (e.g. 106) even after that scoping was fixed everywhere else it's used.
     @Transactional(readOnly = true)
     public List<String> getExpectedEpcs(UUID sessionId) {
         SohSession session = findOrThrow(sessionId);
-        return jdbcClient.sql("""
-                SELECT epc FROM inventory.epc_registry
-                WHERE store_id = :storeId
-                  AND status NOT IN ('sold', 'damaged', 'transferred')
-                """)
-                .param("storeId", session.getStoreId())
-                .query(String.class).list();
+        return fetchExpectedEpcs(session);
     }
 
     /**
