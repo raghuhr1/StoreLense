@@ -186,7 +186,11 @@ public class ReconciliationEngine {
         Set<String> missing = new HashSet<>(expected); missing.removeAll(scanned);
         Set<String> extra   = new HashSet<>(scanned);  extra.removeAll(expected);
 
-        BigDecimal accuracy = expected.isEmpty() ? BigDecimal.valueOf(100)
+        // "Nothing expected" is only trivially 100% accurate if nothing was scanned either —
+        // scanning real tags against zero expected items means every read is extra, i.e. 0%
+        // match, not 100%.
+        BigDecimal accuracy = expected.isEmpty()
+                ? (scanned.isEmpty() ? BigDecimal.valueOf(100) : BigDecimal.ZERO)
                 : BigDecimal.valueOf(100.0 * matched.size() / expected.size())
                         .setScale(2, RoundingMode.HALF_UP);
 
@@ -256,7 +260,8 @@ public class ReconciliationEngine {
         Set<String> missing  = new HashSet<>(expected); missing.removeAll(scanned);
         Set<String> extra    = new HashSet<>(scanned);  extra.removeAll(expected);
 
-        BigDecimal accuracy = expected.isEmpty() ? BigDecimal.valueOf(100)
+        BigDecimal accuracy = expected.isEmpty()
+                ? (scanned.isEmpty() ? BigDecimal.valueOf(100) : BigDecimal.ZERO)
                 : BigDecimal.valueOf(100.0 * matched.size() / expected.size())
                         .setScale(2, RoundingMode.HALF_UP);
 
@@ -326,7 +331,8 @@ public class ReconciliationEngine {
         int backMissing  = (int) missing.stream()
                 .filter(e -> !backScannedSet.contains(e)).count();
 
-        BigDecimal accuracy = expected.isEmpty() ? BigDecimal.valueOf(100)
+        BigDecimal accuracy = expected.isEmpty()
+                ? (scannedAll.isEmpty() ? BigDecimal.valueOf(100) : BigDecimal.ZERO)
                 : BigDecimal.valueOf(100.0 * matched.size() / expected.size())
                         .setScale(2, RoundingMode.HALF_UP);
 
@@ -399,7 +405,8 @@ public class ReconciliationEngine {
         int floorMissing = (int) missing.stream().filter(e -> !floorScannedSet.contains(e)).count();
         int backMissing  = (int) missing.stream().filter(e -> !backScannedSet.contains(e)).count();
 
-        BigDecimal accuracy = expected.isEmpty() ? BigDecimal.valueOf(100)
+        BigDecimal accuracy = expected.isEmpty()
+                ? (scannedAll.isEmpty() ? BigDecimal.valueOf(100) : BigDecimal.ZERO)
                 : BigDecimal.valueOf(100.0 * matched.size() / expected.size())
                         .setScale(2, RoundingMode.HALF_UP);
 

@@ -387,9 +387,17 @@ public class SohSessionService {
         int undercount = (int) items.stream()
                 .filter(i -> i.getCountedQuantity() < i.getExpectedQuantity()).count();
 
-        BigDecimal accuracy = totalExpected == 0 ? BigDecimal.valueOf(100)
-                : BigDecimal.valueOf(100.0 * totalCounted / totalExpected)
-                        .setScale(2, RoundingMode.HALF_UP);
+        // "Nothing expected" is only trivially 100% accurate if nothing was scanned either —
+        // scanning real tags against a zero expected count (e.g. this session's ERP batch
+        // resolution came up empty while a nonzero count exists elsewhere for the store) means
+        // every read is unaccounted for, i.e. 0% match, not 100%.
+        BigDecimal accuracy;
+        if (totalExpected == 0) {
+            accuracy = totalCounted == 0 ? BigDecimal.valueOf(100) : BigDecimal.ZERO;
+        } else {
+            accuracy = BigDecimal.valueOf(100.0 * totalCounted / totalExpected)
+                    .setScale(2, RoundingMode.HALF_UP);
+        }
 
         // ── Per-location breakdown ─────────────────────────────────────────────
         UUID sid = session.getId();
