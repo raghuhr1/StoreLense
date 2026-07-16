@@ -27,7 +27,6 @@ public class ReconciliationEngine {
 
     private final CcReconciliationRepository     reconciliationRepository;
     private final CcReconciliationItemRepository itemRepository;
-    private final ErpSohSnapshotEpcRepository    snapshotEpcRepository;
     private final ErpImportBatchRepository       batchRepository;
     private final SohServiceClient               sohServiceClient;
     private final JdbcClient                     jdbcClient;
@@ -56,16 +55,16 @@ public class ReconciliationEngine {
                 .findTopByStoreIdAndStatusOrderByCreatedAtDesc(session.storeId(), "COMPLETED");
 
         if (batchOpt.isPresent()) {
-            List<ErpSohSnapshotEpc> snapEpcs = snapshotEpcRepository
-                    .findByBatchAndZone(batchOpt.get().getId(), session.zoneRegion());
+            Map<String, String> epcToEan = resolveExpectedEpcs(
+                    batchOpt.get().getId(), session.storeId(), session.zoneRegion());
 
-            if (!snapEpcs.isEmpty()) {
+            if (!epcToEan.isEmpty()) {
                 return self.persistReconciliation(
-                        sessionId, null, batchOpt.get(), session, scannedEpcs, snapEpcs);
+                        sessionId, null, batchOpt.get(), session, scannedEpcs, epcToEan);
             }
 
-            log.info("ERP batch {} has no resolved EPCs for session {} — falling back to system-driven",
-                    batchOpt.get().getId(), sessionId);
+            log.info("ERP batch {} has no matching EPCs for session {} zone={} — falling back to system-driven",
+                    batchOpt.get().getId(), sessionId, session.zoneRegion());
         } else {
             log.info("No completed ERP batch for store {} — using system-driven reconciliation for session {}",
                     session.storeId(), sessionId);
@@ -114,12 +113,12 @@ public class ReconciliationEngine {
                 .findTopByStoreIdAndStatusOrderByCreatedAtDesc(storeId, "COMPLETED");
 
         if (batchOpt.isPresent()) {
-            List<ErpSohSnapshotEpc> snapEpcs = snapshotEpcRepository
-                    .findByBatchAndZone(batchOpt.get().getId(), null);   // all zones for count
-            if (!snapEpcs.isEmpty()) {
+            Map<String, String> epcToEan = resolveExpectedEpcs(
+                    batchOpt.get().getId(), storeId, null);   // all zones for count
+            if (!epcToEan.isEmpty()) {
                 return self.persistCountReconciliation(
                         cycleCountId, storeId, batchOpt.get(),
-                        epcToLocation, epcToSection, snapEpcs);
+                        epcToLocation, epcToSection, epcToEan);
             }
         }
 
@@ -179,14 +178,9 @@ public class ReconciliationEngine {
                                                    ErpImportBatch batch,
                                                    SohSessionInfo session,
                                                    List<String> scannedEpcList,
-                                                   List<ErpSohSnapshotEpc> snapEpcs) {
-        Set<String> expected = snapEpcs.stream()
-                .map(ErpSohSnapshotEpc::getEpc).collect(Collectors.toSet());
+                                                   Map<String, String> epcToEan) {
+        Set<String> expected = epcToEan.keySet();
         Set<String> scanned  = new HashSet<>(scannedEpcList);
-
-        Map<String, String> epcToEan = snapEpcs.stream()
-                .collect(Collectors.toMap(ErpSohSnapshotEpc::getEpc,
-                        e -> e.getSnapshot().getEan(), (a, b) -> a));
 
         Set<String> matched = new HashSet<>(scanned); matched.retainAll(expected);
         Set<String> missing = new HashSet<>(expected); missing.removeAll(scanned);
@@ -312,12 +306,8 @@ public class ReconciliationEngine {
                                                         ErpImportBatch batch,
                                                         Map<String, String> epcToLocation,
                                                         Map<String, String> epcToSection,
-                                                        List<ErpSohSnapshotEpc> snapEpcs) {
-        Set<String> expected = snapEpcs.stream()
-                .map(ErpSohSnapshotEpc::getEpc).collect(Collectors.toSet());
-        Map<String, String> epcToEan = snapEpcs.stream()
-                .collect(Collectors.toMap(ErpSohSnapshotEpc::getEpc,
-                        e -> e.getSnapshot().getEan(), (a, b) -> a));
+                                                        Map<String, String> epcToEan) {
+        Set<String> expected = epcToEan.keySet();
 
         Set<String> scannedAll = epcToLocation.keySet();
         Set<String> matched    = new HashSet<>(scannedAll); matched.retainAll(expected);
@@ -448,6 +438,51 @@ public class ReconciliationEngine {
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────
+
+    /**
+     * Resolves expected EPCs for a batch by product/EAN match — NOT by relying on
+     * erp_soh_snapshot_epcs (only pre-linked EPCs, empty right after a fresh ERP import) as
+     * findByBatchAndZone did. Also normalizes zone-text separators so a session's zoneRegion
+     * ("SALES_FLOOR", enum-style from the Android picker) matches the ERP CSV's zone_region
+     * ("Sales Floor", spaced text) — an exact-string match here silently fell through to the
+     * store-wide system-driven fallback for every zone-scoped session, bypassing ERP data
+     * entirely regardless of how much matching product/EPC data actually existed.
+     */
+    private Map<String, String> resolveExpectedEpcs(UUID batchId, UUID storeId, String zoneRegion) {
+        boolean hasZone = zoneRegion != null && !zoneRegion.isBlank();
+        String sql = hasZone
+                ? """
+                  SELECT DISTINCT er.epc, s.ean
+                  FROM inventory.epc_registry er
+                  JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
+                  JOIN products.barcodes b  ON b.product_id = et.product_id
+                  JOIN erp.erp_soh_snapshot s ON UPPER(b.barcode_value) = UPPER(s.ean)
+                  WHERE s.batch_id = :batchId
+                    AND er.store_id = :storeId
+                    AND er.status NOT IN ('sold', 'damaged', 'transferred')
+                    AND UPPER(REPLACE(REPLACE(s.zone_region, ' ', ''), '_', ''))
+                      = UPPER(REPLACE(REPLACE(:zoneRegion, ' ', ''), '_', ''))
+                  """
+                : """
+                  SELECT DISTINCT er.epc, s.ean
+                  FROM inventory.epc_registry er
+                  JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
+                  JOIN products.barcodes b  ON b.product_id = et.product_id
+                  JOIN erp.erp_soh_snapshot s ON UPPER(b.barcode_value) = UPPER(s.ean)
+                  WHERE s.batch_id = :batchId
+                    AND er.store_id = :storeId
+                    AND er.status NOT IN ('sold', 'damaged', 'transferred')
+                  """;
+        var q = jdbcClient.sql(sql)
+                .param("batchId", batchId)
+                .param("storeId", storeId);
+        if (hasZone) q = q.param("zoneRegion", zoneRegion);
+
+        record EpcEan(String epc, String ean) {}
+        return q.query((rs, n) -> new EpcEan(rs.getString("epc"), rs.getString("ean")))
+                .list().stream()
+                .collect(Collectors.toMap(EpcEan::epc, EpcEan::ean, (a, b) -> a));
+    }
 
     private CcReconciliationItem item(CcReconciliation recon, String epc, String ean,
                                       String status, int expectedQty, int scannedQty,

@@ -24,7 +24,6 @@ class ReconciliationEngineTest {
 
     @Mock CcReconciliationRepository     reconciliationRepository;
     @Mock CcReconciliationItemRepository itemRepository;
-    @Mock ErpSohSnapshotEpcRepository    snapshotEpcRepository;
     @Mock ErpImportBatchRepository       batchRepository;
     @Mock SohServiceClient               sohServiceClient;
     @Mock JdbcClient                     jdbcClient;
@@ -163,14 +162,10 @@ class ReconciliationEngineTest {
         epcToSection.put("epc4", "MENS");
 
         // ERP snapshot contains epc1, epc2, epc3
-        ErpSohSnapshot snapshot = new ErpSohSnapshot();
-        snapshot.setEan("EAN123");
-
-        List<ErpSohSnapshotEpc> snapEpcs = List.of(
-                snapEpc("epc1", snapshot),
-                snapEpc("epc2", snapshot),
-                snapEpc("epc3", snapshot)
-        );
+        Map<String, String> epcToEan = new LinkedHashMap<>();
+        epcToEan.put("epc1", "EAN123");
+        epcToEan.put("epc2", "EAN123");
+        epcToEan.put("epc3", "EAN123");
 
         ErpImportBatch batch = new ErpImportBatch();
         batch.setId(batchId);
@@ -180,7 +175,7 @@ class ReconciliationEngineTest {
         when(reconciliationRepository.save(any())).thenReturn(savedRecon);
         when(itemRepository.saveAll(any())).thenReturn(List.of());
 
-        engine.persistCountReconciliation(cycleCountId, storeId, batch, epcToLocation, epcToSection, snapEpcs);
+        engine.persistCountReconciliation(cycleCountId, storeId, batch, epcToLocation, epcToSection, epcToEan);
 
         ArgumentCaptor<CcReconciliation> reconCaptor = ArgumentCaptor.forClass(CcReconciliation.class);
         verify(reconciliationRepository).save(reconCaptor.capture());
@@ -208,21 +203,18 @@ class ReconciliationEngineTest {
         );
         Map<String, String> epcToSection = Map.of("epc1", "WOMENS");
 
-        ErpSohSnapshot snap = new ErpSohSnapshot();
-        snap.setEan("EAN999");
-        List<ErpSohSnapshotEpc> snapEpcs = List.of(
-                snapEpc("epc1", snap),
-                snapEpc("epc2", snap),
-                snapEpc("epc3", snap),  // missing — not scanned on floor
-                snapEpc("epc4", snap)   // missing — not scanned on backroom
-        );
+        Map<String, String> epcToEan = new LinkedHashMap<>();
+        epcToEan.put("epc1", "EAN999");
+        epcToEan.put("epc2", "EAN999");
+        epcToEan.put("epc3", "EAN999");  // missing — not scanned on floor
+        epcToEan.put("epc4", "EAN999");  // missing — not scanned on backroom
 
         CcReconciliation saved = reconWithStatus("PENDING_APPROVAL");
         saved.setId(UUID.randomUUID());
         when(reconciliationRepository.save(any())).thenReturn(saved);
         when(itemRepository.saveAll(any())).thenReturn(List.of());
 
-        engine.persistCountReconciliation(cycleCountId, storeId, batch, epcToLocation, epcToSection, snapEpcs);
+        engine.persistCountReconciliation(cycleCountId, storeId, batch, epcToLocation, epcToSection, epcToEan);
 
         ArgumentCaptor<CcReconciliation> captor = ArgumentCaptor.forClass(CcReconciliation.class);
         verify(reconciliationRepository).save(captor.capture());
@@ -243,17 +235,14 @@ class ReconciliationEngineTest {
 
         Map<String, String> epcToLocation = Map.of("epc1", "SALES_FLOOR");
         Map<String, String> epcToSection  = Map.of();
-
-        ErpSohSnapshot snap = new ErpSohSnapshot();
-        snap.setEan("EAN");
-        List<ErpSohSnapshotEpc> snapEpcs = List.of(snapEpc("epc1", snap));
+        Map<String, String> epcToEan      = Map.of("epc1", "EAN");
 
         CcReconciliation saved = reconWithStatus("PENDING_APPROVAL");
         saved.setId(UUID.randomUUID());
         when(reconciliationRepository.save(any())).thenReturn(saved);
         when(itemRepository.saveAll(any())).thenReturn(List.of());
 
-        engine.persistCountReconciliation(UUID.randomUUID(), UUID.randomUUID(), batch, epcToLocation, epcToSection, snapEpcs);
+        engine.persistCountReconciliation(UUID.randomUUID(), UUID.randomUUID(), batch, epcToLocation, epcToSection, epcToEan);
 
         ArgumentCaptor<CcReconciliation> captor = ArgumentCaptor.forClass(CcReconciliation.class);
         verify(reconciliationRepository).save(captor.capture());
@@ -267,20 +256,14 @@ class ReconciliationEngineTest {
 
         Map<String, String> epcToLocation = Map.of("epc1", "SALES_FLOOR", "epc2", "BACKROOM");
         Map<String, String> epcToSection  = Map.of();
-
-        ErpSohSnapshot snap = new ErpSohSnapshot();
-        snap.setEan("EAN");
-        List<ErpSohSnapshotEpc> snapEpcs = List.of(
-                snapEpc("epc1", snap),
-                snapEpc("epc2", snap)
-        );
+        Map<String, String> epcToEan      = Map.of("epc1", "EAN", "epc2", "EAN");
 
         CcReconciliation saved = reconWithStatus("PENDING_APPROVAL");
         saved.setId(UUID.randomUUID());
         when(reconciliationRepository.save(any())).thenReturn(saved);
         when(itemRepository.saveAll(any())).thenReturn(List.of());
 
-        engine.persistCountReconciliation(UUID.randomUUID(), UUID.randomUUID(), batch, epcToLocation, epcToSection, snapEpcs);
+        engine.persistCountReconciliation(UUID.randomUUID(), UUID.randomUUID(), batch, epcToLocation, epcToSection, epcToEan);
 
         ArgumentCaptor<CcReconciliation> captor = ArgumentCaptor.forClass(CcReconciliation.class);
         verify(reconciliationRepository).save(captor.capture());
@@ -296,11 +279,8 @@ class ReconciliationEngineTest {
 
         Map<String, String> epcToLocation = Map.of("epc1", "SALES_FLOOR");
         Map<String, String> epcToSection  = Map.of("epc1", "KIDS");
-
-        ErpSohSnapshot snap = new ErpSohSnapshot();
-        snap.setEan("EAN-KIDS");
         // epc1 is both expected and scanned → MATCH
-        List<ErpSohSnapshotEpc> snapEpcs = List.of(snapEpc("epc1", snap));
+        Map<String, String> epcToEan = Map.of("epc1", "EAN-KIDS");
 
         CcReconciliation saved = reconWithStatus("PENDING_APPROVAL");
         saved.setId(UUID.randomUUID());
@@ -310,7 +290,7 @@ class ReconciliationEngineTest {
         ArgumentCaptor<List<CcReconciliationItem>> itemsCaptor = ArgumentCaptor.forClass(List.class);
         when(itemRepository.saveAll(itemsCaptor.capture())).thenReturn(List.of());
 
-        engine.persistCountReconciliation(UUID.randomUUID(), UUID.randomUUID(), batch, epcToLocation, epcToSection, snapEpcs);
+        engine.persistCountReconciliation(UUID.randomUUID(), UUID.randomUUID(), batch, epcToLocation, epcToSection, epcToEan);
 
         List<CcReconciliationItem> items = itemsCaptor.getValue();
         assertThat(items).hasSize(1);
@@ -350,10 +330,4 @@ class ReconciliationEngineTest {
         return r;
     }
 
-    private static ErpSohSnapshotEpc snapEpc(String epc, ErpSohSnapshot snapshot) {
-        ErpSohSnapshotEpc s = new ErpSohSnapshotEpc();
-        s.setEpc(epc);
-        s.setSnapshot(snapshot);
-        return s;
-    }
 }
