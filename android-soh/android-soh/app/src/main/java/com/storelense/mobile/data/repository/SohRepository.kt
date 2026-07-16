@@ -8,6 +8,7 @@ import com.storelense.mobile.data.remote.ApiService
 import com.storelense.mobile.data.remote.TokenManager
 import com.storelense.mobile.data.remote.dto.*
 import kotlinx.coroutines.flow.Flow
+import timber.log.Timber
 import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Named
@@ -120,6 +121,7 @@ class SohRepository @Inject constructor(
                 sectionCode  = sectionCode
             )
         )
+        Timber.d("bufferEpc: inserted epc=$epc sessionId=$sessionId")
     }
 
     fun epcCountFlow(sessionId: String): Flow<Int> = epcReadDao.countFlow(sessionId)
@@ -177,6 +179,7 @@ class SohRepository @Inject constructor(
     suspend fun uploadBatch(sessionId: String, storeId: String): Result<Unit> {
         try {
             val pending = epcReadDao.getPending(sessionId)
+            Timber.i("uploadBatch: sessionId=$sessionId pendingCount=${pending.size}")
             if (pending.isEmpty()) return Result.Success(Unit)
             val CHUNK = 300
             for (i in pending.indices step CHUNK) {
@@ -188,11 +191,14 @@ class SohRepository @Inject constructor(
                     reads         = chunk.map { RfidReadDto(it.epc, it.rssi, it.antennaPort, it.scannedAt, it.zoneId) }
                 )
                 val resp = api.ingestRfidBatch(req)
+                Timber.i("uploadBatch: chunk $i..${i + chunk.size} -> HTTP ${resp.code()} successful=${resp.isSuccessful} body=${resp.errorBody()?.string()}")
                 if (!resp.isSuccessful) return Result.Error("Upload failed at chunk $i")
             }
             epcReadDao.markAllUploaded(sessionId)
+            Timber.i("uploadBatch: marked ${pending.size} reads uploaded for session $sessionId")
             return Result.Success(Unit)
         } catch (e: Exception) {
+            Timber.e(e, "uploadBatch: exception for session $sessionId")
             return Result.Error(e.message ?: "Upload error")
         }
     }
