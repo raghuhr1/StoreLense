@@ -66,14 +66,14 @@ class ScanModeViewModel @Inject constructor(
             label        = "Sales Floor",
             description  = "Count items on display in the shopping area",
             zoneRegion   = "SALES_FLOOR",
-            sessionType  = "zone_count",
+            sessionType  = "manual",
             locationCode = "SALES_FLOOR"
         ),
         ZoneOption(
             label        = "Back Room",
             description  = "Count stock in storage and receiving areas",
             zoneRegion   = "BACK_ROOM",
-            sessionType  = "zone_count",
+            sessionType  = "manual",
             locationCode = "BACKROOM"
         )
     )
