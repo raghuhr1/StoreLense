@@ -23,7 +23,7 @@ data:
       server {
         listen 8080;
         location = /health { return 200 '{"status":"UP"}'; add_header Content-Type application/json; }
-        location ~ ^/api/(auth|users)(/|$) { limit_req zone=api burst=20 nodelay; proxy_pass http://auth-service; }
+        location ~ ^/api/(auth|users|roles)(/|$) { limit_req zone=api burst=20 nodelay; proxy_pass http://auth-service; }
         location /api/stores    { proxy_pass http://store-service; }
         location /api/products  { proxy_pass http://product-service; }
         location /api/inventory { proxy_pass http://inventory-service; }
