@@ -25,7 +25,8 @@ public class EpcDecoderService {
             String companyPrefix,
             String itemReference,
             String serialNumber,
-            String gtin14
+            String gtin14,
+            String ean13
     ) {}
 
     /**
@@ -92,15 +93,20 @@ public class EpcDecoderService {
             String serial        = Long.toString(serialVal);
 
             // Company Prefix + Item Reference together = 13 digits per the GS1 partition
-            // table above, and per the EPC TDS spec this 13-digit body's LEADING digit is
-            // already the GTIN's indicator digit — it must not be prepended again. Appending
-            // a check digit over these 13 digits yields the correct 14-digit GTIN.
-            // (Previous version prepended an extra "0", producing a bogus 15-character value
-            // that could never match a real 13/14-digit barcode.)
-            String gtinBody = companyPrefix + itemRef; // 13 digits, leading digit = indicator
+            // table above (gtin14 below preserves the original interpretation, kept only
+            // as a fallback for products seeded with the full 14-digit GTIN as barcode).
+            String gtinBody = companyPrefix + itemRef; // 13 digits
             String gtin14   = gtinBody + gs1CheckDigit(gtinBody);
 
-            return Optional.of(new DecodedEpc(companyPrefix, itemRef, serial, gtin14));
+            // Retail EAN-13: per the EPC TDS spec, the item reference field's OWN leading
+            // digit is the GTIN indicator digit, not part of the retail barcode body. Drop
+            // it, then compute a fresh check digit over the resulting 12-digit body — this
+            // is a *different* check digit than gtin14's, since removing one digit flips
+            // which positions carry weight 3 vs 1.
+            String ean13Body = companyPrefix + itemRef.substring(1); // 12 digits
+            String ean13     = ean13Body + gs1CheckDigit(ean13Body);
+
+            return Optional.of(new DecodedEpc(companyPrefix, itemRef, serial, gtin14, ean13));
 
         } catch (Exception e) {
             log.debug("EPC decode failed for {}: {}", hexEpc, e.getMessage());
@@ -108,12 +114,19 @@ public class EpcDecoderService {
         }
     }
 
-    /** GS1 standard check digit: weighted sum mod 10, complement to 10. */
-    static char gs1CheckDigit(String digits13) {
+    /**
+     * GS1 standard check digit: weighted sum mod 10, complement to 10.
+     * The rightmost data digit always carries weight 3, alternating leftwards —
+     * so the position parity that carries weight 3 depends on the input length,
+     * not a hardcoded index parity.
+     */
+    static char gs1CheckDigit(String digits) {
+        int n = digits.length();
         int sum = 0;
-        for (int i = 0; i < 13; i++) {
-            int d = digits13.charAt(i) - '0';
-            sum += (i % 2 == 0) ? d * 3 : d;
+        for (int i = 0; i < n; i++) {
+            int d = digits.charAt(i) - '0';
+            boolean weightThree = (n - 1 - i) % 2 == 0;
+            sum += weightThree ? d * 3 : d;
         }
         int check = (10 - (sum % 10)) % 10;
         return (char) ('0' + check);

@@ -51,9 +51,11 @@ public class EpcResolutionService {
             return fromApi;
         }
 
-        // 3. Decode EPC → GTIN, then lookup by GTIN barcode
+        // 3. Decode EPC → EAN-13 (retail barcode), then fall back to the raw
+        //    14-digit GTIN for products seeded with the full GTIN as their barcode.
         Optional<UUID> fromGtin = epcDecoder.decode(epc)
-                .flatMap(decoded -> lookupByGtin(decoded.gtin14()));
+                .flatMap(decoded -> lookupByEanValue(decoded.ean13())
+                        .or(() -> lookupByEanValue(decoded.gtin14())));
 
         if (fromGtin.isPresent()) {
             redis.opsForValue().set(cacheKey, fromGtin.get().toString(), CACHE_TTL);
@@ -83,20 +85,6 @@ public class EpcResolutionService {
             log.warn("EPC lookup failed for {}: {}", epc, e.getMessage());
         }
         return Optional.empty();
-    }
-
-    /**
-     * Decoded EPCs carry a 14-digit GTIN, but barcodes are stored as 13-digit EAN
-     * values with no leading indicator digit. Try the EAN-13 form first (indicator
-     * digit stripped, the common case for retail packaging) and fall back to the
-     * raw 14-digit value in case a product was seeded with the full GTIN-14.
-     */
-    private Optional<UUID> lookupByGtin(String gtin) {
-        if (gtin != null && gtin.length() == 14) {
-            Optional<UUID> byEan13 = lookupByEanValue(gtin.substring(1));
-            if (byEan13.isPresent()) return byEan13;
-        }
-        return lookupByEanValue(gtin);
     }
 
     private Optional<UUID> lookupByEanValue(String ean) {
