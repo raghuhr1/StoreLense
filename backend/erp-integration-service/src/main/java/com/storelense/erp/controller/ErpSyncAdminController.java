@@ -154,8 +154,13 @@ public class ErpSyncAdminController {
     @Operation(summary = "List ERP import batches (paginated, newest first)")
     public ResponseEntity<ApiResponse<PageResponse<?>>> listBatches(
             @RequestParam(required = false) UUID storeId,
-            @PageableDefault(size = 20) Pageable pageable) {
+            @PageableDefault(size = 20, sort = "createdAt", direction = org.springframework.data.domain.Sort.Direction.DESC)
+            Pageable pageable) {
 
+        // findByStoreIdOrderByCreatedAtDesc always sorts newest-first regardless of the
+        // incoming Pageable's sort; findAll() only sorts if the Pageable carries one — the
+        // default above guarantees that even when the caller (e.g. the dashboard) omits
+        // storeId and doesn't specify a sort param itself.
         var page = storeId != null
                 ? importBatchRepository.findByStoreIdOrderByCreatedAtDesc(storeId, pageable)
                 : importBatchRepository.findAll(pageable);
