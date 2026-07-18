@@ -40,7 +40,11 @@ export default function DashboardPage() {
         const d = new Date(today)
         d.setDate(d.getDate() - i)
         const date = d.toISOString().slice(0, 10)
-        await fetch(`/api/reporting/kpi/aggregate?storeId=${sid}&date=${date}`, { method: 'POST' })
+        // Uses the shared, authenticated API client (attaches the Bearer token via
+        // interceptor) instead of a raw fetch() — a raw fetch here silently sent no
+        // Authorization header, got rejected before reaching reporting-service, and
+        // never surfaced as an error since fetch() doesn't reject on non-2xx status.
+        await reportingApi.aggregateKpi(sid, date)
       }
     },
     onSuccess: () => {
@@ -176,6 +180,12 @@ export default function DashboardPage() {
               <RefreshCw size={13} className={refreshKpi.isPending ? 'animate-spin' : ''} />
               {refreshKpi.isPending ? 'Refreshing…' : 'Refresh KPI'}
             </button>
+          )}
+
+          {refreshKpi.isError && (
+            <span className="text-xs font-medium text-red-700 bg-red-50 border border-red-200 px-2.5 py-1 rounded-full">
+              Refresh failed — check permissions and try again
+            </span>
           )}
 
           {/* Actual data span badge */}

@@ -9,4 +9,8 @@ export const reportingApi = {
   kpiRange: (storeId: string, from: string, to: string) =>
     client.get<ApiResponse<KpiDaily[]>>('/reporting/kpi/range', { params: { storeId, from, to } })
       .then(r => r.data.data),
+
+  aggregateKpi: (storeId: string, date: string) =>
+    client.post<ApiResponse<void>>('/reporting/kpi/aggregate', null, { params: { storeId, date } })
+      .then(r => r.data),
 }
