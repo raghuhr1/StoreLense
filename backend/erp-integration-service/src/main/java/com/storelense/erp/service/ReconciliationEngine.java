@@ -536,15 +536,20 @@ public class ReconciliationEngine {
                 .collect(Collectors.toMap(EanQty::ean, EanQty::qty));
     }
 
-    /** Resolves each scanned EPC (if any) to its product's primary EAN, for grouping by product. */
+    /**
+     * Resolves each scanned EPC (if any) to its product's primary EAN, for grouping by product.
+     * Joins on epc_registry.product_id directly rather than requiring an epc_tags row —
+     * most EPCs resolved via the SGTIN decode fallback never get an epc_tags entry, only
+     * epc_registry.product_id, so requiring epc_tags here silently dropped nearly every
+     * real scan out of the matched set.
+     */
     private Map<String, String> resolveScannedEans(UUID storeId, List<String> scannedEpcs) {
         if (scannedEpcs.isEmpty()) return Map.of();
         record EpcEan(String epc, String ean) {}
         return jdbcClient.sql("""
                 SELECT er.epc, b.barcode_value AS ean
                 FROM inventory.epc_registry er
-                JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
-                JOIN products.barcodes  b  ON b.product_id = et.product_id AND b.is_primary = true
+                JOIN products.barcodes b ON b.product_id = er.product_id AND b.is_primary = true
                 WHERE er.store_id = :storeId
                   AND er.epc IN (:epcs)
                 """)
