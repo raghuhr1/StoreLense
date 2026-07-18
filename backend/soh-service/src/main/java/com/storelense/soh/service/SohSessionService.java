@@ -353,6 +353,44 @@ public class SohSessionService {
         if (session.getTotalEpcReads() != before || session.getUniqueEpcCount() != beforeUnique) {
             sessionRepository.save(session);
         }
+        refreshResultIfStale(session);
+    }
+
+    /**
+     * Same self-correction as refreshReadStatsIfCompleted, applied to the whole SohResult
+     * (accuracy, counted/expected units, variance breakdown) — calculateResult() is only
+     * ever invoked once, at completeSession() time, and its totalCounted falls back to a
+     * raw rfid.rfid_reads count when no SohSessionItem rows exist (the common case for
+     * RFID-driven sessions). If that ran before the async ingest pipeline had finished
+     * writing reads, a wrong accuracy/count got permanently frozen — e.g. two production
+     * sessions were found stuck at "100% accuracy, 0 counted, 162 expected", which the
+     * current formula would never produce (0/162 = 0%), proving they were computed by an
+     * even older, already-superseded version of this logic and never recomputed since.
+     */
+    private void refreshResultIfStale(SohSession session) {
+        SohResult existing = session.getResult();
+        if (existing == null) return;
+        SohResult recomputed = calculateResult(session);
+        boolean changed = existing.getTotalUnitsCounted() != recomputed.getTotalUnitsCounted()
+                || existing.getTotalUnitsExpected() != recomputed.getTotalUnitsExpected()
+                || existing.getAccuracyPct().compareTo(recomputed.getAccuracyPct()) != 0;
+        if (!changed) return;
+
+        existing.setTotalProductsCounted(recomputed.getTotalProductsCounted());
+        existing.setTotalUnitsCounted(recomputed.getTotalUnitsCounted());
+        existing.setTotalUnitsExpected(recomputed.getTotalUnitsExpected());
+        existing.setAccuracyPct(recomputed.getAccuracyPct());
+        existing.setVarianceCount(recomputed.getVarianceCount());
+        existing.setOvercountItems(recomputed.getOvercountItems());
+        existing.setUndercountItems(recomputed.getUndercountItems());
+        existing.setFloorUnitsCounted(recomputed.getFloorUnitsCounted());
+        existing.setFloorUnitsExpected(recomputed.getFloorUnitsExpected());
+        existing.setFloorVariance(recomputed.getFloorVariance());
+        existing.setBackroomUnitsCounted(recomputed.getBackroomUnitsCounted());
+        existing.setBackroomUnitsExpected(recomputed.getBackroomUnitsExpected());
+        existing.setBackroomVariance(recomputed.getBackroomVariance());
+        existing.setTotalStoreVariance(recomputed.getTotalStoreVariance());
+        sessionRepository.save(session);
     }
 
     /**
