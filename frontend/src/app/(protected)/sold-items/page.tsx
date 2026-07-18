@@ -149,9 +149,12 @@ export default function SoldItemsPage() {
     phantomSKUs:     filtered.filter(r => r.rfidExcess > 0).length,
     totalPhantom:    filtered.reduce((s, r) => s + r.rfidExcess, 0),
     perfectMatch:    filtered.filter(r => r.gap === 0 && r.rfidExcess === 0).length,
-    avgAccuracy:     filtered.length > 0
-      ? Math.round(filtered.reduce((s, r) => s + (r.accuracyPct ?? 0), 0) / filtered.length)
-      : 0,
+    avgAccuracy:     (() => {
+      const rated = filtered.filter(r => r.accuracyPct != null)
+      return rated.length > 0
+        ? Math.round(rated.reduce((s, r) => s + (r.accuracyPct as number), 0) / rated.length)
+        : 0
+    })(),
   }), [filtered])
 
   // Brand-level gap chart — always shows ALL brands for context (not filtered by brand)

@@ -33,7 +33,12 @@ export default function InventoryDetailPage({ params }: { params: Promise<{ id: 
 
   const totalOnHand   = stateItems?.reduce((s, i) => s + i.quantityOnHand, 0) ?? 0
   const totalExpected = stateItems?.reduce((s, i) => s + i.quantityExpected, 0) ?? 0
-  const overallAcc    = totalExpected > 0 ? (totalOnHand / totalExpected) * 100 : null
+  // Average each zone row's own accuracy rather than summing raw units — a units
+  // ratio conflates "% scanned so far" with true accuracy.
+  const ratedZones    = stateItems?.filter(i => i.accuracyPct != null) ?? []
+  const overallAcc    = ratedZones.length > 0
+    ? ratedZones.reduce((s, i) => s + (i.accuracyPct as number), 0) / ratedZones.length
+    : null
   const lowAccZones   = stateItems?.filter(i => (i.accuracyPct ?? 100) < 95).length ?? 0
 
   const columns = useMemo<ColumnDef<InventoryState, unknown>[]>(() => [

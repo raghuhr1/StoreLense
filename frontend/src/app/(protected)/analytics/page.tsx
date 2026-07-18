@@ -240,13 +240,17 @@ export default function AnalyticsPage() {
   // ── Breakdown: brand + zone metrics ─────────────────────────────────────────
 
   const brandMetrics = useMemo(() => {
-    const map: Record<string, { sku: number; onHand: number; expected: number }> = {}
+    const map: Record<string, { sku: number; onHand: number; expected: number; accSum: number; accCount: number }> = {}
     for (const item of storeItems) {
       const brand = productMap[item.productId]?.brand ?? 'Unknown'
-      if (!map[brand]) map[brand] = { sku: 0, onHand: 0, expected: 0 }
+      if (!map[brand]) map[brand] = { sku: 0, onHand: 0, expected: 0, accSum: 0, accCount: 0 }
       map[brand].sku++
       map[brand].onHand    += item.quantityOnHand
       map[brand].expected  += item.quantityExpected
+      if (item.accuracyPct != null) {
+        map[brand].accSum += item.accuracyPct
+        map[brand].accCount++
+      }
     }
     return Object.entries(map)
       .map(([brand, m]) => ({
@@ -255,7 +259,9 @@ export default function AnalyticsPage() {
         onHand:   m.onHand,
         expected: m.expected,
         gap:      Math.max(0, m.expected - m.onHand),
-        accuracy: m.expected > 0 ? Math.round((m.onHand / m.expected) * 100) : null,
+        // Average each product's own accuracy rather than summing raw units —
+        // a units ratio conflates "% scanned so far" with true accuracy.
+        accuracy: m.accCount > 0 ? Math.round(m.accSum / m.accCount) : null,
       }))
       .sort((a, b) => (a.accuracy ?? 0) - (b.accuracy ?? 0))
   }, [storeItems, productMap])
@@ -263,15 +269,19 @@ export default function AnalyticsPage() {
   const zoneMetrics = useMemo(() => {
     const zoneMap: Record<string, { name: string; type: string }> = {}
     for (const z of zones ?? []) zoneMap[z.id] = { name: z.name, type: z.zoneType }
-    const byType: Record<string, { label: string; onHand: number; expected: number; sku: number }> = {}
+    const byType: Record<string, { label: string; onHand: number; expected: number; sku: number; accSum: number; accCount: number }> = {}
     for (const item of items ?? []) {  // use ALL items (zone-specific rows are what we want here)
       if (!item.zoneId) continue
       const z = zoneMap[item.zoneId]
       if (!z) continue
-      if (!byType[z.type]) byType[z.type] = { label: z.name, onHand: 0, expected: 0, sku: 0 }
+      if (!byType[z.type]) byType[z.type] = { label: z.name, onHand: 0, expected: 0, sku: 0, accSum: 0, accCount: 0 }
       byType[z.type].onHand   += item.quantityOnHand
       byType[z.type].expected += item.quantityExpected
       byType[z.type].sku++
+      if (item.accuracyPct != null) {
+        byType[z.type].accSum += item.accuracyPct
+        byType[z.type].accCount++
+      }
     }
     const LABELS: Record<string, string> = {
       floor: 'Sales Floor', backroom: 'Backroom', stockroom: 'Stockroom',
@@ -283,7 +293,7 @@ export default function AnalyticsPage() {
       onHand:   m.onHand,
       expected: m.expected,
       sku:      m.sku,
-      accuracy: m.expected > 0 ? Math.round((m.onHand / m.expected) * 100) : null,
+      accuracy: m.accCount > 0 ? Math.round(m.accSum / m.accCount) : null,
     }))
   }, [items, zones])
 
@@ -691,9 +701,10 @@ export default function AnalyticsPage() {
                         </td>
                         <td className="text-right py-2 pl-2 font-semibold text-gray-700">
                           {(() => {
-                            const tot = brandMetrics.reduce((s, m) => s + m.expected, 0)
-                            const oh  = brandMetrics.reduce((s, m) => s + m.onHand, 0)
-                            return tot > 0 ? `${Math.round((oh / tot) * 100)}%` : '—'
+                            const rated = brandMetrics.filter(m => m.accuracy != null)
+                            return rated.length > 0
+                              ? `${Math.round(rated.reduce((s, m) => s + (m.accuracy as number), 0) / rated.length)}%`
+                              : '—'
                           })()}
                         </td>
                       </tr>

@@ -718,8 +718,10 @@ public class InventoryService {
     }
 
     private java.math.BigDecimal calcAccuracy(int onHand, int expected) {
-        if (expected == 0) return java.math.BigDecimal.valueOf(100);
-        return java.math.BigDecimal.valueOf(100.0 * onHand / expected)
-                .setScale(2, java.math.RoundingMode.HALF_UP);
+        // expected==0 with stock on hand is orphan/unexpected inventory, not a perfect match.
+        if (expected == 0) return onHand == 0 ? java.math.BigDecimal.valueOf(100) : java.math.BigDecimal.ZERO;
+        // Cap at 100 — overstock (onHand > expected) is still a discrepancy, not >100% "accurate".
+        double pct = Math.min(100.0, 100.0 * onHand / expected);
+        return java.math.BigDecimal.valueOf(pct).setScale(2, java.math.RoundingMode.HALF_UP);
     }
 }
