@@ -149,12 +149,17 @@ export default function SoldItemsPage() {
     phantomSKUs:     filtered.filter(r => r.rfidExcess > 0).length,
     totalPhantom:    filtered.reduce((s, r) => s + r.rfidExcess, 0),
     perfectMatch:    filtered.filter(r => r.gap === 0 && r.rfidExcess === 0).length,
-    avgAccuracy:     (() => {
-      const rated = filtered.filter(r => r.accuracyPct != null)
-      return rated.length > 0
-        ? Math.round(rated.reduce((s, r) => s + (r.accuracyPct as number), 0) / rated.length)
-        : 0
-    })(),
+    // Computed live from erpExpected/rfidOnHand rather than the stored accuracyPct, so
+    // legacy rows never backfilled with a real value aren't silently excluded — a SKU ERP
+    // expects but that RFID has never found is a real 0%, not a data point to skip.
+    avgAccuracy: filtered.length > 0
+      ? Math.round(filtered.reduce((s, r) => {
+          const acc = r.erpExpected === 0
+            ? (r.rfidOnHand === 0 ? 100 : 0)
+            : Math.min(100, 100 * r.rfidOnHand / r.erpExpected)
+          return s + acc
+        }, 0) / filtered.length)
+      : 0,
   }), [filtered])
 
   // Brand-level gap chart — always shows ALL brands for context (not filtered by brand)

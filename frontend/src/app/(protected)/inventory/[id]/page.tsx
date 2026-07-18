@@ -33,11 +33,17 @@ export default function InventoryDetailPage({ params }: { params: Promise<{ id: 
 
   const totalOnHand   = stateItems?.reduce((s, i) => s + i.quantityOnHand, 0) ?? 0
   const totalExpected = stateItems?.reduce((s, i) => s + i.quantityExpected, 0) ?? 0
-  // Average each zone row's own accuracy rather than summing raw units — a units
-  // ratio conflates "% scanned so far" with true accuracy.
-  const ratedZones    = stateItems?.filter(i => i.accuracyPct != null) ?? []
-  const overallAcc    = ratedZones.length > 0
-    ? ratedZones.reduce((s, i) => s + (i.accuracyPct as number), 0) / ratedZones.length
+  // Average each zone row's own accuracy rather than summing raw units — a units ratio
+  // conflates "% scanned so far" with true accuracy. Computed live rather than read from
+  // the stored accuracyPct, so legacy rows never backfilled with a real value aren't
+  // silently excluded — a zone ERP expects but that's never been scanned is a real 0%.
+  const overallAcc = stateItems && stateItems.length > 0
+    ? stateItems.reduce((s, i) => {
+        const acc = i.quantityExpected === 0
+          ? (i.quantityOnHand === 0 ? 100 : 0)
+          : Math.min(100, 100 * i.quantityOnHand / i.quantityExpected)
+        return s + acc
+      }, 0) / stateItems.length
     : null
   const lowAccZones   = stateItems?.filter(i => (i.accuracyPct ?? 100) < 95).length ?? 0
 

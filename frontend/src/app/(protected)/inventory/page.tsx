@@ -192,11 +192,18 @@ export default function InventoryPage() {
     const storeLevel = (inventoryItems ?? []).filter(i => i.zoneId == null)
     const totalExpected = storeLevel.reduce((s, i) => s + i.quantityExpected, 0)
     const totalScanned  = storeLevel.reduce((s, i) => s + i.quantityOnHand, 0)
-    // Average each product's own accuracy rather than dividing raw unit totals —
-    // the latter conflates "% of total units scanned so far" with per-product accuracy.
-    const rated = storeLevel.filter(i => i.accuracyPct != null)
-    const accuracyPct = rated.length > 0
-      ? rated.reduce((s, i) => s + (i.accuracyPct as number), 0) / rated.length
+    // Average each product's own accuracy rather than dividing raw unit totals — the latter
+    // conflates "% of total units scanned so far" with per-product accuracy. Computed live
+    // (not read from the stored accuracyPct) so legacy rows never backfilled with a real
+    // value don't get silently excluded from the average — a product ERP expects but that
+    // has never been scanned is a real 0%, not a data point to skip.
+    const accuracyPct = storeLevel.length > 0
+      ? storeLevel.reduce((s, i) => {
+          const acc = i.quantityExpected === 0
+            ? (i.quantityOnHand === 0 ? 100 : 0)
+            : Math.min(100, 100 * i.quantityOnHand / i.quantityExpected)
+          return s + acc
+        }, 0) / storeLevel.length
       : null
     return { totalSkus: storeLevel.length, totalExpected, totalScanned, accuracyPct }
   }, [inventoryItems])

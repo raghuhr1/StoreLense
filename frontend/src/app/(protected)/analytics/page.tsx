@@ -139,10 +139,11 @@ export default function AnalyticsPage() {
   const brandAccuracy = useMemo(() => {
     const brandMap: Record<string, { sum: number; count: number }> = {}
     for (const item of storeItems) {
-      if (item.accuracyPct == null) continue
       const brand = productMap[item.productId]?.brand ?? 'Unknown'
       if (!brandMap[brand]) brandMap[brand] = { sum: 0, count: 0 }
-      brandMap[brand].sum += item.accuracyPct
+      brandMap[brand].sum += item.quantityExpected === 0
+        ? (item.quantityOnHand === 0 ? 100 : 0)
+        : Math.min(100, 100 * item.quantityOnHand / item.quantityExpected)
       brandMap[brand].count++
     }
     return Object.entries(brandMap)
@@ -247,6 +248,12 @@ export default function AnalyticsPage() {
 
   // ── Breakdown: brand + zone metrics ─────────────────────────────────────────
 
+  // Live per-item accuracy — not read from the stored accuracyPct, so legacy rows never
+  // backfilled with a real value don't get silently excluded from averages. A product ERP
+  // expects but that has never been scanned is a real 0%, not a data point to skip.
+  const liveAccuracy = (onHand: number, expected: number) =>
+    expected === 0 ? (onHand === 0 ? 100 : 0) : Math.min(100, 100 * onHand / expected)
+
   const brandMetrics = useMemo(() => {
     const map: Record<string, { sku: number; onHand: number; expected: number; accSum: number; accCount: number }> = {}
     for (const item of storeItems) {
@@ -255,10 +262,8 @@ export default function AnalyticsPage() {
       map[brand].sku++
       map[brand].onHand    += item.quantityOnHand
       map[brand].expected  += item.quantityExpected
-      if (item.accuracyPct != null) {
-        map[brand].accSum += item.accuracyPct
-        map[brand].accCount++
-      }
+      map[brand].accSum += liveAccuracy(item.quantityOnHand, item.quantityExpected)
+      map[brand].accCount++
     }
     return Object.entries(map)
       .map(([brand, m]) => ({
@@ -286,10 +291,8 @@ export default function AnalyticsPage() {
       byType[z.type].onHand   += item.quantityOnHand
       byType[z.type].expected += item.quantityExpected
       byType[z.type].sku++
-      if (item.accuracyPct != null) {
-        byType[z.type].accSum += item.accuracyPct
-        byType[z.type].accCount++
-      }
+      byType[z.type].accSum += liveAccuracy(item.quantityOnHand, item.quantityExpected)
+      byType[z.type].accCount++
     }
     const LABELS: Record<string, string> = {
       floor: 'Sales Floor', backroom: 'Backroom', stockroom: 'Stockroom',
