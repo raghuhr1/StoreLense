@@ -54,11 +54,14 @@ public class CycleCountService {
 
     @Transactional(readOnly = true)
     public CycleCountResponse get(UUID id) {
-        CycleCount cc = findOrThrow(id);
+        return buildResponse(findOrThrow(id));
+    }
+
+    private CycleCountResponse buildResponse(CycleCount cc) {
         CycleCountResponse base = sohMapper.toCycleCountResponse(cc);
 
         List<com.storelense.soh.dto.SohSessionResponse> sessions = sessionRepository
-                .findByCycleCountIdOrderByStartedAtAsc(id)
+                .findByCycleCountIdOrderByStartedAtAsc(cc.getId())
                 .stream()
                 .map(s -> {
                     var r = sohMapper.toResponse(s);

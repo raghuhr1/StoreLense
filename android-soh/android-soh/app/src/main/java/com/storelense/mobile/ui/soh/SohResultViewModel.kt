@@ -26,6 +26,7 @@ data class SohResultState(
     val backroomCounted: Int  = 0,
     val backroomExpected: Int = 0,
     val backroomVariance: Int = 0,
+    val cycleCountId: String? = null,
     val error: String?      = null
 )
 
@@ -58,7 +59,8 @@ class SohResultViewModel @Inject constructor(
                             floorVariance    = result?.floorVariance ?: 0,
                             backroomCounted  = result?.backroomUnitsCounted ?: 0,
                             backroomExpected = result?.backroomUnitsExpected ?: 0,
-                            backroomVariance = result?.backroomVariance ?: 0
+                            backroomVariance = result?.backroomVariance ?: 0,
+                            cycleCountId     = r.data.cycleCountId
                         )
                     }
                 }

@@ -218,7 +218,12 @@ fun AppNavigation() {
         ) {
             SohResultScreen(
                 sessionId = it.arguments!!.getString("sessionId")!!,
-                onDone    = { nav.navigate(Routes.HOME) { popUpTo(Routes.HOME) { inclusive = true } } }
+                onDone    = { nav.navigate(Routes.HOME) { popUpTo(Routes.HOME) { inclusive = true } } },
+                onScanAnotherZone = { cycleCountId ->
+                    nav.navigate(Routes.cycleCountDetail(cycleCountId)) {
+                        popUpTo(Routes.HOME)
+                    }
+                }
             )
         }
 

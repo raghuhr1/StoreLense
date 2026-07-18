@@ -21,6 +21,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 fun SohResultScreen(
     sessionId: String,
     onDone: () -> Unit,
+    onScanAnotherZone: (cycleCountId: String) -> Unit = {},
     vm: SohResultViewModel = hiltViewModel()
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -76,7 +77,21 @@ fun SohResultScreen(
             }
 
             Spacer(Modifier.weight(1f))
-            Button(onClick = onDone, Modifier.fillMaxWidth().height(52.dp)) {
+
+            // A zone scan that's part of today's shared cycle count can go straight to the
+            // "which zones are left" screen instead of a generic home return — the operator
+            // shouldn't have to rediscover "Start New Scan" for each remaining zone.
+            state.cycleCountId?.let { ccId ->
+                Button(
+                    onClick  = { onScanAnotherZone(ccId) },
+                    modifier = Modifier.fillMaxWidth().height(52.dp)
+                ) {
+                    Text("Scan Another Zone", fontSize = 16.sp)
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+
+            OutlinedButton(onClick = onDone, Modifier.fillMaxWidth().height(52.dp)) {
                 Text("Back to Home", fontSize = 16.sp)
             }
         }
