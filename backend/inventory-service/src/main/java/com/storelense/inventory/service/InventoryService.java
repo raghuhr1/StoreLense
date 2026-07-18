@@ -106,6 +106,7 @@ public class InventoryService {
                     state.setQuantityOnHand(state.getQuantityOnHand() + 1);
                     state.setLastCountedAt(seenAt);
                     state.setLastSohSessionId(event.sohSessionId());
+                    state.setAccuracyPct(calcAccuracy(state.getQuantityOnHand(), state.getQuantityExpected()));
                     return inventoryStateRepository.save(state);
                 })
                 .orElseGet(() -> inventoryStateRepository.save(
@@ -115,6 +116,7 @@ public class InventoryService {
                                 .zoneId(event.zoneId())
                                 .quantityOnHand(1)
                                 .quantityExpected(0)
+                                .accuracyPct(calcAccuracy(1, 0))
                                 .lastCountedAt(seenAt)
                                 .lastSohSessionId(event.sohSessionId())
                                 .build()));
@@ -161,6 +163,7 @@ public class InventoryService {
                                 .zoneId(zoneId)
                                 .quantityExpected(quantityExpected)
                                 .quantityOnHand(0)
+                                .accuracyPct(calcAccuracy(0, quantityExpected))
                                 .build()));
     }
 
@@ -636,14 +639,18 @@ public class InventoryService {
                             state.setAccuracyPct(calcAccuracy(state.getQuantityOnHand(), state.getQuantityExpected()));
                             inventoryStateRepository.save(state);
                         },
-                        () -> inventoryStateRepository.save(
-                                InventoryState.builder()
-                                        .storeId(req.storeId())
-                                        .productId(product.id())
-                                        .zoneId(zoneId)
-                                        .quantityOnHand(isNewEpcForStore && !isReplacement ? 1 : 0)
-                                        .quantityExpected(0)
-                                        .build()));
+                        () -> {
+                            int onHand = isNewEpcForStore && !isReplacement ? 1 : 0;
+                            inventoryStateRepository.save(
+                                    InventoryState.builder()
+                                            .storeId(req.storeId())
+                                            .productId(product.id())
+                                            .zoneId(zoneId)
+                                            .quantityOnHand(onHand)
+                                            .quantityExpected(0)
+                                            .accuracyPct(calcAccuracy(onHand, 0))
+                                            .build());
+                        });
 
         int totalTagged = jdbcClient.sql("""
                 SELECT COUNT(*)::int FROM inventory.epc_registry
