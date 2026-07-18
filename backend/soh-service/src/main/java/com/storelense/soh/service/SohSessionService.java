@@ -50,18 +50,20 @@ public class SohSessionService {
 
     // ── List / Get ─────────────────────────────────────────────────────────────
 
-    @Transactional(readOnly = true)
+    @Transactional
     public PageResponse<SohSessionResponse> listSessions(UUID storeId, String status, Pageable pageable) {
         var page = (status != null && !status.isBlank())
                 ? sessionRepository.findByStoreIdAndStatusInOrderByStartedAtDesc(
                         storeId, List.of(status.split(",")), pageable)
                 : sessionRepository.findByStoreIdOrderByStartedAtDesc(storeId, pageable);
+        page.forEach(this::refreshReadStatsIfCompleted);
         return PageResponse.from(page.map(sohMapper::toResponse));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public SohSessionResponse getSession(UUID sessionId, boolean includeEpcs) {
         SohSession session = findOrThrow(sessionId);
+        refreshReadStatsIfCompleted(session);
         SohSessionResponse base = sohMapper.toResponse(session);
         List<String> expectedEpcs = includeEpcs ? fetchExpectedEpcs(session) : null;
         SohResultResponse result = session.getResult() != null
@@ -331,6 +333,26 @@ public class SohSessionService {
     public List<String> getExpectedEpcs(UUID sessionId) {
         SohSession session = findOrThrow(sessionId);
         return fetchExpectedEpcs(session);
+    }
+
+    /**
+     * Self-correcting read-stats refresh for completed sessions: applyRfidReadStats() is
+     * only ever invoked once, at completeSession() time — if that ran before the async
+     * RFID ingest→resolve pipeline had finished writing to rfid.rfid_reads (a real race we
+     * hit in production: reads landing moments after the completion response was sent), the
+     * wrong zero values got permanently frozen with no way to refresh, since completeSession
+     * is idempotent and never recomputes for an already-completed session. Re-running this
+     * live on every list/get call makes it self-correcting instead of a one-shot snapshot —
+     * only writes back when the recomputed value actually differs, to avoid needless churn.
+     */
+    private void refreshReadStatsIfCompleted(SohSession session) {
+        if (!"completed".equals(session.getStatus())) return;
+        int before = session.getTotalEpcReads();
+        int beforeUnique = session.getUniqueEpcCount();
+        applyRfidReadStats(session);
+        if (session.getTotalEpcReads() != before || session.getUniqueEpcCount() != beforeUnique) {
+            sessionRepository.save(session);
+        }
     }
 
     /**
