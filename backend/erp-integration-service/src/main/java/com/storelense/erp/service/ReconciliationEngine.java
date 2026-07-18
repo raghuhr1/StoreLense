@@ -112,12 +112,11 @@ public class ReconciliationEngine {
                 .findTopByStoreIdAndStatusOrderByCreatedAtDesc(storeId, "COMPLETED");
 
         if (batchOpt.isPresent()) {
-            Map<String, String> epcToEan = resolveExpectedEpcs(
-                    batchOpt.get().getId(), storeId, null);   // all zones for count
-            if (!epcToEan.isEmpty()) {
+            Map<String, Integer> expectedQtyByEan = resolveExpectedQuantities(batchOpt.get().getId());
+            if (!expectedQtyByEan.isEmpty()) {
                 return self.persistCountReconciliation(
                         cycleCountId, storeId, batchOpt.get(),
-                        epcToLocation, epcToSection, epcToEan);
+                        epcToLocation, epcToSection);
             }
         }
 
@@ -349,62 +348,100 @@ public class ReconciliationEngine {
     public CcReconciliation persistCountReconciliation(UUID cycleCountId, UUID storeId,
                                                         ErpImportBatch batch,
                                                         Map<String, String> epcToLocation,
-                                                        Map<String, String> epcToSection,
-                                                        Map<String, String> epcToEan) {
-        Set<String> expected = epcToEan.keySet();
+                                                        Map<String, String> epcToSection) {
+        // Same fix as persistReconciliation (single-session): "expected" must come from the
+        // ERP's actual quantity per EAN, not from which EPCs happen to already be
+        // scanned/tagged — otherwise nothing can ever be "missing" across the combined count.
+        Map<String, Integer> expectedQtyByEan = resolveExpectedQuantities(batch.getId());
+        List<String> scannedEpcList = new ArrayList<>(epcToLocation.keySet());
+        Map<String, String> scannedEpcToEan = resolveScannedEans(storeId, scannedEpcList);
 
-        Set<String> scannedAll = epcToLocation.keySet();
-        Set<String> matched    = new HashSet<>(scannedAll); matched.retainAll(expected);
-        Set<String> missing    = new HashSet<>(expected);   missing.removeAll(scannedAll);
-        Set<String> extra      = new HashSet<>(scannedAll); extra.removeAll(expected);
+        Map<String, List<String>> scannedByEan = new HashMap<>();
+        for (String epc : scannedEpcList) {
+            String ean = scannedEpcToEan.getOrDefault(epc, "");
+            scannedByEan.computeIfAbsent(ean, k -> new ArrayList<>()).add(epc);
+        }
 
-        // Per-location breakdown
-        Set<String> floorScannedSet = scannedAll.stream()
-                .filter(e -> "SALES_FLOOR".equals(epcToLocation.get(e))).collect(Collectors.toSet());
-        Set<String> backScannedSet  = scannedAll.stream()
-                .filter(e -> "BACKROOM".equals(epcToLocation.get(e))).collect(Collectors.toSet());
+        Set<String> allEans = new HashSet<>(expectedQtyByEan.keySet());
+        allEans.addAll(scannedByEan.keySet());
+        allEans.remove("");
 
-        // An EPC is "floor missing" if it was expected but not found in any floor session
-        int floorMissing = (int) missing.stream()
-                .filter(e -> !floorScannedSet.contains(e)).count();
-        int backMissing  = (int) missing.stream()
-                .filter(e -> !backScannedSet.contains(e)).count();
+        record ItemRow(String epc, String ean, String status, int expectedQty, int scannedQty,
+                        String locationCode, String sectionCode) {}
+        List<ItemRow> rows = new ArrayList<>();
+        int matchedTotal = 0, missingTotal = 0, extraTotal = 0;
+        int totalExpected = expectedQtyByEan.values().stream().mapToInt(Integer::intValue).sum();
 
-        BigDecimal accuracy = expected.isEmpty()
-                ? (scannedAll.isEmpty() ? BigDecimal.valueOf(100) : BigDecimal.ZERO)
-                : BigDecimal.valueOf(100.0 * matched.size() / expected.size())
+        for (String ean : allEans) {
+            int expectedQty = expectedQtyByEan.getOrDefault(ean, 0);
+            List<String> scannedForEan = scannedByEan.getOrDefault(ean, List.of());
+            int matchedQty = Math.min(expectedQty, scannedForEan.size());
+            int missingQty = Math.max(0, expectedQty - scannedForEan.size());
+
+            for (int i = 0; i < matchedQty; i++) {
+                String epc = scannedForEan.get(i);
+                rows.add(new ItemRow(epc, ean, "MATCH", 1, 1, epcToLocation.get(epc), epcToSection.get(epc)));
+            }
+            for (int i = matchedQty; i < scannedForEan.size(); i++) {
+                String epc = scannedForEan.get(i);
+                rows.add(new ItemRow(epc, ean, "EXTRA", 0, 1, epcToLocation.get(epc), epcToSection.get(epc)));
+            }
+            for (int i = 0; i < missingQty; i++) {
+                rows.add(new ItemRow("EXPECTED:" + ean + ":" + (i + 1), ean, "MISSING", 1, 0, null, null));
+            }
+            matchedTotal += matchedQty;
+            missingTotal += missingQty;
+            extraTotal   += scannedForEan.size() - matchedQty;
+        }
+
+        List<String> unresolvedScans = scannedByEan.getOrDefault("", List.of());
+        for (String epc : unresolvedScans) {
+            rows.add(new ItemRow(epc, null, "EXTRA", 0, 1, epcToLocation.get(epc), epcToSection.get(epc)));
+        }
+        extraTotal += unresolvedScans.size();
+
+        int totalScanned = scannedEpcList.size();
+
+        // Per-location scanned breakdown is real; expected/missing can't be split by zone
+        // since the ERP feed carries no per-zone quantity — mirrors the previous convention
+        // of reporting the same overall expected/missing total for both.
+        int floorScanned = (int) scannedEpcList.stream()
+                .filter(e -> "SALES_FLOOR".equals(epcToLocation.get(e))).count();
+        int backScanned  = (int) scannedEpcList.stream()
+                .filter(e -> "BACKROOM".equals(epcToLocation.get(e))).count();
+
+        BigDecimal accuracy = totalExpected == 0
+                ? (totalScanned == 0 ? BigDecimal.valueOf(100) : BigDecimal.ZERO)
+                : BigDecimal.valueOf(100.0 * matchedTotal / totalExpected)
                         .setScale(2, RoundingMode.HALF_UP);
 
         CcReconciliation recon = reconciliationRepository.save(CcReconciliation.builder()
                 .cycleCountId(cycleCountId)
                 .batchId(batch.getId())
                 .storeId(storeId)
-                .totalExpected(expected.size())
-                .totalScanned(scannedAll.size())
-                .matchedCount(matched.size())
-                .missingCount(missing.size())
-                .extraCount(extra.size())
+                .totalExpected(totalExpected)
+                .totalScanned(totalScanned)
+                .matchedCount(matchedTotal)
+                .missingCount(missingTotal)
+                .extraCount(extraTotal)
                 .accuracyPct(accuracy)
-                .floorExpected(expected.size())
-                .floorScanned(floorScannedSet.size())
-                .floorMissing(floorMissing)
-                .backroomExpected(expected.size())
-                .backroomScanned(backScannedSet.size())
-                .backroomMissing(backMissing)
+                .floorExpected(totalExpected)
+                .floorScanned(floorScanned)
+                .floorMissing(missingTotal)
+                .backroomExpected(totalExpected)
+                .backroomScanned(backScanned)
+                .backroomMissing(missingTotal)
                 .status("PENDING_APPROVAL")
                 .build());
 
-        List<CcReconciliationItem> items = new ArrayList<>();
-        matched.forEach(epc -> items.add(item(recon, epc, epcToEan.get(epc), "MATCH",
-                1, 1, epcToLocation.get(epc), epcToSection.get(epc))));
-        missing.forEach(epc -> items.add(item(recon, epc, epcToEan.get(epc), "MISSING",
-                1, 0, null, null)));
-        extra.forEach(  epc -> items.add(item(recon, epc, null,              "EXTRA",
-                0, 1, epcToLocation.get(epc), epcToSection.get(epc))));
+        List<CcReconciliationItem> items = rows.stream()
+                .map(r -> item(recon, r.epc(), r.ean(), r.status(), r.expectedQty(), r.scannedQty(),
+                        r.locationCode(), r.sectionCode()))
+                .toList();
         itemRepository.saveAll(items);
 
         log.info("Count reconciliation {} complete: cycleCount={} matched={} missing={} extra={} accuracy={}%",
-                recon.getId(), cycleCountId, matched.size(), missing.size(), extra.size(), accuracy);
+                recon.getId(), cycleCountId, matchedTotal, missingTotal, extraTotal, accuracy);
         return recon;
     }
 
