@@ -5,9 +5,12 @@ import com.storelense.reporting.domain.repository.KpiDailyRepository;
 import com.storelense.reporting.dto.DashboardSummaryResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
@@ -26,9 +29,19 @@ public class KpiAggregationService {
     private final JdbcClient          jdbcClient;
     private final KpiDailyRepository  kpiDailyRepository;
 
-    // Runs nightly at 02:00 server time
+    // Self-injection so @Transactional(REQUIRES_NEW) on upsertKpiForStore is actually
+    // intercepted by the Spring proxy — a direct `this.upsertKpiForStore(...)` call from
+    // within this same bean would bypass AOP entirely and share the caller's transaction.
+    @Lazy @Autowired
+    private KpiAggregationService self;
+
+    // Runs nightly at 02:00 server time. Deliberately NOT @Transactional at this level:
+    // each store's upsert commits independently (see upsertKpiForStore), so one store's
+    // failure — or a later step like the materialized-view refresh — can never abort a
+    // transaction that a previous store's successful write was still sitting inside of.
+    // That silent-rollback failure mode previously left kpi_daily empty for a store even
+    // though the job logged a clean "N stores processed" success every night.
     @Scheduled(cron = "0 0 2 * * *")
-    @Transactional
     public void runNightlyAggregation() {
         LocalDate yesterday = LocalDate.now().minusDays(1);
         log.info("Starting nightly KPI aggregation for {}", yesterday);
@@ -37,10 +50,10 @@ public class KpiAggregationService {
         int count = 0;
         for (UUID storeId : storeIds) {
             try {
-                upsertKpiForStore(storeId, yesterday);
+                self.upsertKpiForStore(storeId, yesterday);
                 count++;
             } catch (Exception e) {
-                log.error("KPI aggregation failed for store {}: {}", storeId, e.getMessage());
+                log.error("KPI aggregation failed for store {}: {}", storeId, e.getMessage(), e);
             }
         }
 
@@ -48,11 +61,13 @@ public class KpiAggregationService {
         log.info("Nightly KPI aggregation complete: {} stores processed for {}", count, yesterday);
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void upsertKpiForStore(UUID storeId, LocalDate date) {
         jdbcClient.sql("SELECT reporting.fn_upsert_kpi_daily(:storeId::uuid, :date::date)")
                 .param("storeId", storeId.toString())
                 .param("date", date.toString())
                 .query().list();
+        log.info("KPI upserted for store {} date {}", storeId, date);
     }
 
     public void refreshMaterializedViews() {
