@@ -6,7 +6,8 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, PieChart, Pie, Cell, Legend, LabelList,
 } from 'recharts'
-import { TrendingUp, Package, AlertTriangle, CheckCircle2, BarChart3, Layers } from 'lucide-react'
+import { TrendingUp, Package, AlertTriangle, CheckCircle2, BarChart3, Layers, GitCompare } from 'lucide-react'
+import Link              from 'next/link'
 import Header           from '@/components/layout/Header'
 import { inventoryApi } from '@/lib/api/inventory'
 import { storesApi }    from '@/lib/api/stores'
@@ -14,8 +15,9 @@ import { sohApi }       from '@/lib/api/soh'
 import { refillApi }    from '@/lib/api/refill'
 import { productsApi }  from '@/lib/api/products'
 import { reportingApi } from '@/lib/api/reporting'
+import { reconciliationApi } from '@/lib/api/reconciliation'
 import { useAuth }      from '@/lib/auth/AuthContext'
-import { fmtPct, cn }  from '@/lib/utils'
+import { fmtPct, fmtDateTime, cn } from '@/lib/utils'
 import type { Product, KpiDaily } from '@/types'
 
 const PIE_COLORS = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed', '#0891b2']
@@ -71,6 +73,12 @@ export default function AnalyticsPage() {
   const { data: tasks } = useQuery({
     queryKey: ['refill-tasks-analytics', storeId],
     queryFn:  () => refillApi.listTasks(storeId, { size: 100 }),
+    enabled:  !!storeId,
+  })
+
+  const { data: reconciliations } = useQuery({
+    queryKey: ['reconciliation-sessions', storeId],
+    queryFn:  () => reconciliationApi.listByStore(storeId, { size: 8 }),
     enabled:  !!storeId,
   })
 
@@ -803,6 +811,81 @@ export default function AnalyticsPage() {
                               z.accuracy >= 95 ? 'bg-green-50 text-green-700' :
                               z.accuracy >= 80 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'
                             }`}>{z.accuracy != null ? `${z.accuracy}%` : '—'}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
+            {/* ─ Recent Reconciliations ───────────────────────────────────── */}
+            <section>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <GitCompare size={16} className="text-brand-600" />
+                  <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Recent Reconciliations</h2>
+                </div>
+                <Link href="/variance" className="text-xs font-medium text-brand-600 hover:underline">
+                  View All →
+                </Link>
+              </div>
+
+              {!reconciliations || reconciliations.content.length === 0 ? (
+                <div className="card flex items-center justify-center h-32 text-sm text-gray-400">
+                  No reconciliation runs yet — completing a SOH session runs one automatically.
+                </div>
+              ) : (
+                <div className="card overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        <th className="text-left py-2 pr-3 font-medium text-gray-500">Session / Count</th>
+                        <th className="text-left py-2 px-2 font-medium text-gray-500">Run Date</th>
+                        <th className="text-right py-2 px-2 font-medium text-gray-500">Matched %</th>
+                        <th className="text-right py-2 px-2 font-medium text-gray-500">Missing</th>
+                        <th className="text-right py-2 px-2 font-medium text-gray-500">Extra</th>
+                        <th className="text-left py-2 pl-2 font-medium text-gray-500">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {reconciliations.content.map(r => (
+                        <tr key={r.id}>
+                          <td className="py-2 pr-3">
+                            {r.sessionId ? (
+                              <Link href={`/variance/${r.sessionId}`} className="font-mono text-brand-600 hover:underline">
+                                {r.sessionId.slice(-8)}
+                              </Link>
+                            ) : (
+                              <Link href={`/cycle-count/${r.cycleCountId}/reconcile`} className="font-mono text-purple-600 hover:underline">
+                                CC·{r.cycleCountId?.slice(-8)}
+                              </Link>
+                            )}
+                          </td>
+                          <td className="py-2 px-2 text-gray-600">{fmtDateTime(r.runAt)}</td>
+                          <td className="text-right py-2 px-2 font-semibold">
+                            <span className={
+                              r.accuracyPct == null ? 'text-gray-400' :
+                              r.accuracyPct >= 95 ? 'text-green-600' :
+                              r.accuracyPct >= 80 ? 'text-yellow-600' : 'text-red-600'
+                            }>{fmtPct(r.accuracyPct)}</span>
+                          </td>
+                          <td className="text-right py-2 px-2">
+                            <span className={r.missingCount > 0 ? 'text-red-600 font-medium' : 'text-gray-500'}>
+                              {r.missingCount}
+                            </span>
+                          </td>
+                          <td className="text-right py-2 px-2">
+                            <span className={r.extraCount > 0 ? 'text-yellow-600 font-medium' : 'text-gray-500'}>
+                              {r.extraCount}
+                            </span>
+                          </td>
+                          <td className="py-2 pl-2">
+                            <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${
+                              r.status === 'COMPLETED' || r.status === 'APPROVED' ? 'bg-green-50 text-green-700' :
+                              r.status === 'FAILED' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
+                            }`}>{r.status}</span>
                           </td>
                         </tr>
                       ))}
