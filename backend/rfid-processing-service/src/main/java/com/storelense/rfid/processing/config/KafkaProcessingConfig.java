@@ -61,7 +61,11 @@ public class KafkaProcessingConfig {
         props.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION,     5);
         props.put(ProducerConfig.LINGER_MS_CONFIG,                          2);
         props.put(ProducerConfig.BATCH_SIZE_CONFIG,                         65536);
-        props.put(JsonSerializer.ADD_TYPE_INFO_HEADERS,                     false);
+        // Downstream consumers (e.g. inventory-service) use a shared listener factory
+        // serving multiple event types with no per-topic default type configured, so
+        // they rely on this header to know which class to deserialize into. Disabling
+        // it silently drops every event this service publishes to the DLT downstream.
+        props.put(JsonSerializer.ADD_TYPE_INFO_HEADERS,                     true);
         return new DefaultKafkaProducerFactory<>(props);
     }
 
