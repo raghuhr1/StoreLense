@@ -196,7 +196,7 @@ export default function InventoryPage() {
     // the latter conflates "% of total units scanned so far" with per-product accuracy.
     const rated = storeLevel.filter(i => i.accuracyPct != null)
     const accuracyPct = rated.length > 0
-      ? rated.reduce((s, i) => s + i.accuracyPct, 0) / rated.length
+      ? rated.reduce((s, i) => s + (i.accuracyPct as number), 0) / rated.length
       : null
     return { totalSkus: storeLevel.length, totalExpected, totalScanned, accuracyPct }
   }, [inventoryItems])
