@@ -55,49 +55,58 @@ public class InventoryService {
         OffsetDateTime seenAt = OffsetDateTime.ofInstant(event.processedAt(), ZoneOffset.UTC);
 
         // Upsert EPC registry and write position history when zone or status changes.
-        epcRegistryRepository.findByEpcAndStoreId(event.epc(), event.storeId())
-                .ifPresentOrElse(
-                        existing -> {
-                            boolean zoneChanged = !Objects.equals(existing.getZoneId(), event.zoneId());
-                            if (zoneChanged) {
-                                epcPositionHistoryRepository.save(EpcPositionHistory.builder()
-                                        .epc(event.epc())
-                                        .storeId(event.storeId())
-                                        .productId(event.productId())
-                                        .fromZoneId(existing.getZoneId())
-                                        .toZoneId(event.zoneId())
-                                        .fromStatus(existing.getStatus())
-                                        .toStatus("in_store")
-                                        .triggeredBy("scan_session")
-                                        .sessionId(event.sohSessionId())
-                                        .build());
-                            }
-                            epcRegistryRepository.updateSighting(
-                                    event.epc(), event.storeId(), "in_store", seenAt, event.zoneId(), null);
-                        },
-                        () -> {
-                            epcRegistryRepository.save(EpcRegistry.builder()
-                                    .epc(event.epc())
-                                    .storeId(event.storeId())
-                                    .productId(event.productId())
-                                    .zoneId(event.zoneId())
-                                    .status("in_store")
-                                    .lastSeenAt(seenAt)
-                                    .build());
-                            // First sighting — record the initial position.
-                            epcPositionHistoryRepository.save(EpcPositionHistory.builder()
-                                    .epc(event.epc())
-                                    .storeId(event.storeId())
-                                    .productId(event.productId())
-                                    .fromZoneId(null)
-                                    .toZoneId(event.zoneId())
-                                    .fromStatus(null)
-                                    .toStatus("in_store")
-                                    .triggeredBy("scan_session")
-                                    .sessionId(event.sohSessionId())
-                                    .build());
-                        }
-                );
+        // isNewPhysicalUnit distinguishes a genuinely new tag (increment on-hand once)
+        // from a re-scan of an already-known tag (refresh last-seen only — re-scanning
+        // the same physical item in a later session must never inflate on-hand again).
+        var existingRegistry = epcRegistryRepository.findByEpcAndStoreId(event.epc(), event.storeId());
+        boolean isNewPhysicalUnit = existingRegistry.isEmpty();
+
+        if (existingRegistry.isPresent()) {
+            EpcRegistry existing = existingRegistry.get();
+            boolean zoneChanged = !Objects.equals(existing.getZoneId(), event.zoneId());
+            if (zoneChanged) {
+                epcPositionHistoryRepository.save(EpcPositionHistory.builder()
+                        .epc(event.epc())
+                        .storeId(event.storeId())
+                        .productId(event.productId())
+                        .fromZoneId(existing.getZoneId())
+                        .toZoneId(event.zoneId())
+                        .fromStatus(existing.getStatus())
+                        .toStatus("in_store")
+                        .triggeredBy("scan_session")
+                        .sessionId(event.sohSessionId())
+                        .build());
+            }
+            epcRegistryRepository.updateSighting(
+                    event.epc(), event.storeId(), "in_store", seenAt, event.zoneId(), null);
+        } else {
+            epcRegistryRepository.save(EpcRegistry.builder()
+                    .epc(event.epc())
+                    .storeId(event.storeId())
+                    .productId(event.productId())
+                    .zoneId(event.zoneId())
+                    .status("in_store")
+                    .lastSeenAt(seenAt)
+                    .build());
+            // First sighting — record the initial position.
+            epcPositionHistoryRepository.save(EpcPositionHistory.builder()
+                    .epc(event.epc())
+                    .storeId(event.storeId())
+                    .productId(event.productId())
+                    .fromZoneId(null)
+                    .toZoneId(event.zoneId())
+                    .fromStatus(null)
+                    .toStatus("in_store")
+                    .triggeredBy("scan_session")
+                    .sessionId(event.sohSessionId())
+                    .build());
+        }
+
+        if (!isNewPhysicalUnit) {
+            // Already-known tag re-scanned (this session or a later one) — nothing new
+            // physically found, so on-hand must not be incremented again.
+            return;
+        }
 
         // Increment on-hand count in inventory_state; create row if first scan for this product+zone
         inventoryStateRepository.findByStoreIdAndProductIdAndZoneId(

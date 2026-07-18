@@ -55,15 +55,14 @@ public class ReconciliationEngine {
                 .findTopByStoreIdAndStatusOrderByCreatedAtDesc(session.storeId(), "COMPLETED");
 
         if (batchOpt.isPresent()) {
-            Map<String, String> epcToEan = resolveExpectedEpcs(
-                    batchOpt.get().getId(), session.storeId(), session.zoneRegion());
+            Map<String, Integer> expectedQtyByEan = resolveExpectedQuantities(batchOpt.get().getId());
 
-            if (!epcToEan.isEmpty()) {
+            if (!expectedQtyByEan.isEmpty()) {
                 return self.persistReconciliation(
-                        sessionId, null, batchOpt.get(), session, scannedEpcs, epcToEan);
+                        sessionId, null, batchOpt.get(), session, scannedEpcs);
             }
 
-            log.info("ERP batch {} has no matching EPCs for session {} zone={} — falling back to system-driven",
+            log.info("ERP batch {} has no expected quantities for session {} zone={} — falling back to system-driven",
                     batchOpt.get().getId(), sessionId, session.zoneRegion());
         } else {
             log.info("No completed ERP batch for store {} — using system-driven reconciliation for session {}",
@@ -177,24 +176,65 @@ public class ReconciliationEngine {
     public CcReconciliation persistReconciliation(UUID sessionId, UUID cycleCountId,
                                                    ErpImportBatch batch,
                                                    SohSessionInfo session,
-                                                   List<String> scannedEpcList,
-                                                   Map<String, String> epcToEan) {
-        Set<String> expected = epcToEan.keySet();
-        Set<String> scanned  = new HashSet<>(scannedEpcList);
+                                                   List<String> scannedEpcList) {
+        // "Expected" must come from the ERP's actual quantity per EAN, not from which EPCs
+        // happen to already be scanned/tagged — otherwise nothing can ever be "missing",
+        // since an EPC can't enter the expected set until it's already been found.
+        Map<String, Integer> expectedQtyByEan = resolveExpectedQuantities(batch.getId());
+        Map<String, String>  scannedEpcToEan  = resolveScannedEans(session.storeId(), scannedEpcList);
 
-        Set<String> matched = new HashSet<>(scanned); matched.retainAll(expected);
-        Set<String> missing = new HashSet<>(expected); missing.removeAll(scanned);
-        Set<String> extra   = new HashSet<>(scanned);  extra.removeAll(expected);
+        Map<String, List<String>> scannedByEan = new HashMap<>();
+        for (String epc : scannedEpcList) {
+            String ean = scannedEpcToEan.getOrDefault(epc, "");
+            scannedByEan.computeIfAbsent(ean, k -> new ArrayList<>()).add(epc);
+        }
 
-        // "Nothing expected" is only trivially 100% accurate if nothing was scanned either —
-        // scanning real tags against zero expected items means every read is extra, i.e. 0%
-        // match, not 100%.
-        BigDecimal accuracy = expected.isEmpty()
-                ? (scanned.isEmpty() ? BigDecimal.valueOf(100) : BigDecimal.ZERO)
-                : BigDecimal.valueOf(100.0 * matched.size() / expected.size())
+        Set<String> allEans = new HashSet<>(expectedQtyByEan.keySet());
+        allEans.addAll(scannedByEan.keySet());
+        allEans.remove("");
+
+        // Build item rows as plain tuples first — CcReconciliationItem needs a persisted
+        // CcReconciliation to attach to, which doesn't exist until totals below are saved.
+        record ItemRow(String epc, String ean, String status, int expectedQty, int scannedQty) {}
+        List<ItemRow> rows = new ArrayList<>();
+        int matchedTotal = 0, missingTotal = 0, extraTotal = 0;
+        int totalExpected = expectedQtyByEan.values().stream().mapToInt(Integer::intValue).sum();
+
+        for (String ean : allEans) {
+            int expectedQty = expectedQtyByEan.getOrDefault(ean, 0);
+            List<String> scannedForEan = scannedByEan.getOrDefault(ean, List.of());
+            int matchedQty = Math.min(expectedQty, scannedForEan.size());
+            int missingQty = Math.max(0, expectedQty - scannedForEan.size());
+
+            for (int i = 0; i < matchedQty; i++) {
+                rows.add(new ItemRow(scannedForEan.get(i), ean, "MATCH", 1, 1));
+            }
+            for (int i = matchedQty; i < scannedForEan.size(); i++) {
+                rows.add(new ItemRow(scannedForEan.get(i), ean, "EXTRA", 0, 1));
+            }
+            for (int i = 0; i < missingQty; i++) {
+                // No physical EPC has ever been scanned for this unit — synthesize a
+                // clearly-labeled placeholder since the epc column is non-nullable.
+                rows.add(new ItemRow("EXPECTED:" + ean + ":" + (i + 1), ean, "MISSING", 1, 0));
+            }
+            matchedTotal += matchedQty;
+            missingTotal += missingQty;
+            extraTotal   += scannedForEan.size() - matchedQty;
+        }
+
+        // Scans that resolved to no product/EAN at all — genuinely unexpected reads.
+        List<String> unresolvedScans = scannedByEan.getOrDefault("", List.of());
+        for (String epc : unresolvedScans) {
+            rows.add(new ItemRow(epc, null, "EXTRA", 0, 1));
+        }
+        extraTotal += unresolvedScans.size();
+
+        int totalScanned = scannedEpcList.size();
+        BigDecimal accuracy = totalExpected == 0
+                ? (totalScanned == 0 ? BigDecimal.valueOf(100) : BigDecimal.ZERO)
+                : BigDecimal.valueOf(100.0 * matchedTotal / totalExpected)
                         .setScale(2, RoundingMode.HALF_UP);
 
-        // Location breakdown — single session
         String loc = session.locationCode();
         boolean isFloor = "SALES_FLOOR".equals(loc);
         boolean isBack  = "BACKROOM".equals(loc);
@@ -204,31 +244,30 @@ public class ReconciliationEngine {
                 .cycleCountId(cycleCountId)
                 .batchId(batch.getId())
                 .storeId(session.storeId())
-                .totalExpected(expected.size())
-                .totalScanned(scanned.size())
-                .matchedCount(matched.size())
-                .missingCount(missing.size())
-                .extraCount(extra.size())
+                .totalExpected(totalExpected)
+                .totalScanned(totalScanned)
+                .matchedCount(matchedTotal)
+                .missingCount(missingTotal)
+                .extraCount(extraTotal)
                 .accuracyPct(accuracy)
-                .floorExpected(isFloor ? expected.size() : 0)
-                .floorScanned(isFloor ? scanned.size() : 0)
-                .floorMissing(isFloor ? missing.size() : 0)
-                .backroomExpected(isBack ? expected.size() : 0)
-                .backroomScanned(isBack ? scanned.size() : 0)
-                .backroomMissing(isBack ? missing.size() : 0)
+                .floorExpected(isFloor ? totalExpected : 0)
+                .floorScanned(isFloor ? totalScanned : 0)
+                .floorMissing(isFloor ? missingTotal : 0)
+                .backroomExpected(isBack ? totalExpected : 0)
+                .backroomScanned(isBack ? totalScanned : 0)
+                .backroomMissing(isBack ? missingTotal : 0)
                 .status("COMPLETED")
                 .build());
 
-        List<CcReconciliationItem> items = new ArrayList<>();
-        matched.forEach(epc -> items.add(item(recon, epc, epcToEan.get(epc), "MATCH",   1, 1, loc, session.sectionCode())));
-        missing.forEach(epc -> items.add(item(recon, epc, epcToEan.get(epc), "MISSING", 1, 0, loc, session.sectionCode())));
-        extra.forEach(  epc -> items.add(item(recon, epc, null,              "EXTRA",   0, 1, loc, session.sectionCode())));
+        List<CcReconciliationItem> items = rows.stream()
+                .map(r -> item(recon, r.epc(), r.ean(), r.status(), r.expectedQty(), r.scannedQty(), loc, session.sectionCode()))
+                .toList();
         itemRepository.saveAll(items);
 
         syncAccuracy(sessionId, accuracy);
 
         log.info("Reconciliation {} complete: session={} location={} matched={} missing={} extra={} accuracy={}%",
-                recon.getId(), sessionId, loc, matched.size(), missing.size(), extra.size(), accuracy);
+                recon.getId(), sessionId, loc, matchedTotal, missingTotal, extraTotal, accuracy);
         return recon;
     }
 
@@ -473,6 +512,44 @@ public class ReconciliationEngine {
                 """)
                 .param("batchId", batchId)
                 .param("storeId", storeId)
+                .query((rs, n) -> new EpcEan(rs.getString("epc"), rs.getString("ean")))
+                .list().stream()
+                .collect(Collectors.toMap(EpcEan::epc, EpcEan::ean, (a, b) -> a));
+    }
+
+    /**
+     * The ERP's true expected quantity per EAN for a batch — summed across any duplicate
+     * rows for the same EAN. This is the actual source of truth for "expected", independent
+     * of whether any physical EPC has been scanned/tagged for that product yet.
+     */
+    private Map<String, Integer> resolveExpectedQuantities(UUID batchId) {
+        record EanQty(String ean, int qty) {}
+        return jdbcClient.sql("""
+                SELECT ean, SUM(expected_qty) AS qty
+                FROM erp.erp_soh_snapshot
+                WHERE batch_id = :batchId
+                GROUP BY ean
+                """)
+                .param("batchId", batchId)
+                .query((rs, n) -> new EanQty(rs.getString("ean"), rs.getInt("qty")))
+                .list().stream()
+                .collect(Collectors.toMap(EanQty::ean, EanQty::qty));
+    }
+
+    /** Resolves each scanned EPC (if any) to its product's primary EAN, for grouping by product. */
+    private Map<String, String> resolveScannedEans(UUID storeId, List<String> scannedEpcs) {
+        if (scannedEpcs.isEmpty()) return Map.of();
+        record EpcEan(String epc, String ean) {}
+        return jdbcClient.sql("""
+                SELECT er.epc, b.barcode_value AS ean
+                FROM inventory.epc_registry er
+                JOIN products.epc_tags et ON et.epc = er.epc AND et.is_active = true
+                JOIN products.barcodes  b  ON b.product_id = et.product_id AND b.is_primary = true
+                WHERE er.store_id = :storeId
+                  AND er.epc IN (:epcs)
+                """)
+                .param("storeId", storeId)
+                .param("epcs", scannedEpcs)
                 .query((rs, n) -> new EpcEan(rs.getString("epc"), rs.getString("ean")))
                 .list().stream()
                 .collect(Collectors.toMap(EpcEan::epc, EpcEan::ean, (a, b) -> a));
