@@ -108,11 +108,17 @@ public class InventoryService {
             return;
         }
 
-        // Increment on-hand count in inventory_state; create row if first scan for this product+zone
+        // On-hand is recomputed live from epc_registry (the source of truth) rather than
+        // blindly incremented — this makes it self-correcting: no matter how many times or
+        // in how many sessions a product's tags get scanned, on-hand always reflects exactly
+        // how many of its tags are currently in_store, and can never drift out of sync.
+        long liveOnHand = epcRegistryRepository.countLiveOnHand(
+                event.storeId(), event.productId(), event.zoneId(), "in_store");
+
         inventoryStateRepository.findByStoreIdAndProductIdAndZoneId(
                 event.storeId(), event.productId(), event.zoneId())
                 .map(state -> {
-                    state.setQuantityOnHand(state.getQuantityOnHand() + 1);
+                    state.setQuantityOnHand((int) liveOnHand);
                     state.setLastCountedAt(seenAt);
                     state.setLastSohSessionId(event.sohSessionId());
                     state.setAccuracyPct(calcAccuracy(state.getQuantityOnHand(), state.getQuantityExpected()));
@@ -123,9 +129,9 @@ public class InventoryService {
                                 .storeId(event.storeId())
                                 .productId(event.productId())
                                 .zoneId(event.zoneId())
-                                .quantityOnHand(1)
+                                .quantityOnHand((int) liveOnHand)
                                 .quantityExpected(0)
-                                .accuracyPct(calcAccuracy(1, 0))
+                                .accuracyPct(calcAccuracy((int) liveOnHand, 0))
                                 .lastCountedAt(seenAt)
                                 .lastSohSessionId(event.sohSessionId())
                                 .build()));
@@ -509,10 +515,13 @@ public class InventoryService {
             reg.setLastSeenAt(now);
             epcRegistryRepository.save(reg);
 
-            // Reflect put-away in inventory_state quantity
+            // Reflect put-away in inventory_state quantity — recomputed live from
+            // epc_registry rather than incremented, so it can't drift.
+            long liveOnHand = epcRegistryRepository.countLiveOnHand(
+                    storeId, reg.getProductId(), zoneId, "in_store");
             inventoryStateRepository.findByStoreIdAndProductIdAndZoneId(storeId, reg.getProductId(), zoneId)
                     .map(state -> {
-                        state.setQuantityOnHand(state.getQuantityOnHand() + 1);
+                        state.setQuantityOnHand((int) liveOnHand);
                         state.setLastCountedAt(now);
                         return inventoryStateRepository.save(state);
                     })
@@ -521,7 +530,7 @@ public class InventoryService {
                                     .storeId(storeId)
                                     .productId(reg.getProductId())
                                     .zoneId(zoneId)
-                                    .quantityOnHand(1)
+                                    .quantityOnHand((int) liveOnHand)
                                     .quantityExpected(0)
                                     .lastCountedAt(now)
                                     .build()));
@@ -604,8 +613,6 @@ public class InventoryService {
                         .update();
             }
         }
-        final boolean isReplacement = replacementDetected;
-
         jdbcClient.sql("""
                 INSERT INTO products.epc_tags
                        (epc, epc_encoding, product_id, is_encoded, is_active, created_at, updated_at)
@@ -617,9 +624,7 @@ public class InventoryService {
                 .param("now", now)
                 .update();
 
-        // Row count tells us whether this EPC was genuinely new to this store's registry —
-        // guards against double-incrementing on-hand if the same EPC is scanned/submitted twice.
-        int registryInsertCount = jdbcClient.sql("""
+        jdbcClient.sql("""
                 INSERT INTO inventory.epc_registry
                        (epc, store_id, product_id, zone_id, status,
                         first_seen_at, last_seen_at, created_at, updated_at)
@@ -634,22 +639,20 @@ public class InventoryService {
                 .param("now", now)
                 .update();
 
-        boolean isNewEpcForStore = registryInsertCount > 0;
-
-        // Only increment quantity_on_hand for a genuinely new physical unit: a fresh EPC
-        // for this store, and not standing in for a named replaced tag (that unit was
-        // already counted).
+        // quantity_on_hand is recomputed live from epc_registry rather than incremented,
+        // so it always reflects exactly how many of this product's tags are in_store —
+        // it can't drift regardless of replacement/duplicate-submission edge cases.
+        long liveOnHand = epcRegistryRepository.countLiveOnHand(
+                req.storeId(), product.id(), zoneId, "in_store");
         inventoryStateRepository.findByStoreIdAndProductIdAndZoneId(req.storeId(), product.id(), zoneId)
                 .ifPresentOrElse(
                         state -> {
-                            if (isNewEpcForStore && !isReplacement) {
-                                state.setQuantityOnHand(state.getQuantityOnHand() + 1);
-                            }
+                            state.setQuantityOnHand((int) liveOnHand);
                             state.setAccuracyPct(calcAccuracy(state.getQuantityOnHand(), state.getQuantityExpected()));
                             inventoryStateRepository.save(state);
                         },
                         () -> {
-                            int onHand = isNewEpcForStore && !isReplacement ? 1 : 0;
+                            int onHand = (int) liveOnHand;
                             inventoryStateRepository.save(
                                     InventoryState.builder()
                                             .storeId(req.storeId())

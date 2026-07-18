@@ -36,4 +36,16 @@ public interface EpcRegistryRepository extends JpaRepository<EpcRegistry, UUID> 
                  @Param("ts") OffsetDateTime ts);
 
     List<EpcRegistry> findByEpcInAndStoreId(List<String> epcs, UUID storeId);
+
+    /**
+     * Live count of EPCs currently in the given status for a product+zone. Used as the
+     * self-correcting source of truth for inventory_state.quantity_on_hand instead of an
+     * incrementally-maintained counter, which can drift if a write path double-counts.
+     * zoneId is compared with explicit IS NULL semantics since Spring Data's derived
+     * equality does not reliably match a bound null parameter across providers.
+     */
+    @Query("SELECT COUNT(r) FROM EpcRegistry r WHERE r.storeId = :storeId AND r.productId = :productId " +
+           "AND ((:zoneId IS NULL AND r.zoneId IS NULL) OR r.zoneId = :zoneId) AND r.status = :status")
+    long countLiveOnHand(@Param("storeId") UUID storeId, @Param("productId") UUID productId,
+                          @Param("zoneId") UUID zoneId, @Param("status") String status);
 }
