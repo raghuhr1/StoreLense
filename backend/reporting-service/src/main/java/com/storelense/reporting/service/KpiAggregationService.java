@@ -66,13 +66,13 @@ public class KpiAggregationService {
         jdbcClient.sql("SELECT reporting.fn_upsert_kpi_daily(:storeId::uuid, :date::date)")
                 .param("storeId", storeId.toString())
                 .param("date", date.toString())
-                .query().list();
+                .query().listOfRows();
         log.info("KPI upserted for store {} date {}", storeId, date);
     }
 
     public void refreshMaterializedViews() {
         try {
-            jdbcClient.sql("SELECT reporting.fn_refresh_all_materialized_views()").query().list();
+            jdbcClient.sql("SELECT reporting.fn_refresh_all_materialized_views()").query().listOfRows();
             log.info("Materialized views refreshed");
         } catch (Exception e) {
             log.error("Materialized view refresh failed: {}", e.getMessage());
