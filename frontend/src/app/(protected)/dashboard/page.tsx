@@ -7,6 +7,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, L
 import Link             from 'next/link'
 import Header           from '@/components/layout/Header'
 import StatCard         from '@/components/ui/StatCard'
+import NetworkOverview  from '@/components/dashboard/NetworkOverview'
 import { reportingApi }       from '@/lib/api/reporting'
 import { storesApi }          from '@/lib/api/stores'
 import { sohApi }             from '@/lib/api/soh'
@@ -59,8 +60,10 @@ export default function DashboardPage() {
     enabled:  isAdmin,
   })
 
+  // Admins start with no store selected — they land on the network-wide overview
+  // first, and pick a store explicitly to drill into its own dashboard.
   const storeId = isAdmin
-    ? (selectedStoreId || allStores?.content[0]?.id || '')
+    ? selectedStoreId
     : (user?.storeId ?? '')
 
   const days = RANGES.find(r => r.label === range)!.days
@@ -146,6 +149,7 @@ export default function DashboardPage() {
             <>
               <label className="text-sm font-medium text-gray-600 shrink-0">Store</label>
               <select value={storeId} onChange={e => setSelectedStoreId(e.target.value)} className={selectCls}>
+                <option value="">— All Stores (Network) —</option>
                 {allStores.content.map(s => (
                   <option key={s.id} value={s.id}>{s.name} ({s.storeCode})</option>
                 ))}
@@ -199,6 +203,12 @@ export default function DashboardPage() {
           )}
         </div>
 
+        {/* Admins land here before picking a store — network-wide picture first,
+            then drill into a specific store's dashboard below once one is selected. */}
+        {isAdmin && !storeId ? (
+          <NetworkOverview />
+        ) : (
+        <>
         {/* KPI cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
@@ -448,6 +458,8 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
+        )}
+        </>
         )}
 
       </div>
