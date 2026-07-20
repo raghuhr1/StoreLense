@@ -78,14 +78,18 @@ public class SohServiceClient {
             return sessionList.stream()
                     .filter(s -> s instanceof Map)
                     .map(s -> (Map<String, Object>) s)
-                    .map(d -> new SohSessionInfo(
-                            UUID.fromString((String) d.get("id")),
-                            UUID.fromString((String) d.get("storeId")),
-                            (String) d.get("zoneRegion"),
-                            (String) d.get("status"),
-                            (String) d.get("locationCode"),
-                            (String) d.get("sectionCode")
-                    ))
+                    .map(d -> {
+                        String ccIdStr = (String) d.get("cycleCountId");
+                        return new SohSessionInfo(
+                                UUID.fromString((String) d.get("id")),
+                                UUID.fromString((String) d.get("storeId")),
+                                (String) d.get("zoneRegion"),
+                                (String) d.get("status"),
+                                (String) d.get("locationCode"),
+                                (String) d.get("sectionCode"),
+                                ccIdStr != null ? UUID.fromString(ccIdStr) : null
+                        );
+                    })
                     .toList();
         } catch (Exception e) {
             log.warn("getSessionsByCount failed for cycleCountId {}: {}", cycleCountId, e.getMessage());
