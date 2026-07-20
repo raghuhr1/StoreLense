@@ -101,6 +101,10 @@ class CycleCountRepository @Inject constructor(
                     sessionType  = "cycle_count",
                     source       = "manual",
                     cycleCountId = cycleCountId,
+                    // Backend's ERP-import-required gate keys off zoneRegion, not
+                    // locationCode — omitting it always 422s with ERP_IMPORT_REQUIRED
+                    // regardless of locationCode, confirmed via device logs.
+                    zoneRegion   = locationCode,
                     locationCode = locationCode,
                     sectionCode  = sectionCode
                 )
