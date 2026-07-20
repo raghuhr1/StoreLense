@@ -6,6 +6,7 @@ import com.storelense.common.exception.BusinessException;
 import com.storelense.common.exception.ResourceNotFoundException;
 import com.storelense.common.kafka.KafkaTopics;
 import com.storelense.soh.domain.entity.CycleCount;
+import com.storelense.soh.domain.entity.SohSession;
 import com.storelense.soh.domain.repository.CycleCountRepository;
 import com.storelense.soh.domain.repository.SohSessionRepository;
 import com.storelense.soh.dto.CreateCycleCountRequest;
@@ -22,6 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
@@ -145,26 +148,44 @@ public class CycleCountService {
         });
     }
 
+    private static final Set<String> CANONICAL_ZONES = Set.of("SALES_FLOOR", "BACKROOM");
+
     /**
-     * Called by SohSessionService when every session in the count reaches
-     * 'completed'. Advances cycle count status to COMPLETED automatically.
+     * Called by SohSessionService whenever a session in the count reaches 'completed'.
+     * Advances cycle count status to COMPLETED once both canonical zones are covered.
+     *
+     * Previously this checked only "are all sessions CURRENTLY under this count done" —
+     * trivially true the moment the FIRST zone finishes, since a later zone (e.g. Back
+     * Room, added afterward via "Scan Another Zone") doesn't exist yet at that instant.
+     * That auto-completed the whole audit after just one zone, leaving no way to add the
+     * rest (the cycle count is a terminal state by then — confirmed in production: a
+     * count showed COMPLETED with only a single Sales Floor session). Requiring both
+     * canonical zones to be present (not just "whatever exists so far") fixes that
+     * without losing the automatic completion + reconciliation trigger for the normal
+     * Sales Floor + Back Room workflow. A cycle count using only non-canonical zones
+     * (e.g. Fitting Room only) won't auto-complete this way — it still can be finalized
+     * via the explicit Close action, just without the automatic reconciliation trigger.
      */
     @Transactional
     public void onSessionCompleted(UUID cycleCountId) {
         cycleCountRepository.findById(cycleCountId).ifPresent(cc -> {
             if (!"RUNNING".equals(cc.getStatus())) return;
 
-            boolean allDone = sessionRepository
-                    .findByCycleCountIdOrderByStartedAtAsc(cycleCountId)
-                    .stream()
+            List<SohSession> sessions = sessionRepository.findByCycleCountIdOrderByStartedAtAsc(cycleCountId);
+            boolean allDone = sessions.stream()
                     .allMatch(s -> "completed".equals(s.getStatus())
                             || "cancelled".equals(s.getStatus())
                             || "closed".equals(s.getStatus()));
+            boolean coversCanonicalZones = sessions.stream()
+                    .map(SohSession::getLocationCode)
+                    .filter(Objects::nonNull)
+                    .collect(java.util.stream.Collectors.toSet())
+                    .containsAll(CANONICAL_ZONES);
 
-            if (allDone) {
+            if (allDone && coversCanonicalZones) {
                 cc.setStatus("COMPLETED");
                 cycleCountRepository.save(cc);
-                log.info("CycleCount {} auto-advanced to COMPLETED — all sessions done", cycleCountId);
+                log.info("CycleCount {} auto-advanced to COMPLETED — Sales Floor and Back Room both done", cycleCountId);
                 kafkaTemplate.send(KafkaTopics.CYCLE_COUNT_COMPLETED, cycleCountId.toString(),
                         new CycleCountCompletedEvent(cycleCountId, cc.getStoreId()));
             }
