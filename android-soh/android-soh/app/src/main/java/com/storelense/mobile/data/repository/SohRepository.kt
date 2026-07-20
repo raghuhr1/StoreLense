@@ -100,6 +100,39 @@ class SohRepository @Inject constructor(
         }
     }
 
+    // Creates a real zone-scoped session (locationCode set) instead of continuing on a
+    // single Full Store session — this is what lets the zone picker on an ERP-triggered
+    // task actually behave like the manual Sales Floor / Back Room flow: each zone gets
+    // its own completable session, auto-grouped into the same day's cycle count, with
+    // "Scan Another Zone" available afterward.
+    //
+    // source is deliberately "manual", NOT "erp_triggered": ScanViewModel shows the zone
+    // picker again for whichever session it loads whenever isErpTriggered is true (source
+    // == "erp_triggered") — if this new session carried that same source, picking a zone
+    // on it would recursively create yet another session instead of ever actually
+    // scanning. "manual" is safe here because this store's ERP import already exists
+    // (that's why the Full Store task exists at all), so the ERP-import-required gate
+    // that normally applies to manual sessions passes regardless.
+    suspend fun createZoneSession(storeId: String, locationCode: String?): Result<SohSessionDto> {
+        return try {
+            val resp = api.createSohSession(CreateSohSessionRequest(
+                storeId      = storeId,
+                sessionType  = "manual",
+                source       = "manual",
+                locationCode = locationCode
+            ))
+            val body = resp.body()
+            if (resp.isSuccessful && body?.success == true && body.data != null) {
+                sessionDao.upsert(body.data.toEntity())
+                Result.Success(body.data)
+            } else {
+                Result.Error(body?.message ?: "Failed to create zone session")
+            }
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Network error")
+        }
+    }
+
     suspend fun bufferEpc(
         sessionId: String,
         epc: String,

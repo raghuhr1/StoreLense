@@ -236,7 +236,37 @@ class ScanViewModel @Inject constructor(
     }
 
     // Called by the zone selector sheet when the user taps a zone or "Full Store".
-    fun selectZone(zoneId: String?, zoneName: String?) = viewModelScope.launch {
+    //
+    // "Full Store" (zoneId == null) keeps the original behavior: continue scanning on the
+    // one pre-existing session, whole-store, no zone split.
+    //
+    // A real zone picked on an ERP-triggered task used to just tag reads with a client-side
+    // zone label while continuing on that same single Full Store session — meaning Finish
+    // Zone permanently completed the WHOLE task after covering only one zone, with no way
+    // back to the others. Now it creates an actual zone-scoped session (locationCode set),
+    // matching the manual Sales Floor / Back Room flow, so it gets auto-grouped into the
+    // same day's cycle count and "Scan Another Zone" works afterward like it already does
+    // for manual sessions.
+    fun selectZone(zoneId: String?, zoneName: String?, zoneType: String? = null) = viewModelScope.launch {
+        if (zoneId != null && _state.value.isErpTriggered) {
+            _state.update { it.copy(isLoadingZones = true) }
+            val locationCode = when (zoneType) {
+                "floor"    -> "SALES_FLOOR"
+                "backroom" -> "BACKROOM"
+                else       -> zoneType?.uppercase()
+            }
+            when (val r = soh.createZoneSession(storeId, locationCode)) {
+                is Result.Success -> {
+                    _state.update { it.copy(isLoadingZones = false) }
+                    _events.emit(ScanEvent.SwitchSession(r.data.id))
+                }
+                is Result.Error -> _state.update {
+                    it.copy(isLoadingZones = false, error = r.message ?: "Could not start zone session")
+                }
+            }
+            return@launch
+        }
+
         _state.update {
             it.copy(
                 selectedZoneId       = zoneId,
@@ -565,4 +595,8 @@ sealed interface ScanEvent {
     data class Complete(val sessionId: String) : ScanEvent
     object Exit : ScanEvent
     object Overcount : ScanEvent   // Fix #11
+    // Picking a real zone (not "Full Store") on an ERP-triggered task creates a proper
+    // zone-scoped session instead of continuing on the single Full Store session — the
+    // screen must navigate to that new session, replacing this one on the back stack.
+    data class SwitchSession(val sessionId: String) : ScanEvent
 }

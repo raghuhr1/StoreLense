@@ -48,6 +48,7 @@ fun ScanScreen(
     sessionId: String,
     onComplete: (String) -> Unit,
     onBack: () -> Unit,
+    onSwitchSession: (String) -> Unit = {},
     vm: ScanViewModel = hiltViewModel()
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -58,6 +59,7 @@ fun ScanScreen(
             when (event) {
                 is ScanEvent.Complete -> onComplete(event.sessionId)
                 is ScanEvent.Exit     -> onBack()
+                is ScanEvent.SwitchSession -> onSwitchSession(event.sessionId)
                 is ScanEvent.Overcount -> snackbarHostState.showSnackbar(
                     message  = "Overcount detected! Please verify the zone.",
                     duration = SnackbarDuration.Short
@@ -153,7 +155,7 @@ fun ScanScreen(
                         ZoneOptionRow(
                             name     = zone.name,
                             zoneType = zone.zoneType,
-                            onClick  = { vm.selectZone(zone.id, zone.name) }
+                            onClick  = { vm.selectZone(zone.id, zone.name, zone.zoneType) }
                         )
                     }
                 }

@@ -208,7 +208,15 @@ fun AppNavigation() {
             ScanScreen(
                 sessionId  = it.arguments!!.getString("sessionId")!!,
                 onComplete = { id -> nav.navigate(Routes.sohResult(id)) { popUpTo(Routes.SOH_LIST) } },
-                onBack     = { nav.popBackStack() }
+                onBack     = { nav.popBackStack() },
+                // A real zone picked on an ERP-triggered task creates a new zone-scoped
+                // session — replace this screen with it so the old Full Store zone-picker
+                // isn't left on the back stack.
+                onSwitchSession = { newId ->
+                    nav.navigate(Routes.sohScan(newId)) {
+                        popUpTo(Routes.SOH_SCAN) { inclusive = true }
+                    }
+                }
             )
         }
 
