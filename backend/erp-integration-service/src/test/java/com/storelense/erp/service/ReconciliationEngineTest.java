@@ -175,7 +175,7 @@ class ReconciliationEngineTest {
         when(reconciliationRepository.save(any())).thenReturn(savedRecon);
         when(itemRepository.saveAll(any())).thenReturn(List.of());
 
-        engine.persistCountReconciliation(cycleCountId, storeId, batch, epcToLocation, epcToSection, epcToEan);
+        engine.persistCountReconciliation(cycleCountId, storeId, batch, epcToLocation, epcToSection);
 
         ArgumentCaptor<CcReconciliation> reconCaptor = ArgumentCaptor.forClass(CcReconciliation.class);
         verify(reconciliationRepository).save(reconCaptor.capture());
@@ -214,7 +214,7 @@ class ReconciliationEngineTest {
         when(reconciliationRepository.save(any())).thenReturn(saved);
         when(itemRepository.saveAll(any())).thenReturn(List.of());
 
-        engine.persistCountReconciliation(cycleCountId, storeId, batch, epcToLocation, epcToSection, epcToEan);
+        engine.persistCountReconciliation(cycleCountId, storeId, batch, epcToLocation, epcToSection);
 
         ArgumentCaptor<CcReconciliation> captor = ArgumentCaptor.forClass(CcReconciliation.class);
         verify(reconciliationRepository).save(captor.capture());
@@ -242,7 +242,7 @@ class ReconciliationEngineTest {
         when(reconciliationRepository.save(any())).thenReturn(saved);
         when(itemRepository.saveAll(any())).thenReturn(List.of());
 
-        engine.persistCountReconciliation(UUID.randomUUID(), UUID.randomUUID(), batch, epcToLocation, epcToSection, epcToEan);
+        engine.persistCountReconciliation(UUID.randomUUID(), UUID.randomUUID(), batch, epcToLocation, epcToSection);
 
         ArgumentCaptor<CcReconciliation> captor = ArgumentCaptor.forClass(CcReconciliation.class);
         verify(reconciliationRepository).save(captor.capture());
@@ -263,7 +263,7 @@ class ReconciliationEngineTest {
         when(reconciliationRepository.save(any())).thenReturn(saved);
         when(itemRepository.saveAll(any())).thenReturn(List.of());
 
-        engine.persistCountReconciliation(UUID.randomUUID(), UUID.randomUUID(), batch, epcToLocation, epcToSection, epcToEan);
+        engine.persistCountReconciliation(UUID.randomUUID(), UUID.randomUUID(), batch, epcToLocation, epcToSection);
 
         ArgumentCaptor<CcReconciliation> captor = ArgumentCaptor.forClass(CcReconciliation.class);
         verify(reconciliationRepository).save(captor.capture());
@@ -290,7 +290,7 @@ class ReconciliationEngineTest {
         ArgumentCaptor<List<CcReconciliationItem>> itemsCaptor = ArgumentCaptor.forClass(List.class);
         when(itemRepository.saveAll(itemsCaptor.capture())).thenReturn(List.of());
 
-        engine.persistCountReconciliation(UUID.randomUUID(), UUID.randomUUID(), batch, epcToLocation, epcToSection, epcToEan);
+        engine.persistCountReconciliation(UUID.randomUUID(), UUID.randomUUID(), batch, epcToLocation, epcToSection);
 
         List<CcReconciliationItem> items = itemsCaptor.getValue();
         assertThat(items).hasSize(1);
