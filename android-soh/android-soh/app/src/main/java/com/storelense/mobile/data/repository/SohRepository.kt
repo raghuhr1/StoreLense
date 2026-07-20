@@ -112,13 +112,18 @@ class SohRepository @Inject constructor(
     // on it would recursively create yet another session instead of ever actually
     // scanning. "manual" is safe here because this store's ERP import already exists
     // (that's why the Full Store task exists at all), so the ERP-import-required gate
-    // that normally applies to manual sessions passes regardless.
+    // that normally applies to manual sessions passes regardless — PROVIDED zoneRegion is
+    // also set: the backend's hasCompletedErpImport() gate keys off zoneRegion, not
+    // locationCode (a separate field), and rejects with 422 if it's null/unrecognized
+    // regardless of locationCode. The existing manual flow (ScanModeViewModel) sets both
+    // to the same value; this must match that.
     suspend fun createZoneSession(storeId: String, locationCode: String?): Result<SohSessionDto> {
         return try {
             val resp = api.createSohSession(CreateSohSessionRequest(
                 storeId      = storeId,
                 sessionType  = "manual",
                 source       = "manual",
+                zoneRegion   = locationCode,
                 locationCode = locationCode
             ))
             val body = resp.body()
