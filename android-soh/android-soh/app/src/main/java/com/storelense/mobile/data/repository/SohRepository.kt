@@ -85,6 +85,20 @@ class SohRepository @Inject constructor(
         }
     }
 
+    // Cancels a session that was never actually scanned — specifically the ERP-triggered
+    // "Full Store" placeholder session once the operator picks a real zone instead of
+    // "Full Store" itself. Without this it sits stuck in_progress forever (0 reads),
+    // cluttering the SOH Sessions list with an abandoned entry that nobody ever finishes.
+    suspend fun cancelSession(id: String, reason: String? = null): Result<Unit> {
+        return try {
+            val resp = api.cancelSohSession(id, reason)
+            if (resp.isSuccessful) Result.Success(Unit)
+            else Result.Error(resp.body()?.message ?: "Failed to cancel session")
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Network error")
+        }
+    }
+
     suspend fun createSession(storeId: String): Result<SohSessionDto> {
         return try {
             val resp = api.createSohSession(CreateSohSessionRequest(storeId))

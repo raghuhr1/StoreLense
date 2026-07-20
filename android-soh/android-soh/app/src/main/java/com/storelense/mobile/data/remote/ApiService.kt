@@ -48,6 +48,12 @@ interface ApiService {
     @POST("api/soh/sessions/{id}/complete")
     suspend fun completeSohSession(@Path("id") id: String): Response<ApiResponse<SohSessionDto>>
 
+    @POST("api/soh/sessions/{id}/cancel")
+    suspend fun cancelSohSession(
+        @Path("id") id: String,
+        @Query("reason") reason: String? = null
+    ): Response<ApiResponse<Unit>>
+
     @POST("api/soh/sessions/{id}/pause")
     suspend fun pauseSohSession(@Path("id") id: String): Response<ApiResponse<Unit>>
 

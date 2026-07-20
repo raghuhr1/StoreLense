@@ -17,7 +17,7 @@ public class SohServiceClient {
 
     /** Minimal session fields needed by the reconciliation engine. */
     public record SohSessionInfo(UUID id, UUID storeId, String zoneRegion, String status,
-                                  String locationCode, String sectionCode) {}
+                                  String locationCode, String sectionCode, UUID cycleCountId) {}
 
     private final RestClient sohRestClient;
 
@@ -36,13 +36,15 @@ public class SohServiceClient {
                 throw new IllegalStateException("Session " + sessionId + " not found in soh-service");
             }
             Map<String, Object> d = response.getData();
+            String cycleCountIdStr = (String) d.get("cycleCountId");
             return new SohSessionInfo(
                     UUID.fromString((String) d.get("id")),
                     UUID.fromString((String) d.get("storeId")),
                     (String) d.get("zoneRegion"),
                     (String) d.get("status"),
                     (String) d.get("locationCode"),
-                    (String) d.get("sectionCode")
+                    (String) d.get("sectionCode"),
+                    cycleCountIdStr != null ? UUID.fromString(cycleCountIdStr) : null
             );
         } catch (IllegalStateException e) {
             throw e;

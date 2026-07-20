@@ -47,7 +47,16 @@ public class ReconciliationController {
     @PostMapping("/sessions/{sessionId}/run")
     @Operation(summary = "Run ERP cycle-count reconciliation for a completed SOH session")
     public ResponseEntity<ApiResponse<CcReconciliation>> run(@PathVariable UUID sessionId) {
-        return ResponseEntity.ok(ApiResponse.ok(engine.reconcile(sessionId)));
+        CcReconciliation recon = engine.reconcile(sessionId);
+        if (recon == null) {
+            // Session belongs to a cycle count — reconciling it alone would compare one
+            // zone's reads against the store's full expected quantity, always looking like
+            // a near-total miss. Use POST /api/reconciliation/cycle-counts/{id}/run instead.
+            return ResponseEntity.ok(ApiResponse.error("PART_OF_CYCLE_COUNT",
+                    "This session is part of a multi-zone audit — run reconciliation for the " +
+                    "whole cycle count instead, once all its zones are complete."));
+        }
+        return ResponseEntity.ok(ApiResponse.ok(recon));
     }
 
     @GetMapping("/sessions/{sessionId}/result")

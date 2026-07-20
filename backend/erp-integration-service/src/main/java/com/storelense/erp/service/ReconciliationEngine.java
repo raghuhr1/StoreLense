@@ -38,6 +38,22 @@ public class ReconciliationEngine {
     // ── Single-session reconciliation ──────────────────────────────────────
 
     public CcReconciliation reconcile(UUID sessionId) {
+        SohSessionInfo session = sohServiceClient.getSession(sessionId);
+
+        // A session that's part of a cycle count (any zone auto-grouped with others under
+        // the same audit) must NOT be reconciled on its own — comparing one zone's reads
+        // against the store's FULL expected quantity always looks like a near-total miss,
+        // regardless of how well that zone was actually counted. This session is instead
+        // reconciled together with its siblings, once, when the cycle count completes (see
+        // CycleCountService.onSessionCompleted -> reconcileByCount). Skipping here is what
+        // stops every individual zone from spamming its own misleading low-% Variance row.
+        if (session.cycleCountId() != null) {
+            log.info("Session {} belongs to cycle count {} — skipping individual reconciliation; " +
+                    "it will be reconciled together with its other zones when the cycle count completes",
+                    sessionId, session.cycleCountId());
+            return null;
+        }
+
         List<CcReconciliation> existing = reconciliationRepository.findBySessionIdOrderByRunAtDesc(sessionId);
         if (!existing.isEmpty()) {
             existing.forEach(r -> {
@@ -48,7 +64,6 @@ public class ReconciliationEngine {
                     existing.size(), sessionId);
         }
 
-        SohSessionInfo session = sohServiceClient.getSession(sessionId);
         List<String> scannedEpcs = sohServiceClient.getSessionEpcs(sessionId);
 
         Optional<ErpImportBatch> batchOpt = batchRepository

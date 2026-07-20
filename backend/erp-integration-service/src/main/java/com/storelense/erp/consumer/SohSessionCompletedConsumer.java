@@ -28,6 +28,13 @@ public class SohSessionCompletedConsumer {
                 event.sessionId(), event.storeId());
         try {
             var recon = reconciliationEngine.reconcile(event.sessionId());
+            if (recon == null) {
+                // Part of a cycle count — deliberately skipped here; it's reconciled
+                // together with its sibling zones once the cycle count itself completes.
+                log.info("Skipped individual reconciliation for session {} — part of a cycle count",
+                        event.sessionId());
+                return;
+            }
             log.info("Auto-reconciliation complete: sessionId={} matched={} missing={} extra={} accuracy={}%",
                     event.sessionId(), recon.getMatchedCount(), recon.getMissingCount(),
                     recon.getExtraCount(), recon.getAccuracyPct());

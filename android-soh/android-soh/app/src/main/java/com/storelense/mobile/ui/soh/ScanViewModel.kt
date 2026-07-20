@@ -257,6 +257,10 @@ class ScanViewModel @Inject constructor(
             }
             when (val r = soh.createZoneSession(storeId, locationCode)) {
                 is Result.Success -> {
+                    // The original Full Store placeholder session was only ever meant to
+                    // launch this picker, not be scanned itself — cancel it now instead of
+                    // leaving it stuck in_progress forever once a real zone is underway.
+                    soh.cancelSession(sessionId, reason = "Split into per-zone sessions")
                     _state.update { it.copy(isLoadingZones = false) }
                     _events.emit(ScanEvent.SwitchSession(r.data.id))
                 }
