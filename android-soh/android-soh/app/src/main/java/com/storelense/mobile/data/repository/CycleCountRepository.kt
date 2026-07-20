@@ -98,7 +98,7 @@ class CycleCountRepository @Inject constructor(
             val resp = api.createSohSession(
                 CreateSohSessionRequest(
                     storeId      = storeId,
-                    sessionType  = "cycle_count",
+                    sessionType  = "manual",
                     source       = "manual",
                     cycleCountId = cycleCountId,
                     // Backend's ERP-import-required gate keys off zoneRegion, not
