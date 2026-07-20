@@ -40,8 +40,10 @@ public class CycleCountController {
         return ResponseEntity.ok(ApiResponse.ok(service.list(effective, pageable)));
     }
 
+    // No @PreAuthorize: erp-integration-service calls this internally (unauthenticated,
+    // permitAll in SecurityConfig) to fetch a cycle count's child sessions for combined
+    // reconciliation — same pattern as SohSessionController.get().
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE')")
     @Operation(summary = "Get cycle count detail with all child sessions")
     public ResponseEntity<ApiResponse<CycleCountResponse>> get(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.ok(service.get(id)));

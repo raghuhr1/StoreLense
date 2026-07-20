@@ -37,6 +37,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/soh/sessions/*/epcs").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/soh/sessions/*/expected-epcs").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/soh/sessions/*").permitAll()
+                        // Internal service-to-service: erp-integration reads cycle-count session
+                        // groupings for combined multi-zone reconciliation (reconcileByCount)
+                        .requestMatchers(HttpMethod.GET, "/api/cycle-counts/*").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtFilter(), UsernamePasswordAuthenticationFilter.class)
