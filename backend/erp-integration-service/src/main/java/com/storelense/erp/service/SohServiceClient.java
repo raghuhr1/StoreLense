@@ -64,15 +64,17 @@ public class SohServiceClient {
     @SuppressWarnings("unchecked")
     public List<SohSessionInfo> getSessionsByCount(UUID cycleCountId) {
         try {
-            ApiResponse<List<Map<String, Object>>> response = sohRestClient.get()
+            // The cycle-count GET returns a single object { id, storeId, ..., sessions: [...] },
+            // not a list — must deserialize data as Map, not List<Map>, or Jackson throws a
+            // MismatchedInputException that this method's catch-all silently swallows.
+            ApiResponse<Map<String, Object>> response = sohRestClient.get()
                     .uri("/api/cycle-counts/{id}", cycleCountId)
                     .retrieve()
                     .body(new ParameterizedTypeReference<>() {});
 
             if (response == null || response.getData() == null) return List.of();
 
-            // The cycle-count GET returns { ..., sessions: [...] }
-            Object rawSessions = ((Map<?, ?>) response.getData()).get("sessions");
+            Object rawSessions = response.getData().get("sessions");
             if (!(rawSessions instanceof List<?> sessionList)) return List.of();
 
             return sessionList.stream()
