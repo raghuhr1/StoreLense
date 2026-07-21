@@ -560,6 +560,37 @@ public class InventoryService {
                 .optional()
                 .orElseThrow(() -> new ResourceNotFoundException("Product", req.sku()));
 
+        // Tag Item only lets staff commission a physical unit of a SKU that this store's
+        // latest completed ERP import actually expects — otherwise any SKU in the global
+        // catalog could be tagged into a store it was never stocked at, with no ERP
+        // quantity to reconcile against.
+        boolean stockedAtStore = jdbcClient.sql("""
+                SELECT 1
+                FROM erp.erp_soh_snapshot s
+                JOIN erp.erp_import_batch b ON b.id = s.batch_id
+                JOIN products.barcodes bc   ON bc.barcode_value = s.ean
+                WHERE b.store_id = CAST(:storeId AS uuid)
+                  AND b.status   = 'COMPLETED'
+                  AND bc.product_id = CAST(:productId AS uuid)
+                  AND b.id = (
+                      SELECT id FROM erp.erp_import_batch
+                      WHERE store_id = CAST(:storeId AS uuid) AND status = 'COMPLETED'
+                      ORDER BY created_at DESC LIMIT 1
+                  )
+                LIMIT 1
+                """)
+                .param("storeId", req.storeId().toString())
+                .param("productId", product.id().toString())
+                .query(Integer.class)
+                .optional()
+                .isPresent();
+
+        if (!stockedAtStore) {
+            throw new IllegalStateException(
+                    "Product '" + req.sku() + "' is not in this store's latest ERP import — " +
+                    "cannot tag an item for a SKU this store doesn't stock.");
+        }
+
         UUID zoneId = jdbcClient.sql("""
                 SELECT id FROM stores.zones
                 WHERE store_id = CAST(:storeId AS uuid)
@@ -613,11 +644,40 @@ public class InventoryService {
                         .update();
             }
         }
+        // Re-tagging an already-registered EPC (e.g. moving it from Sales Floor to Back
+        // Room via Tag Item) must UPDATE that same physical item's row, not silently
+        // no-op — DO NOTHING here left the registry showing the item's old zone forever
+        // while the UI reported success, so it looked like a duplicate/ghost move.
+        var existingRegistry = epcRegistryRepository.findByEpcAndStoreId(epc, req.storeId());
+        UUID previousZoneId = null;
+        UUID previousProductId = null;
+        if (existingRegistry.isPresent()) {
+            EpcRegistry existing = existingRegistry.get();
+            boolean zoneChanged = !Objects.equals(existing.getZoneId(), zoneId);
+            if (zoneChanged) {
+                previousZoneId    = existing.getZoneId();
+                previousProductId = existing.getProductId();
+                epcPositionHistoryRepository.save(EpcPositionHistory.builder()
+                        .epc(epc)
+                        .storeId(req.storeId())
+                        .productId(product.id())
+                        .fromZoneId(existing.getZoneId())
+                        .toZoneId(zoneId)
+                        .fromStatus(existing.getStatus())
+                        .toStatus("in_store")
+                        .triggeredBy("tag_item")
+                        .build());
+            }
+        }
+
         jdbcClient.sql("""
                 INSERT INTO products.epc_tags
                        (epc, epc_encoding, product_id, is_encoded, is_active, created_at, updated_at)
                 VALUES (:epc, 'SGTIN_96', CAST(:productId AS uuid), false, true, :now, :now)
-                ON CONFLICT (epc) DO NOTHING
+                ON CONFLICT (epc) DO UPDATE
+                    SET product_id = EXCLUDED.product_id,
+                        is_active  = true,
+                        updated_at = EXCLUDED.updated_at
                 """)
                 .param("epc", epc)
                 .param("productId", product.id().toString())
@@ -630,7 +690,12 @@ public class InventoryService {
                         first_seen_at, last_seen_at, created_at, updated_at)
                 VALUES (:epc, CAST(:storeId AS uuid), CAST(:productId AS uuid), CAST(:zoneId AS uuid),
                         'in_store', :now, :now, :now, :now)
-                ON CONFLICT (epc, store_id) DO NOTHING
+                ON CONFLICT (epc, store_id) DO UPDATE
+                    SET product_id   = EXCLUDED.product_id,
+                        zone_id      = EXCLUDED.zone_id,
+                        status       = 'in_store',
+                        last_seen_at = EXCLUDED.last_seen_at,
+                        updated_at   = EXCLUDED.updated_at
                 """)
                 .param("epc", epc)
                 .param("storeId", req.storeId().toString())
@@ -638,6 +703,20 @@ public class InventoryService {
                 .param("zoneId", zoneId.toString())
                 .param("now", now)
                 .update();
+
+        // The zone this item moved OUT of also needs its on-hand refreshed — otherwise
+        // it keeps counting a unit that physically left, until something else happens
+        // to touch that zone's inventory_state row.
+        if (previousZoneId != null && (!previousZoneId.equals(zoneId) || !previousProductId.equals(product.id()))) {
+            long previousZoneOnHand = epcRegistryRepository.countLiveOnHand(
+                    req.storeId(), previousProductId, previousZoneId, "in_store");
+            inventoryStateRepository.findByStoreIdAndProductIdAndZoneId(req.storeId(), previousProductId, previousZoneId)
+                    .ifPresent(state -> {
+                        state.setQuantityOnHand((int) previousZoneOnHand);
+                        state.setAccuracyPct(calcAccuracy(state.getQuantityOnHand(), state.getQuantityExpected()));
+                        inventoryStateRepository.save(state);
+                    });
+        }
 
         // quantity_on_hand is recomputed live from epc_registry rather than incremented,
         // so it always reflects exactly how many of this product's tags are in_store —
