@@ -75,7 +75,11 @@ public class InventoryController {
         UUID effective = principal.isAdmin() ? storeId : principal.storeId();
         return ResponseEntity.ok(ApiResponse.ok(Map.of(
                 "in_store",    inventoryService.countByStatus(effective, "in_store"),
-                "missing",     inventoryService.countByStatus(effective, "missing"),
+                // "missing" here means ERP-expected units never physically scanned —
+                // not epc_registry's manual 'missing' status flag, which stayed 0 for
+                // nearly all real shortfall since nobody had explicitly flagged it via
+                // the Exceptions "mark missing" action.
+                "missing",     inventoryService.countUnscannedExpected(effective),
                 "sold",        inventoryService.countByStatus(effective, "sold"),
                 "damaged",     inventoryService.countByStatus(effective, "damaged")
         )));

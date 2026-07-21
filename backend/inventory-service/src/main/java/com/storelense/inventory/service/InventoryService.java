@@ -152,6 +152,15 @@ public class InventoryService {
         return epcRegistryRepository.countByStoreIdAndStatus(storeId, status);
     }
 
+    // See InventoryStateRepository.sumUnscannedExpected — "missing" as shown on the
+    // Stock Levels page means ERP-expected units never physically scanned, not the
+    // epc_registry 'missing' status flag (which requires an explicit manual "mark
+    // missing" action and stays 0 for the vast majority of real shortfall).
+    @Transactional(readOnly = true)
+    public long countUnscannedExpected(UUID storeId) {
+        return inventoryStateRepository.sumUnscannedExpected(storeId);
+    }
+
     /**
      * Upsert the ERP expected quantity for a store × product × zone.
      * Called by the XLS upload tool (POST /api/inventory/expected).
