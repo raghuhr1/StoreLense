@@ -209,7 +209,18 @@ class ScanViewModel @Inject constructor(
 
     // Fetch zones from the server. If zones exist, show the selector.
     // If the store has no zones configured, skip straight to RFID connect.
+    //
+    // Skipped entirely when this session already has a fixed locationCode — e.g. a
+    // zone-scoped session just created via selectZone()'s createZoneSession() branch, or
+    // any manual Sales Floor / Back Room session started from ScanModeViewModel. Without
+    // this check, switching from the ERP placeholder to a real zone session re-triggered
+    // this same picker a second time for the brand-new (already zone-fixed) session,
+    // since this method didn't look at whether a zone was already decided.
     private fun loadZonesAndShowSelector() = viewModelScope.launch {
+        if (_state.value.locationCode != null) {
+            connectAndStartScan()
+            return@launch
+        }
         _state.update { it.copy(isLoadingZones = true) }
         when (val r = storeRepository.getZones(storeId)) {
             is Result.Success -> {
