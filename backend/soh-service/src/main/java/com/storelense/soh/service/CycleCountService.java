@@ -107,10 +107,25 @@ public class CycleCountService {
     @Transactional
     public CycleCountResponse transition(UUID id, String targetStatus, UUID actorId) {
         CycleCount cc = findOrThrow(id);
-        validateTransition(cc.getStatus(), targetStatus);
+        String previousStatus = cc.getStatus();
+        validateTransition(previousStatus, targetStatus);
         cc.setStatus(targetStatus);
-        log.info("CycleCount {} transitioned {} → {} by {}", id, cc.getStatus(), targetStatus, actorId);
-        return sohMapper.toCycleCountResponse(cycleCountRepository.save(cc));
+        log.info("CycleCount {} transitioned {} → {} by {}", id, previousStatus, targetStatus, actorId);
+        CycleCount saved = cycleCountRepository.save(cc);
+
+        // Safety net: a manual Close (e.g. an audit that never covers both canonical
+        // zones and so never auto-reaches COMPLETED via onSessionCompleted) would
+        // otherwise skip combined reconciliation entirely, forcing a manual POST
+        // /reconciliation/cycle-counts/{id}/run. Firing the same event here — which
+        // reconcileByCount handles idempotently by deleting any prior result first —
+        // guarantees a count always gets reconciled once it reaches a terminal state.
+        if (("COMPLETED".equals(targetStatus) || "CLOSED".equals(targetStatus))
+                && !"COMPLETED".equals(previousStatus)) {
+            kafkaTemplate.send(KafkaTopics.CYCLE_COUNT_COMPLETED, id.toString(),
+                    new CycleCountCompletedEvent(id, saved.getStoreId()));
+        }
+
+        return sohMapper.toCycleCountResponse(saved);
     }
 
     /**
@@ -176,7 +191,16 @@ public class CycleCountService {
                     .allMatch(s -> "completed".equals(s.getStatus())
                             || "cancelled".equals(s.getStatus())
                             || "closed".equals(s.getStatus()));
-            boolean coversCanonicalZones = sessions.stream()
+            // A completed "Full Store" session (erp_triggered, locationCode null — the
+            // operator scanned the whole store in one pass instead of zone-by-zone)
+            // covers everything on its own; requiring SALES_FLOOR + BACKROOM on top of
+            // that meant a Full Store scan could never auto-complete the cycle count,
+            // so it was always left for a manual Close (which skipped the reconciliation
+            // trigger entirely — confirmed in production with a Full Store + Backroom
+            // count stuck needing a manual POST /reconciliation/.../run).
+            boolean hasFullStoreScan = sessions.stream()
+                    .anyMatch(s -> "completed".equals(s.getStatus()) && s.getLocationCode() == null);
+            boolean coversCanonicalZones = hasFullStoreScan || sessions.stream()
                     .map(SohSession::getLocationCode)
                     .filter(Objects::nonNull)
                     .collect(java.util.stream.Collectors.toSet())
