@@ -3,10 +3,13 @@ package com.storelense.mobile.ui.soh
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.storelense.mobile.data.repository.CycleCountRepository
 import com.storelense.mobile.data.repository.Result
 import com.storelense.mobile.data.repository.SohRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -27,18 +30,43 @@ data class SohResultState(
     val backroomExpected: Int = 0,
     val backroomVariance: Int = 0,
     val cycleCountId: String? = null,
+    val isFinishing: Boolean = false,
     val error: String?      = null
 )
 
 @HiltViewModel
 class SohResultViewModel @Inject constructor(
     savedState: SavedStateHandle,
-    private val soh: SohRepository
+    private val soh: SohRepository,
+    private val cycleCounts: CycleCountRepository
 ) : ViewModel() {
 
     private val sessionId: String = savedState["sessionId"] ?: ""
     private val _state = MutableStateFlow(SohResultState())
     val state = _state.asStateFlow()
+
+    private val _finished = MutableSharedFlow<Unit>()
+    val finished = _finished.asSharedFlow()
+
+    // Ends the whole ERP-triggered task from right here, instead of requiring the
+    // operator to separately navigate to the Cycle Count screen and hit Close. Reuses
+    // the same close endpoint — CycleCountService.transition() already fires combined
+    // reconciliation on CLOSED regardless of which/how many zones were scanned.
+    fun finishAudit() {
+        val ccId = _state.value.cycleCountId ?: return
+        _state.update { it.copy(isFinishing = true) }
+        viewModelScope.launch {
+            when (val r = cycleCounts.close(ccId)) {
+                is Result.Success -> {
+                    _state.update { it.copy(isFinishing = false) }
+                    _finished.emit(Unit)
+                }
+                is Result.Error -> _state.update {
+                    it.copy(isFinishing = false, error = r.message ?: "Could not finish audit")
+                }
+            }
+        }
+    }
 
     init {
         viewModelScope.launch {

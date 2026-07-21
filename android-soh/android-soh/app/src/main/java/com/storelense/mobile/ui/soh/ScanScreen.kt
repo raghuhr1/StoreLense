@@ -116,7 +116,11 @@ fun ScanScreen(
     // User picks which zone they are physically scanning in.
     if (state.showZoneSelectorSheet) {
         ModalBottomSheet(
-            onDismissRequest = { vm.selectZone(null, null) },
+            // Zone selection is now mandatory (no "Full Store" fallback) — dismissing via
+            // scrim tap or back gesture used to fall through to an untracked, zone-less
+            // scan on the placeholder session. Swallow the request so a real zone must be
+            // picked from the list below.
+            onDismissRequest = {},
             containerColor   = SurfaceSlate,
             dragHandle       = {
                 BottomSheetDefaults.DragHandle(color = MutedText)
@@ -141,15 +145,10 @@ fun ScanScreen(
                     modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)
                 )
 
-                // Full store option
-                ZoneOptionRow(
-                    name      = "Full Store",
-                    zoneType  = null,
-                    onClick   = { vm.selectZone(null, null) }
-                )
-
-                HorizontalDivider(color = Color.White.copy(0.05f), modifier = Modifier.padding(vertical = 4.dp))
-
+                // "Full Store" removed: every ERP-triggered task must attribute reads to a
+                // real zone (Sales Floor / Back Room) so the Variance floor/backroom
+                // breakdown is always accurate — a zone-less scan left those buckets at 0
+                // regardless of how much was actually scanned.
                 LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
                     items(state.availableZones) { zone ->
                         ZoneOptionRow(

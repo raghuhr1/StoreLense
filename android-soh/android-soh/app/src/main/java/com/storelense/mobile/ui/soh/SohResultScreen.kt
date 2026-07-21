@@ -26,6 +26,10 @@ fun SohResultScreen(
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
 
+    LaunchedEffect(Unit) {
+        vm.finished.collect { onDone() }
+    }
+
     Scaffold { padding ->
         Column(
             Modifier.fillMaxSize().padding(padding).padding(24.dp),
@@ -84,9 +88,25 @@ fun SohResultScreen(
             state.cycleCountId?.let { ccId ->
                 Button(
                     onClick  = { onScanAnotherZone(ccId) },
+                    enabled  = !state.isFinishing,
                     modifier = Modifier.fillMaxWidth().height(52.dp)
                 ) {
                     Text("Scan Another Zone", fontSize = 16.sp)
+                }
+                Spacer(Modifier.height(12.dp))
+                // Ends this ERP task right here instead of requiring a separate trip to
+                // the Cycle Count screen — reconciliation runs on close regardless of how
+                // many zones were covered.
+                OutlinedButton(
+                    onClick  = vm::finishAudit,
+                    enabled  = !state.isFinishing,
+                    modifier = Modifier.fillMaxWidth().height(52.dp)
+                ) {
+                    if (state.isFinishing) {
+                        CircularProgressIndicator(Modifier.size(20.dp))
+                    } else {
+                        Text("Finish Audit", fontSize = 16.sp)
+                    }
                 }
                 Spacer(Modifier.height(12.dp))
             }
