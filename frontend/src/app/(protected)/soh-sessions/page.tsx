@@ -2,7 +2,8 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { MapPin, RotateCw } from 'lucide-react'
+import { MapPin, RotateCw, ClipboardList } from 'lucide-react'
+import Link              from 'next/link'
 import Header            from '@/components/layout/Header'
 import { statusBadge }   from '@/components/ui/Badge'
 import { sohApi }        from '@/lib/api/soh'
@@ -27,6 +28,59 @@ function locationLabel(locationCode: string | null, sectionCode: string | null, 
   // normalize its enum-style text ("SALES_FLOOR"/"BACK_ROOM") to a readable label.
   if (zoneRegion) return titleCase(zoneRegion.replace(/_/g, ' '))
   return 'Full Store'
+}
+
+// Groups sessions that share a cycleCountId (an ERP-triggered audit split across
+// Sales Floor / Backroom, plus the cancelled Full Store placeholder) into one
+// nested card, instead of showing all three as unrelated flat cards. Sessions
+// with no cycleCountId (plain manual scans) still render standalone.
+type RenderItem =
+  | { kind: 'group';  cycleCountId: string; sessions: SohSession[] }
+  | { kind: 'single'; session: SohSession }
+
+function groupSessions(sessions: SohSession[]): RenderItem[] {
+  const items: RenderItem[] = []
+  const seenGroups = new Set<string>()
+
+  for (const s of sessions) {
+    if (!s.cycleCountId) {
+      items.push({ kind: 'single', session: s })
+      continue
+    }
+    if (seenGroups.has(s.cycleCountId)) continue
+    seenGroups.add(s.cycleCountId)
+    items.push({
+      kind: 'group',
+      cycleCountId: s.cycleCountId,
+      sessions: sessions.filter(x => x.cycleCountId === s.cycleCountId),
+    })
+  }
+  return items
+}
+
+function AuditGroupCard({ cycleCountId, sessions }: { cycleCountId: string; sessions: SohSession[] }) {
+  const earliestStart = sessions.reduce((min, s) => s.startedAt < min ? s.startedAt : min, sessions[0].startedAt)
+
+  return (
+    <div className="border border-brand-200 bg-brand-50/40 rounded-xl p-4 space-y-3 sm:col-span-2 lg:col-span-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <ClipboardList size={15} className="text-brand-600 flex-shrink-0" />
+          <p className="text-sm font-semibold text-gray-900">ERP Audit</p>
+          <span className="text-xs text-gray-400">{fmtDateTime(earliestStart)}</span>
+        </div>
+        <Link
+          href={`/cycle-count/${cycleCountId}/reconcile`}
+          className="text-xs font-medium text-brand-600 hover:underline"
+        >
+          View Reconciliation →
+        </Link>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {sessions.map(s => <SessionCard key={s.id} session={s} />)}
+      </div>
+    </div>
+  )
 }
 
 function SessionCard({ session }: { session: SohSession }) {
@@ -114,7 +168,8 @@ export default function SohSessionsPage() {
     enabled:  !!storeId,
   })
 
-  const sessions = useMemo(() => page?.content ?? [], [page])
+  const sessions   = useMemo(() => page?.content ?? [], [page])
+  const renderList = useMemo(() => groupSessions(sessions), [sessions])
 
   return (
     <>
@@ -158,7 +213,10 @@ export default function SohSessionsPage() {
             </p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {sessions.map(s => <SessionCard key={s.id} session={s} />)}
+              {renderList.map(item => item.kind === 'group'
+                ? <AuditGroupCard key={item.cycleCountId} cycleCountId={item.cycleCountId} sessions={item.sessions} />
+                : <SessionCard key={item.session.id} session={item.session} />
+              )}
             </div>
           )}
         </div>
