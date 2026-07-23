@@ -61,6 +61,14 @@ function groupSessions(sessions: SohSession[]): RenderItem[] {
 function AuditGroupCard({ cycleCountId, sessions }: { cycleCountId: string; sessions: SohSession[] }) {
   const earliestStart = sessions.reduce((min, s) => s.startedAt < min ? s.startedAt : min, sessions[0].startedAt)
 
+  // The "Full Store" placeholder that only ever existed to launch the zone picker gets
+  // auto-cancelled with 0 reads the moment a real zone is picked instead — it carries no
+  // information once that's happened, so hide it here rather than showing a confusing
+  // "cancelled, 0 reads" tile alongside the real zone sessions. Fall back to showing
+  // everything if that would empty the group (defensive — shouldn't normally happen).
+  const visibleSessions = sessions.filter(s => !(s.status === 'cancelled' && s.totalEpcReads === 0))
+  const displaySessions = visibleSessions.length > 0 ? visibleSessions : sessions
+
   return (
     <div className="border border-brand-200 bg-brand-50/40 rounded-xl p-4 space-y-3 sm:col-span-2 lg:col-span-3">
       <div className="flex items-center justify-between gap-2">
@@ -77,7 +85,7 @@ function AuditGroupCard({ cycleCountId, sessions }: { cycleCountId: string; sess
         </Link>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {sessions.map(s => <SessionCard key={s.id} session={s} />)}
+        {displaySessions.map(s => <SessionCard key={s.id} session={s} />)}
       </div>
     </div>
   )
