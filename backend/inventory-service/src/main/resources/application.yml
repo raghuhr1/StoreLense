@@ -26,6 +26,9 @@ spring:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
     admin:
       fail-fast: false   # don't crash context if broker unreachable at startup
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
     consumer:
       group-id: inventory-service
       key-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer

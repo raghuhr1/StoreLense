@@ -65,7 +65,7 @@ public class BillService {
         }
 
         log.info("Bill registered: ref={} store={} items={}", req.billRef(), req.storeId(), req.items().size());
-        return new BillLookupResponse(billId, req.billRef(), req.storeId(), now, req.items(), "PENDING", null);
+        return new BillLookupResponse(billId, req.billRef(), req.storeId(), now, fetchItems(billId), "PENDING", null);
     }
 
     @Transactional(readOnly = true)
@@ -91,22 +91,33 @@ public class BillService {
 
         UUID billId = (UUID) bill[0];
 
-        List<BillItemDto> items = jdbcClient.sql("""
-                SELECT ean, product_name, qty, unit_price
-                FROM inventory.bill_items
-                WHERE bill_id = CAST(:billId AS uuid)
-                ORDER BY ean
+        return new BillLookupResponse(billId, (String) bill[1], (UUID) bill[2],
+                (OffsetDateTime) bill[3], fetchItems(billId), (String) bill[4], (OffsetDateTime) bill[5]);
+    }
+
+    /**
+     * Joins each bill line item to products.barcodes/products to resolve is_rfid_enabled.
+     * Left join so an item resolves to null (unknown) rather than a wrong guess when
+     * no barcode row exists for the EAN yet — a known onboarding data gap, not absence
+     * of RFID tracking. Only a non-null false should be treated as "verify by barcode".
+     */
+    private List<BillItemDto> fetchItems(UUID billId) {
+        return jdbcClient.sql("""
+                SELECT bi.ean, bi.product_name, bi.qty, bi.unit_price, p.is_rfid_enabled
+                FROM inventory.bill_items bi
+                LEFT JOIN products.barcodes b ON UPPER(b.barcode_value) = UPPER(bi.ean)
+                LEFT JOIN products.products p ON p.id = b.product_id
+                WHERE bi.bill_id = CAST(:billId AS uuid)
+                ORDER BY bi.ean
                 """)
                 .param("billId", billId.toString())
                 .query((rs, n) -> new BillItemDto(
                         rs.getString("ean"),
                         rs.getString("product_name"),
                         rs.getInt("qty"),
-                        rs.getBigDecimal("unit_price")
+                        rs.getBigDecimal("unit_price"),
+                        (Boolean) rs.getObject("is_rfid_enabled")
                 ))
                 .list();
-
-        return new BillLookupResponse(billId, (String) bill[1], (UUID) bill[2],
-                (OffsetDateTime) bill[3], items, (String) bill[4], (OffsetDateTime) bill[5]);
     }
 }

@@ -40,4 +40,9 @@ interface ApiService {
         @Query("storeId") storeId: String,
         @Query("limit") limit: Int = 20
     ): Response<ApiResponse<List<GateCheckDto>>>
+
+    @GET("api/stores/{storeId}/features")
+    suspend fun getStoreFeatures(
+        @Path("storeId") storeId: String
+    ): Response<ApiResponse<List<StoreFeatureDto>>>
 }

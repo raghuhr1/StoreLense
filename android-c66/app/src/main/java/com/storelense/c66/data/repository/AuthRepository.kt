@@ -14,7 +14,8 @@ sealed class Result<out T> {
 @Singleton
 class AuthRepository @Inject constructor(
     private val api: ApiService,
-    private val tokenManager: TokenManager
+    private val tokenManager: TokenManager,
+    private val storeConfigRepository: StoreConfigRepository
 ) {
     suspend fun login(username: String, password: String): Result<Unit> = try {
         val resp = api.login(LoginRequest(username, password))
@@ -25,6 +26,7 @@ class AuthRepository @Inject constructor(
             tokenManager.refreshToken = data.refreshToken
             tokenManager.username     = data.username
             tokenManager.storeId      = data.storeId
+            storeConfigRepository.fetchAndCache()
             Result.Success(Unit)
         } else {
             Result.Error(body?.message ?: "Login failed")
@@ -33,7 +35,10 @@ class AuthRepository @Inject constructor(
         Result.Error(e.message ?: "Network error")
     }
 
-    fun logout() = tokenManager.clear()
+    fun logout() {
+        storeConfigRepository.reset()
+        tokenManager.clear()
+    }
 
     val isLoggedIn get() = tokenManager.isLoggedIn
     val username   get() = tokenManager.username

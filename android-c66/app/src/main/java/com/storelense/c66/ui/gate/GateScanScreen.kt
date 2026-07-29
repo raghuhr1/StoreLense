@@ -62,7 +62,8 @@ fun GateScanScreen(
     onDashboard: () -> Unit = {},
     vm: GateScanViewModel = hiltViewModel()
 ) {
-    val state by vm.state.collectAsStateWithLifecycle()
+    val state       by vm.state.collectAsStateWithLifecycle()
+    val storeConfig by vm.storeConfig.collectAsStateWithLifecycle()
 
     var flashEan by remember { mutableStateOf<String?>(null) }
     val toneGenerator = remember {
@@ -81,6 +82,13 @@ fun GateScanScreen(
                     toneGenerator.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 250)
                 }
                 ScanEvent.Duplicate -> { /* silent — already counted */ }
+                is ScanEvent.BarcodeVerified -> {
+                    toneGenerator.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 120)
+                    flashEan = event.ean
+                }
+                ScanEvent.BarcodeNotOnBill -> {
+                    toneGenerator.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 250)
+                }
             }
         }
     }
@@ -125,11 +133,21 @@ fun GateScanScreen(
         },
         containerColor = BgPage
     ) { padding ->
+      Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+        GateStepper(
+            currentStep = when {
+                state.released -> 3
+                !state.hasBill -> 1
+                else            -> 2
+            }
+        )
+        Box(modifier = Modifier.weight(1f)) {
         when {
             state.released      -> ReleasedView(
                 markedCount    = state.markedCount,
                 items          = state.items,
                 extraEpcs      = state.extraEpcs,
+                extraBarcodes  = state.extraBarcodes,
                 onNextCustomer = { vm.reset() }
             )
             !state.hasBill      -> NoBillView(
@@ -140,18 +158,74 @@ fun GateScanScreen(
                 billDetailsCache = state.billDetailsCache,
                 loadingBillRef   = state.loadingBillDetailsFor,
                 onExpandBill     = { vm.loadBillDetails(it) },
-                modifier         = Modifier.padding(padding)
+                cameraEnabled    = storeConfig.cameraEnabled,
+                manualEntryEnabled = storeConfig.manualEntryEnabled
             )
             state.isResolvingBill -> ResolvingView()
             else                -> ActiveGateView(
-                state        = state,
-                flashEan     = flashEan,
-                onStart      = { vm.startRfidScan() },
-                onStop       = { vm.stopRfidScan() },
-                onRelease    = { vm.releaseCustomer(flagged = false) },
-                onFlagRelease = { vm.releaseCustomer(flagged = true) },
-                modifier     = Modifier.padding(padding)
+                state             = state,
+                flashEan          = flashEan,
+                rfidVerifyEnabled = storeConfig.rfidVerifyEnabled,
+                strictMode        = storeConfig.strictMode,
+                onStart           = { vm.startRfidScan() },
+                onStop            = { vm.stopRfidScan() },
+                onRelease         = { vm.releaseCustomer(flagged = false) },
+                onFlagRelease     = { vm.releaseCustomer(flagged = true) },
+                onBarcodeScanned  = { vm.onBarcodeScanned(it) }
             )
+        }
+        }
+      }
+    }
+}
+
+// ── 3-step progress stepper (Bill → Bag → Result) ─────────────────────────────
+
+@Composable
+private fun GateStepper(currentStep: Int) {
+    val labels = listOf("Bill", "Bag", "Result")
+    Row(
+        modifier          = Modifier.fillMaxWidth().background(SurfaceWhite).padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        labels.forEachIndexed { index, label ->
+            val step = index + 1
+            val done = step < currentStep
+            val active = step == currentStep
+            val circleColor = when {
+                done   -> GreenFulfilled
+                active -> TealPrimary
+                else   -> Color(0xFFD1D5DB)
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    modifier         = Modifier.size(28.dp).clip(CircleShape).background(circleColor),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (done) {
+                        Icon(Icons.Default.Check, null, Modifier.size(16.dp), tint = Color.White)
+                    } else {
+                        Text("$step", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    label,
+                    fontSize   = 11.sp,
+                    fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                    color      = if (active || done) circleColor else SubText
+                )
+            }
+            if (step != labels.size) {
+                Box(
+                    modifier = Modifier
+                        .padding(bottom = 16.dp)
+                        .width(40.dp)
+                        .height(2.dp)
+                        .background(if (step < currentStep) GreenFulfilled else Color(0xFFD1D5DB))
+                )
+            }
         }
     }
 }
@@ -160,14 +234,16 @@ fun GateScanScreen(
 
 @Composable
 private fun NoBillView(
-    onLoadDemo:       () -> Unit,
-    onQrScanned:      (String) -> Unit,
-    errorMessage:     String?  = null,
-    recentBills:      List<com.storelense.c66.data.remote.dto.GateCheckDto> = emptyList(),
-    billDetailsCache: Map<String, List<com.storelense.c66.data.remote.dto.BillLookupItem>> = emptyMap(),
-    loadingBillRef:   String?  = null,
-    onExpandBill:     (String) -> Unit = {},
-    modifier:         Modifier = Modifier
+    onLoadDemo:          () -> Unit,
+    onQrScanned:         (String) -> Unit,
+    errorMessage:        String?  = null,
+    recentBills:         List<com.storelense.c66.data.remote.dto.GateCheckDto> = emptyList(),
+    billDetailsCache:    Map<String, List<com.storelense.c66.data.remote.dto.BillLookupItem>> = emptyMap(),
+    loadingBillRef:      String?  = null,
+    onExpandBill:        (String) -> Unit = {},
+    cameraEnabled:       Boolean = false,
+    manualEntryEnabled:  Boolean = true,
+    modifier:            Modifier = Modifier
 ) {
     val useMockRfid      = com.storelense.c66.BuildConfig.USE_MOCK_RFID
     val context          = LocalContext.current
@@ -175,6 +251,15 @@ private fun NoBillView(
     var scanInput        by remember { mutableStateOf("") }
     var showCameraScanner by remember { mutableStateOf(false) }
     var cameraPermissionDenied by remember { mutableStateOf(false) }
+
+    // Real barcode engine — the hardware trigger key arms through open() and fires the
+    // same DecodeCallback as a software-triggered startScan(), so both paths are
+    // unified: pressing the yellow trigger and tapping "SCAN BILL" produce identical results.
+    val barcodeReader = remember { com.storelense.c66.barcode.ChainwayBarcodeReader(context) }
+    DisposableEffect(Unit) {
+        if (!useMockRfid) barcodeReader.open { code -> onQrScanned(code) }
+        onDispose { if (!useMockRfid) barcodeReader.close() }
+    }
 
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -240,11 +325,24 @@ private fun NoBillView(
         verticalArrangement = Arrangement.Center
     ) {
         Box(
-            modifier         = Modifier.size(80.dp).clip(CircleShape)
-                .background(TealPrimary.copy(alpha = 0.12f)),
+            modifier = Modifier
+                .size(140.dp)
+                .clip(CircleShape)
+                .background(TealPrimary)
+                .clickable {
+                    when {
+                        !useMockRfid  -> barcodeReader.startScan()
+                        cameraEnabled -> openCameraScanner()
+                        else          -> focusRequester.requestFocus()
+                    }
+                },
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Default.QrCodeScanner, null, Modifier.size(44.dp), tint = TealPrimary)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Default.Description, null, Modifier.size(36.dp), tint = Color.White)
+                Spacer(Modifier.height(6.dp))
+                Text("SCAN BILL", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            }
         }
         Spacer(Modifier.height(20.dp))
         Text(
@@ -260,6 +358,13 @@ private fun NoBillView(
         )
         Spacer(Modifier.height(28.dp))
 
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Box(Modifier.weight(1f).height(1.dp).background(Color(0xFFE2E8F0)))
+            Text("  OR  ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SubText)
+            Box(Modifier.weight(1f).height(1.dp).background(Color(0xFFE2E8F0)))
+        }
+        Spacer(Modifier.height(16.dp))
+
         // Single input field — works for keyboard-wedge scanner AND manual typing
         OutlinedTextField(
             value         = scanInput,
@@ -271,20 +376,23 @@ private fun NoBillView(
                     if (code.isNotBlank()) onQrScanned(code)
                     scanInput = ""
                 } else {
-                    scanInput = v
+                    if (manualEntryEnabled) scanInput = v
                 }
             },
             modifier        = Modifier.fillMaxWidth().focusRequester(focusRequester),
-            label           = { Text("Bill barcode / reference") },
-            placeholder     = { Text("Scan or type here…") },
+            label           = { Text(if (manualEntryEnabled) "Bill barcode / reference" else "Bill barcode (scan only)") },
+            placeholder     = { Text(if (manualEntryEnabled) "Scan or type here…" else "Use scanner or camera") },
             singleLine      = true,
+            readOnly        = !manualEntryEnabled,
             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                imeAction = ImeAction.Done
+                imeAction = if (manualEntryEnabled) ImeAction.Done else ImeAction.None
             ),
             keyboardActions = KeyboardActions(
                 onDone = {
-                    val code = scanInput.trim()
-                    if (code.isNotBlank()) { onQrScanned(code); scanInput = "" }
+                    if (manualEntryEnabled) {
+                        val code = scanInput.trim()
+                        if (code.isNotBlank()) { onQrScanned(code); scanInput = "" }
+                    }
                 }
             ),
             colors = OutlinedTextFieldDefaults.colors(
@@ -293,7 +401,11 @@ private fun NoBillView(
             )
         )
         Spacer(Modifier.height(4.dp))
-        Text("Type bill reference and press Done on keyboard", fontSize = 11.sp, color = SubText)
+        Text(
+            if (manualEntryEnabled) "Type bill reference and press Done on keyboard"
+            else "Manual entry disabled — use hardware scanner or camera",
+            fontSize = 11.sp, color = SubText
+        )
 
         if (!errorMessage.isNullOrBlank()) {
             Spacer(Modifier.height(12.dp))
@@ -330,18 +442,6 @@ private fun NoBillView(
                     )
                 }
             }
-        }
-
-        // Camera scanner button — available on all flavors; requests CAMERA permission on demand
-        Spacer(Modifier.height(16.dp))
-        Button(
-            onClick  = { openCameraScanner() },
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-            colors   = ButtonDefaults.buttonColors(containerColor = TealPrimary)
-        ) {
-            Icon(Icons.Default.QrCodeScanner, null)
-            Spacer(Modifier.width(8.dp))
-            Text("Open Camera Scanner", fontWeight = FontWeight.SemiBold)
         }
 
         if (com.storelense.c66.BuildConfig.DEBUG) {
@@ -506,8 +606,16 @@ private fun ReleasedView(
     markedCount: Int,
     items: List<BillLineItem>,
     extraEpcs: List<String>,
+    extraBarcodes: List<String> = emptyList(),
     onNextCustomer: () -> Unit
 ) {
+    val okItems       = items.filter { it.status == LineStatus.FULFILLED && !it.isNonRfid }
+    val missingItems  = items.filter { it.status != LineStatus.FULFILLED && !it.isNonRfid }
+    val checkByEye    = items.filter { it.isNonRfid }
+    val hasUnbilled   = extraEpcs.isNotEmpty() || extraBarcodes.isNotEmpty()
+    val isFlagged     = hasUnbilled || missingItems.isNotEmpty()
+    val bannerColor   = if (isFlagged) Color(0xFFDC2626) else GreenFulfilled
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -516,25 +624,48 @@ private fun ReleasedView(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(GreenFulfilled)
+                .background(bannerColor)
                 .padding(horizontal = 32.dp, vertical = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(Icons.Default.CheckCircle, null, Modifier.size(64.dp), tint = Color.White)
+            Icon(
+                if (isFlagged) Icons.Default.ReportProblem else Icons.Default.CheckCircle,
+                null, Modifier.size(64.dp), tint = Color.White
+            )
             Spacer(Modifier.height(16.dp))
             Text(
-                "Customer Released",
+                if (isFlagged) "FLAGGED" else "Customer Released",
                 color      = Color.White,
                 fontSize   = 24.sp,
                 fontWeight = FontWeight.Bold
             )
             Spacer(Modifier.height(6.dp))
-            Text(
-                "$markedCount EPC${if (markedCount != 1) "s" else ""} marked as sold in RFID ledger",
-                color     = Color.White.copy(alpha = 0.85f),
-                fontSize  = 14.sp,
-                textAlign = TextAlign.Center
-            )
+            if (isFlagged) {
+                val parts = mutableListOf<String>()
+                if (hasUnbilled) parts += "${extraEpcs.size + extraBarcodes.size} unbilled"
+                if (missingItems.isNotEmpty()) parts += "${missingItems.size} not in bag"
+                Text(
+                    parts.joinToString(" · "),
+                    color      = Color.White,
+                    fontSize   = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign  = TextAlign.Center
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Check with customer",
+                    color     = Color.White.copy(alpha = 0.9f),
+                    fontSize  = 13.sp,
+                    textAlign = TextAlign.Center
+                )
+            } else {
+                Text(
+                    "$markedCount EPC${if (markedCount != 1) "s" else ""} marked as sold in RFID ledger",
+                    color     = Color.White.copy(alpha = 0.85f),
+                    fontSize  = 14.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
 
         LazyColumn(
@@ -542,19 +673,38 @@ private fun ReleasedView(
             contentPadding      = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            item {
-                Text(
-                    "Items in this bill",
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize   = 14.sp,
-                    color      = DarkText
-                )
+            if (okItems.isNotEmpty()) {
+                item { ResultSectionHeader("Items OK", okItems.size, GreenFulfilled, Icons.Default.CheckCircle) }
+                items(okItems, key = { it.ean }) { line -> BillLineCard(line) }
             }
-            items(items, key = { it.ean }) { line -> BillLineCard(line) }
-            if (extraEpcs.isNotEmpty()) {
-                // Non-inventory / off-bill EPCs — shown as raw tags only, never with
-                // synthesized product details since we have no real product for them.
-                item { ExtraEpcsCard(epcs = extraEpcs) }
+            if (hasUnbilled) {
+                item {
+                    ResultSectionHeader(
+                        "Unbilled Items", extraEpcs.size + extraBarcodes.size,
+                        Color(0xFFDC2626), Icons.Default.ReportProblem
+                    )
+                }
+                if (extraEpcs.isNotEmpty()) {
+                    // Non-inventory / off-bill EPCs — shown as raw tags only, never with
+                    // synthesized product details since we have no real product for them.
+                    item { ExtraEpcsCard(epcs = extraEpcs) }
+                }
+                if (extraBarcodes.isNotEmpty()) {
+                    item { ExtraBarcodesCard(barcodes = extraBarcodes) }
+                }
+            }
+            if (missingItems.isNotEmpty()) {
+                item { ResultSectionHeader("Not Found in Bag", missingItems.size, AmberPartial, Icons.Default.Warning) }
+                items(missingItems, key = { it.ean }) { line -> BillLineCard(line) }
+            }
+            if (checkByEye.isNotEmpty()) {
+                item {
+                    ResultSectionHeader(
+                        "Check by Eye (No RFID)", checkByEye.size,
+                        Color(0xFF2563EB), Icons.Default.Visibility
+                    )
+                }
+                items(checkByEye, key = { it.ean }) { line -> BillLineCard(line) }
             }
         }
 
@@ -572,16 +722,43 @@ private fun ReleasedView(
     }
 }
 
+// ── Result bucket header ──────────────────────────────────────────────────────
+
+@Composable
+private fun ResultSectionHeader(
+    label: String,
+    count: Int,
+    color: Color,
+    icon: androidx.compose.ui.graphics.vector.ImageVector
+) {
+    Row(
+        modifier          = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, Modifier.size(16.dp), tint = color)
+        Spacer(Modifier.width(6.dp))
+        Text(label, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = color, modifier = Modifier.weight(1f))
+        Box(
+            modifier = Modifier.clip(CircleShape).background(color).padding(horizontal = 8.dp, vertical = 2.dp)
+        ) {
+            Text("$count", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        }
+    }
+}
+
 // ── Active gate view ──────────────────────────────────────────────────────────
 
 @Composable
 private fun ActiveGateView(
     state: GateState,
     flashEan: String?,
+    rfidVerifyEnabled: Boolean = true,
+    strictMode: Boolean = false,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onRelease: () -> Unit,
     onFlagRelease: () -> Unit,
+    onBarcodeScanned: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showFlagDialog by remember { mutableStateOf(false) }
@@ -639,6 +816,11 @@ private fun ActiveGateView(
             Spacer(Modifier.height(8.dp))
         }
 
+        if (state.nonRfidItems.isNotEmpty()) {
+            NonRfidWarningCard(items = state.nonRfidItems)
+            Spacer(Modifier.height(8.dp))
+        }
+
         LazyColumn(
             modifier            = Modifier.weight(1f),
             contentPadding      = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -650,20 +832,29 @@ private fun ActiveGateView(
             if (state.extraEpcs.isNotEmpty()) {
                 item { ExtraEpcsCard(epcs = state.extraEpcs) }
             }
+            if (state.extraBarcodes.isNotEmpty()) {
+                item { ExtraBarcodesCard(barcodes = state.extraBarcodes) }
+            }
+        }
+
+        if (state.nonRfidItems.isNotEmpty()) {
+            NonRfidBarcodeEntry(onBarcodeScanned = onBarcodeScanned)
         }
 
         ActionBar(
-            isScanning    = state.isScanning,
-            isReleasing   = state.isReleasing,
-            canRelease    = state.totalMatched > 0,
-            allFulfilled  = state.allFulfilled,
-            hasExtraItems = state.hasExtraItems,
-            totalMatched  = state.totalMatched,
-            totalRequired = state.totalRequired,
-            onStart       = onStart,
-            onStop        = onStop,
-            onRelease     = onRelease,
-            onFlagRelease = { showFlagDialog = true }
+            isScanning         = state.isScanning,
+            isReleasing        = state.isReleasing,
+            canRelease         = state.totalMatched > 0,
+            allFulfilled       = state.allFulfilled,
+            hasExtraItems      = state.hasExtraItems,
+            totalMatched       = state.totalMatched,
+            totalRequired      = state.totalRequired,
+            rfidVerifyEnabled  = rfidVerifyEnabled,
+            strictMode         = strictMode,
+            onStart            = onStart,
+            onStop             = onStop,
+            onRelease          = onRelease,
+            onFlagRelease      = { showFlagDialog = true }
         )
     }
 }
@@ -785,14 +976,28 @@ private fun BillLineCard(line: BillLineItem, justMatched: Boolean = false) {
             )
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    line.productName,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize   = 15.sp,
-                    color      = DarkText,
-                    maxLines   = 1,
-                    overflow   = TextOverflow.Ellipsis
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        line.productName,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize   = 15.sp,
+                        color      = DarkText,
+                        maxLines   = 1,
+                        overflow   = TextOverflow.Ellipsis,
+                        modifier   = Modifier.weight(1f, fill = false)
+                    )
+                    if (line.isNonRfid) {
+                        Spacer(Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0xFF2563EB).copy(alpha = 0.12f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text("CHECK BY EYE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2563EB))
+                        }
+                    }
+                }
                 Spacer(Modifier.height(2.dp))
                 Row {
                     if (line.sku.isNotBlank()) {
@@ -805,11 +1010,15 @@ private fun BillLineCard(line: BillLineItem, justMatched: Boolean = false) {
                     Spacer(Modifier.height(3.dp))
                     Text("Not found in store inventory", fontSize = 11.sp, color = Color(0xFFDC2626))
                 }
+                if (line.isNonRfid) {
+                    Spacer(Modifier.height(3.dp))
+                    Text("No RFID tag — scan its barcode below to verify", fontSize = 11.sp, color = Color(0xFF2563EB))
+                }
             }
             Spacer(Modifier.width(12.dp))
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    "${line.matchedEpcs.size} / ${line.qtyRequired}",
+                    "${line.verifiedCount} / ${line.qtyRequired}",
                     fontWeight = FontWeight.Bold,
                     fontSize   = 20.sp,
                     color      = statusColor
@@ -826,11 +1035,80 @@ private fun BillLineCard(line: BillLineItem, justMatched: Boolean = false) {
             }
         }
         LinearProgressIndicator(
-            progress   = { (line.matchedEpcs.size.toFloat() / line.qtyRequired.coerceAtLeast(1)).coerceIn(0f, 1f) },
+            progress   = { (line.verifiedCount.toFloat() / line.qtyRequired.coerceAtLeast(1)).coerceIn(0f, 1f) },
             modifier   = Modifier.fillMaxWidth().height(3.dp),
             color      = statusColor,
             trackColor = statusColor.copy(alpha = 0.15f)
         )
+    }
+}
+
+// ── Non-RFID pre-scan warning ─────────────────────────────────────────────────
+
+@Composable
+private fun NonRfidWarningCard(items: List<BillLineItem>) {
+    Card(
+        modifier  = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        colors    = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)),
+        shape     = RoundedCornerShape(8.dp),
+        elevation = CardDefaults.cardElevation(0.dp)
+    ) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Visibility, null, Modifier.size(18.dp), tint = Color(0xFF2563EB))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "${items.size} item${if (items.size != 1) "s" else ""} have no RFID — check by eye: " +
+                    items.joinToString(", ") { it.productName },
+                fontSize = 13.sp,
+                color    = Color(0xFF1D4ED8)
+            )
+        }
+    }
+}
+
+// ── Non-RFID barcode entry ────────────────────────────────────────────────────
+
+@Composable
+private fun NonRfidBarcodeEntry(onBarcodeScanned: (String) -> Unit) {
+    var barcodeInput by remember { mutableStateOf("") }
+
+    Surface(color = SurfaceWhite) {
+        Row(
+            modifier          = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value         = barcodeInput,
+                onValueChange = { v ->
+                    val hasTerminator = v.contains('\n') || v.contains('\r')
+                    if (hasTerminator) {
+                        val code = v.replace("\r", "").replace("\n", "").trim()
+                        if (code.isNotBlank()) onBarcodeScanned(code)
+                        barcodeInput = ""
+                    } else barcodeInput = v
+                },
+                modifier        = Modifier.weight(1f),
+                label           = { Text("Non-RFID item barcode") },
+                singleLine      = true,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = {
+                    val code = barcodeInput.trim()
+                    if (code.isNotBlank()) { onBarcodeScanned(code); barcodeInput = "" }
+                }),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF2563EB),
+                    focusedLabelColor  = Color(0xFF2563EB)
+                )
+            )
+            Spacer(Modifier.width(8.dp))
+            Button(
+                onClick = {
+                    val code = barcodeInput.trim()
+                    if (code.isNotBlank()) { onBarcodeScanned(code); barcodeInput = "" }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+            ) { Text("+ ADD") }
+        }
     }
 }
 
@@ -876,37 +1154,86 @@ private fun ExtraEpcsCard(epcs: List<String>) {
     }
 }
 
+// ── Extra barcode warning (non-RFID scan didn't match any pending bill line) ──
+
+@Composable
+private fun ExtraBarcodesCard(barcodes: List<String>) {
+    val count = barcodes.size
+    Card(
+        modifier  = Modifier.fillMaxWidth(),
+        colors    = CardDefaults.cardColors(containerColor = Color(0xFFFFF7ED)),
+        shape     = RoundedCornerShape(10.dp),
+        elevation = CardDefaults.cardElevation(1.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Warning, null, Modifier.size(22.dp), tint = OrangeExtra)
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(
+                        "Extra barcodes scanned",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize   = 14.sp,
+                        color      = OrangeExtra
+                    )
+                    Text(
+                        "$count barcode${if (count != 1) "s" else ""} not on this bill's non-RFID items",
+                        fontSize = 12.sp,
+                        color    = Color(0xFF92400E)
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            barcodes.forEach { code ->
+                Text(
+                    "• $code",
+                    fontSize = 12.sp,
+                    color    = Color(0xFF92400E),
+                    modifier = Modifier.padding(start = 34.dp, top = 2.dp)
+                )
+            }
+        }
+    }
+}
+
 // ── Bottom action bar ─────────────────────────────────────────────────────────
 
 @Composable
 private fun ActionBar(
-    isScanning:    Boolean,
-    isReleasing:   Boolean,
-    canRelease:    Boolean,
-    allFulfilled:  Boolean,
-    hasExtraItems: Boolean,
-    totalMatched:  Int,
-    totalRequired: Int,
-    onStart:       () -> Unit,
-    onStop:        () -> Unit,
-    onRelease:     () -> Unit,
-    onFlagRelease: () -> Unit
+    isScanning:        Boolean,
+    isReleasing:       Boolean,
+    canRelease:        Boolean,
+    allFulfilled:      Boolean,
+    hasExtraItems:     Boolean,
+    totalMatched:      Int,
+    totalRequired:     Int,
+    rfidVerifyEnabled: Boolean = true,
+    strictMode:        Boolean = false,
+    onStart:           () -> Unit,
+    onStop:            () -> Unit,
+    onRelease:         () -> Unit,
+    onFlagRelease:     () -> Unit
 ) {
+    // In strict mode a partial release is blocked — guard must scan all items or flag
+    val releaseBlocked = strictMode && !allFulfilled && !hasExtraItems
+
     Surface(tonalElevation = 4.dp, color = SurfaceWhite) {
         Column(
             modifier            = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Button(
-                onClick  = if (isScanning) onStop else onStart,
-                modifier = Modifier.fillMaxWidth(),
-                colors   = ButtonDefaults.buttonColors(
-                    containerColor = if (isScanning) Color(0xFF6B7280) else TealPrimary
-                )
-            ) {
-                Icon(if (isScanning) Icons.Default.Stop else Icons.Default.Nfc, null)
-                Spacer(Modifier.width(8.dp))
-                Text(if (isScanning) "Stop RFID Scan" else "Start RFID Scan")
+            if (rfidVerifyEnabled) {
+                Button(
+                    onClick  = if (isScanning) onStop else onStart,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors   = ButtonDefaults.buttonColors(
+                        containerColor = if (isScanning) Color(0xFF6B7280) else TealPrimary
+                    )
+                ) {
+                    Icon(if (isScanning) Icons.Default.Stop else Icons.Default.Nfc, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (isScanning) "Stop RFID Scan" else "Start RFID Scan")
+                }
             }
 
             if (hasExtraItems && canRelease) {
@@ -935,7 +1262,7 @@ private fun ActionBar(
                 Button(
                     onClick  = onRelease,
                     modifier = Modifier.fillMaxWidth().height(52.dp),
-                    enabled  = canRelease && !isScanning && !isReleasing,
+                    enabled  = canRelease && !isScanning && !isReleasing && !releaseBlocked,
                     colors   = ButtonDefaults.buttonColors(
                         containerColor         = if (allFulfilled) GreenFulfilled else AmberPartial,
                         disabledContainerColor = Color(0xFFD1D5DB)
@@ -949,8 +1276,11 @@ private fun ActionBar(
                         Icon(if (allFulfilled) Icons.Default.CheckCircle else Icons.Default.Warning, null)
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            if (allFulfilled) "Release — All Matched"
-                            else "Release ($totalMatched / $totalRequired matched)",
+                            when {
+                                allFulfilled   -> "Release — All Matched"
+                                releaseBlocked -> "Strict Mode — Scan all items to release"
+                                else           -> "Release ($totalMatched / $totalRequired matched)"
+                            },
                             fontWeight = FontWeight.SemiBold,
                             fontSize   = 15.sp
                         )

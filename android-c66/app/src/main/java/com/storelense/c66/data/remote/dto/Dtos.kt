@@ -44,3 +44,10 @@ data class MarkEpcsSoldResponse(
     val total: Int,
     val notFound: Int
 )
+
+// ── Store features ────────────────────────────────────────────────────────────
+
+data class StoreFeatureDto(
+    val feature: String,
+    val enabled: Boolean
+)

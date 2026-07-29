@@ -1,9 +1,10 @@
 package com.storelense.c66.data.remote.dto
 
 data class BillLookupItem(
-    val ean:         String,
-    val productName: String?,
-    val qty:         Int
+    val ean:           String,
+    val productName:   String?,
+    val qty:           Int,
+    val isRfidEnabled: Boolean? = null
 )
 
 data class BillLookupResponse(

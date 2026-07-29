@@ -9,6 +9,8 @@ import com.storelense.c66.data.remote.dto.GateCheckDto
 import com.storelense.c66.data.repository.AuthRepository
 import com.storelense.c66.data.repository.GateRepository
 import com.storelense.c66.data.repository.Result
+import com.storelense.c66.data.repository.StoreConfig
+import com.storelense.c66.data.repository.StoreConfigRepository
 import com.storelense.c66.rfid.C66RfidReader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -16,8 +18,10 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -27,6 +31,8 @@ sealed class ScanEvent {
     data class Matched(val ean: String)   : ScanEvent()
     object Extra                          : ScanEvent()
     object Duplicate                      : ScanEvent()
+    data class BarcodeVerified(val ean: String) : ScanEvent()
+    object BarcodeNotOnBill               : ScanEvent()
 }
 
 // ── Data model ────────────────────────────────────────────────────────────────
@@ -36,30 +42,44 @@ enum class LineStatus { PENDING, PARTIAL, FULFILLED }
 /**
  * One line on the customer bill (one EAN = one product, possibly multiple units).
  *
+ * @param isRfidEnabled Product's RFID-tracking flag from the backend (products.is_rfid_enabled),
+ *        joined onto the bill line via EAN. Null means the join found no barcode row for this
+ *        EAN — an onboarding data gap, not a confirmed non-RFID product — so it's treated like
+ *        an RFID item (still tries to resolve EPCs) rather than silently downgraded to
+ *        "check by eye", which would misclassify real data gaps as intentional non-RFID items.
  * @param validEpcs  All in_store EPCs for this product at this store (fetched from backend).
  * @param matchedEpcs EPCs that were actually scanned in the bag and belong to this line.
+ * @param barcodeVerifiedCount Units verified by scanning the item's own barcode/EAN instead of
+ *        an RFID tag — the only verification path for a confirmed non-RFID product.
  */
 data class BillLineItem(
     val ean: String,
     val sku: String,
     val productName: String,
     val qtyRequired: Int,
+    val isRfidEnabled: Boolean? = null,
     val validEpcs: Set<String> = emptySet(),
     val matchedEpcs: List<String> = emptyList(),
+    val barcodeVerifiedCount: Int = 0,
     val resolveError: String? = null
 ) {
+    /** Only a confirmed `false` means "verify by barcode" — null (unknown/data gap) stays on the RFID path. */
+    val isNonRfid: Boolean get() = isRfidEnabled == false
+    val verifiedCount: Int get() = if (isNonRfid) barcodeVerifiedCount else matchedEpcs.size
     val status: LineStatus get() = when {
-        matchedEpcs.size >= qtyRequired -> LineStatus.FULFILLED
-        matchedEpcs.isNotEmpty()        -> LineStatus.PARTIAL
-        else                            -> LineStatus.PENDING
+        verifiedCount >= qtyRequired -> LineStatus.FULFILLED
+        verifiedCount > 0            -> LineStatus.PARTIAL
+        else                         -> LineStatus.PENDING
     }
-    val isResolved: Boolean get() = validEpcs.isNotEmpty() || resolveError != null
+    val isResolved: Boolean get() = isNonRfid || validEpcs.isNotEmpty() || resolveError != null
 }
 
 data class GateState(
     val billRef: String             = "",
     val items: List<BillLineItem>   = emptyList(),
     val extraEpcs: List<String>     = emptyList(),
+    /** EANs scanned via the non-RFID barcode field that don't match any pending non-RFID line on this bill. */
+    val extraBarcodes: List<String> = emptyList(),
     val isResolvingBill: Boolean    = false,
     val isScanning: Boolean         = false,
     val isReleasing: Boolean        = false,
@@ -73,10 +93,13 @@ data class GateState(
     val loadingBillDetailsFor: String? = null
 ) {
     val totalRequired: Int    get() = items.sumOf { it.qtyRequired }
-    val totalMatched: Int     get() = items.sumOf { it.matchedEpcs.size }
+    val totalMatched: Int     get() = items.sumOf { it.verifiedCount }
     val allFulfilled: Boolean get() = items.isNotEmpty() && items.all { it.status == LineStatus.FULFILLED }
     val allResolved: Boolean  get() = items.isNotEmpty() && items.all { it.isResolved }
-    val hasExtraItems: Boolean get() = extraEpcs.isNotEmpty()
+    val hasExtraItems: Boolean get() = extraEpcs.isNotEmpty() || extraBarcodes.isNotEmpty()
+    /** Non-RFID bill lines not yet fully barcode-verified — surfaced as a "check by eye" list before/while scanning. */
+    val nonRfidItems: List<BillLineItem> get() = items.filter { it.isNonRfid }
+    val pendingNonRfidItems: List<BillLineItem> get() = nonRfidItems.filter { it.status != LineStatus.FULFILLED }
 }
 
 // ── QR payload ────────────────────────────────────────────────────────────────
@@ -86,7 +109,12 @@ private data class BillQrPayload(
     val billRef: String = "",
     val items: List<BillQrItem> = emptyList()
 )
-private data class BillQrItem(val ean: String = "", val qty: Int = 1)
+private data class BillQrItem(
+    val ean: String = "",
+    val qty: Int = 1,
+    val isRfidEnabled: Boolean? = null,
+    val productName: String? = null
+)
 
 // ── ViewModel ─────────────────────────────────────────────────────────────────
 
@@ -94,6 +122,7 @@ private data class BillQrItem(val ean: String = "", val qty: Int = 1)
 class GateScanViewModel @Inject constructor(
     private val gateRepo: GateRepository,
     private val authRepo: AuthRepository,
+    private val storeConfigRepo: StoreConfigRepository,
     private val rfid: C66RfidReader,
     private val gson: Gson,
     @ApplicationContext private val context: Context
@@ -101,6 +130,9 @@ class GateScanViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(GateState())
     val state = _state.asStateFlow()
+
+    val storeConfig: kotlinx.coroutines.flow.StateFlow<StoreConfig> = storeConfigRepo.config
+        .stateIn(viewModelScope, SharingStarted.Eagerly, StoreConfig.DEFAULTS)
 
     private val _scanEvents = MutableSharedFlow<ScanEvent>(extraBufferCapacity = 16)
     val scanEvents = _scanEvents.asSharedFlow()
@@ -183,7 +215,12 @@ class GateScanViewModel @Inject constructor(
                     }
                     val payload = BillQrPayload(
                         billRef = billRef,
-                        items   = result.data.items.map { BillQrItem(ean = it.ean, qty = it.qty) }
+                        items   = result.data.items.map {
+                            BillQrItem(
+                                ean = it.ean, qty = it.qty,
+                                isRfidEnabled = it.isRfidEnabled, productName = it.productName
+                            )
+                        }
                     )
                     processBillPayload(payload)
                 }
@@ -200,10 +237,13 @@ class GateScanViewModel @Inject constructor(
     private fun processBillPayload(payload: BillQrPayload) {
         val initialItems = payload.items.map { qrItem ->
             BillLineItem(
-                ean         = qrItem.ean,
-                sku         = "",
-                productName = "Resolving…",
-                qtyRequired = qrItem.qty.coerceAtLeast(1)
+                ean           = qrItem.ean,
+                sku           = "",
+                productName   = if (qrItem.isRfidEnabled == false) {
+                    qrItem.productName ?: "EAN ${qrItem.ean}"
+                } else "Resolving…",
+                qtyRequired   = qrItem.qty.coerceAtLeast(1),
+                isRfidEnabled = qrItem.isRfidEnabled
             )
         }
         _state.update { it.copy(
@@ -218,10 +258,13 @@ class GateScanViewModel @Inject constructor(
         resolveAllEans(payload.items)
     }
 
-    /** For each EAN on the bill, call the backend to get the list of in_store EPCs. */
+    /** For each EAN on the bill, call the backend to get the list of in_store EPCs.
+     *  Confirmed non-RFID items skip this entirely — there are no EPCs to resolve,
+     *  and getEpcsByEan's "no EPCs found" response can't be told apart from a real
+     *  data gap, so it must not be used to (mis)populate a non-RFID line. */
     private fun resolveAllEans(qrItems: List<BillQrItem>) {
         viewModelScope.launch {
-            val results = qrItems.map { qrItem ->
+            val results = qrItems.filter { it.isRfidEnabled != false }.map { qrItem ->
                 async { qrItem to gateRepo.resolveEan(qrItem.ean) }
             }.awaitAll()
 
@@ -324,6 +367,49 @@ class GateScanViewModel @Inject constructor(
                 android.os.VibrationEffect.createWaveform(longArrayOf(0, 100, 60, 100), -1)
             )
             ScanEvent.Duplicate, null -> { /* no haptic — already counted */ }
+            is ScanEvent.BarcodeVerified, ScanEvent.BarcodeNotOnBill -> {
+                /* handled by onBarcodeScanned directly — RFID scan path never produces these */
+            }
+        }
+    }
+
+    // ── Non-RFID barcode verification ────────────────────────────────────────
+
+    /** Scanning/typing a non-RFID item's own barcode is the only way to verify it —
+     *  it has no EPC tag by design, so it never appears in an RFID inventory scan. */
+    fun onBarcodeScanned(rawEan: String) {
+        val scannedEan = rawEan.trim()
+        if (scannedEan.isBlank()) return
+
+        val snapshot = _state.value
+        val targetIndex = snapshot.items.indexOfFirst { line ->
+            line.isNonRfid && line.ean == scannedEan && line.barcodeVerifiedCount < line.qtyRequired
+        }
+        val event = if (targetIndex != -1) ScanEvent.BarcodeVerified(scannedEan) else ScanEvent.BarcodeNotOnBill
+
+        _state.update { s ->
+            val idx = s.items.indexOfFirst { line ->
+                line.isNonRfid && line.ean == scannedEan && line.barcodeVerifiedCount < line.qtyRequired
+            }
+            if (idx != -1) {
+                val line = s.items[idx]
+                val updated = line.copy(barcodeVerifiedCount = line.barcodeVerifiedCount + 1)
+                s.copy(items = s.items.toMutableList().also { it[idx] = updated })
+            } else if (scannedEan !in s.extraBarcodes) {
+                s.copy(extraBarcodes = s.extraBarcodes + scannedEan)
+            } else s
+        }
+
+        _scanEvents.tryEmit(event)
+        val vibrator = context.getSystemService(android.os.Vibrator::class.java)
+        when (event) {
+            is ScanEvent.BarcodeVerified -> vibrator?.vibrate(
+                android.os.VibrationEffect.createOneShot(80, android.os.VibrationEffect.DEFAULT_AMPLITUDE)
+            )
+            ScanEvent.BarcodeNotOnBill -> vibrator?.vibrate(
+                android.os.VibrationEffect.createWaveform(longArrayOf(0, 100, 60, 100), -1)
+            )
+            else -> {}
         }
     }
 
