@@ -8,6 +8,8 @@ import com.storelense.c66.data.remote.dto.GateCheckDto
 import com.storelense.c66.data.remote.dto.GateCheckSummaryDto
 import com.storelense.c66.data.remote.dto.EpcsByEanResponse
 import com.storelense.c66.data.remote.dto.MarkEpcsSoldRequest
+import com.storelense.c66.data.remote.dto.MarkNonRfidSoldRequest
+import com.storelense.c66.data.remote.dto.NonRfidSaleItem
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -25,6 +27,24 @@ class GateRepository @Inject constructor(
                 Result.Success(body.data)
             else
                 Result.Error(body?.message ?: "EAN not found")
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Network error")
+        }
+    }
+
+    /** ean -> verified qty, for non-RFID items confirmed via barcode at the gate (no EPC to mark sold). */
+    suspend fun markNonRfidSold(items: Map<String, Int>): Result<Map<String, Int>> {
+        if (items.isEmpty()) return Result.Success(emptyMap())
+        return try {
+            val storeId = tokenManager.storeId ?: return Result.Error("Not logged in")
+            val resp = api.markNonRfidSold(
+                MarkNonRfidSoldRequest(storeId, items.map { (ean, qty) -> NonRfidSaleItem(ean, qty) })
+            )
+            val body = resp.body()
+            if (resp.isSuccessful && body?.success == true)
+                Result.Success(body.data ?: emptyMap())
+            else
+                Result.Error(body?.message ?: "Failed to mark non-RFID items sold")
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")
         }

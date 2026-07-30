@@ -763,6 +763,18 @@ private fun ActiveGateView(
 ) {
     var showFlagDialog by remember { mutableStateOf(false) }
 
+    // Barcode hardware engine — only claimed while there's actually a non-RFID item
+    // left to verify, so it doesn't fight the UHF RFID module for the trigger key
+    // when this bill has nothing that needs barcode verification.
+    val context = LocalContext.current
+    val barcodeReader = remember { com.storelense.c66.barcode.ChainwayBarcodeReader(context) }
+    val hasNonRfidPending = state.pendingNonRfidItems.isNotEmpty()
+    DisposableEffect(hasNonRfidPending) {
+        val useMockRfid = com.storelense.c66.BuildConfig.USE_MOCK_RFID
+        if (hasNonRfidPending && !useMockRfid) barcodeReader.open { code -> onBarcodeScanned(code) }
+        onDispose { if (hasNonRfidPending && !useMockRfid) barcodeReader.close() }
+    }
+
     if (showFlagDialog) {
         AlertDialog(
             onDismissRequest = { showFlagDialog = false },
@@ -838,7 +850,10 @@ private fun ActiveGateView(
         }
 
         if (state.nonRfidItems.isNotEmpty()) {
-            NonRfidBarcodeEntry(onBarcodeScanned = onBarcodeScanned)
+            NonRfidBarcodeEntry(
+                onBarcodeScanned = onBarcodeScanned,
+                onScanButtonPressed = { if (hasNonRfidPending) barcodeReader.startScan() }
+            )
         }
 
         ActionBar(
@@ -1069,45 +1084,69 @@ private fun NonRfidWarningCard(items: List<BillLineItem>) {
 // ── Non-RFID barcode entry ────────────────────────────────────────────────────
 
 @Composable
-private fun NonRfidBarcodeEntry(onBarcodeScanned: (String) -> Unit) {
+private fun NonRfidBarcodeEntry(
+    onBarcodeScanned: (String) -> Unit,
+    onScanButtonPressed: () -> Unit = {}
+) {
     var barcodeInput by remember { mutableStateOf("") }
 
-    Surface(color = SurfaceWhite) {
-        Row(
-            modifier          = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value         = barcodeInput,
-                onValueChange = { v ->
-                    val hasTerminator = v.contains('\n') || v.contains('\r')
-                    if (hasTerminator) {
-                        val code = v.replace("\r", "").replace("\n", "").trim()
-                        if (code.isNotBlank()) onBarcodeScanned(code)
-                        barcodeInput = ""
-                    } else barcodeInput = v
-                },
-                modifier        = Modifier.weight(1f),
-                label           = { Text("Non-RFID item barcode") },
-                singleLine      = true,
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = {
-                    val code = barcodeInput.trim()
-                    if (code.isNotBlank()) { onBarcodeScanned(code); barcodeInput = "" }
-                }),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Color(0xFF2563EB),
-                    focusedLabelColor  = Color(0xFF2563EB)
-                )
+    Surface(color = SurfaceWhite, tonalElevation = 2.dp) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+            Text(
+                "NON-RFID ITEM VERIFICATION",
+                fontSize   = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color      = Color(0xFF2563EB),
+                letterSpacing = 0.5.sp
             )
-            Spacer(Modifier.width(8.dp))
-            Button(
-                onClick = {
-                    val code = barcodeInput.trim()
-                    if (code.isNotBlank()) { onBarcodeScanned(code); barcodeInput = "" }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
-            ) { Text("+ ADD") }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF2563EB))
+                        .clickable { onScanButtonPressed() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.QrCodeScanner, "Scan barcode", tint = Color.White, modifier = Modifier.size(24.dp))
+                }
+                Spacer(Modifier.width(10.dp))
+                OutlinedTextField(
+                    value         = barcodeInput,
+                    onValueChange = { v ->
+                        val hasTerminator = v.contains('\n') || v.contains('\r')
+                        if (hasTerminator) {
+                            val code = v.replace("\r", "").replace("\n", "").trim()
+                            if (code.isNotBlank()) onBarcodeScanned(code)
+                            barcodeInput = ""
+                        } else barcodeInput = v
+                    },
+                    modifier        = Modifier.weight(1f),
+                    label           = { Text("Barcode / EAN") },
+                    placeholder     = { Text("Tap scan icon, or type here…") },
+                    singleLine      = true,
+                    shape           = RoundedCornerShape(10.dp),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = {
+                        val code = barcodeInput.trim()
+                        if (code.isNotBlank()) { onBarcodeScanned(code); barcodeInput = "" }
+                    }),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF2563EB),
+                        focusedLabelColor  = Color(0xFF2563EB)
+                    )
+                )
+                Spacer(Modifier.width(8.dp))
+                Button(
+                    onClick = {
+                        val code = barcodeInput.trim()
+                        if (code.isNotBlank()) { onBarcodeScanned(code); barcodeInput = "" }
+                    },
+                    shape  = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                ) { Text("ADD") }
+            }
         }
     }
 }

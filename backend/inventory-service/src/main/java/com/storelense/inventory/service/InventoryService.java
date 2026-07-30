@@ -17,6 +17,7 @@ import com.storelense.inventory.dto.EpcLedgerRow;
 import com.storelense.inventory.dto.IdentifyEpcResponse;
 import com.storelense.inventory.dto.EpcLocationResponse;
 import com.storelense.inventory.dto.EpcsByEanResponse;
+import com.storelense.inventory.dto.MarkNonRfidSoldRequest;
 import com.storelense.inventory.dto.SkuInventoryResponse;
 import com.storelense.inventory.dto.SkuLedgerRow;
 import lombok.RequiredArgsConstructor;
@@ -391,6 +392,62 @@ public class InventoryService {
 
         log.info("Marked {} / {} EPCs as sold at store {}", marked, epcs.size(), storeId);
         return marked;
+    }
+
+    /**
+     * Marks non-RFID bill items sold at the gate (verified by barcode, not RFID tag —
+     * these products have no EPC in epc_registry to transition). Decrements the store-level
+     * inventory_state row (zone_id IS NULL, since a barcode scan carries no zone signal)
+     * per EAN by the verified quantity, and fires the same downstream event as an RFID sale
+     * so refill-service reacts identically regardless of which verification path was used.
+     *
+     * @return EAN -> quantity actually applied (0 for an EAN with no resolvable product or no inventory_state row)
+     */
+    @Transactional
+    public java.util.Map<String, Integer> markNonRfidItemsSold(UUID storeId, List<MarkNonRfidSoldRequest.Item> items) {
+        java.util.Map<String, Integer> applied = new java.util.LinkedHashMap<>();
+
+        for (MarkNonRfidSoldRequest.Item item : items) {
+            record ProductRef(UUID id) {}
+            var product = jdbcClient.sql("""
+                    SELECT p.id
+                    FROM products.products p
+                    JOIN products.barcodes b ON b.product_id = p.id
+                    WHERE UPPER(b.barcode_value) = UPPER(:ean)
+                      AND b.barcode_type IN ('ean13', 'ean8', 'upc_a')
+                      AND p.is_active = true
+                    LIMIT 1
+                    """)
+                    .param("ean", item.ean())
+                    .query((rs, rowNum) -> new ProductRef(rs.getObject("id", UUID.class)))
+                    .optional();
+
+            if (product.isEmpty()) {
+                log.warn("markNonRfidItemsSold: no product found for EAN {} at store {}", item.ean(), storeId);
+                applied.put(item.ean(), 0);
+                continue;
+            }
+
+            UUID productId = product.get().id();
+            int qty = item.qty();
+
+            inventoryStateRepository.findByStoreIdAndProductIdAndZoneId(storeId, productId, null)
+                    .ifPresentOrElse(state -> {
+                        state.setQuantityOnHand(Math.max(0, state.getQuantityOnHand() - qty));
+                        state.setAccuracyPct(calcAccuracy(state.getQuantityOnHand(), state.getQuantityExpected()));
+                        inventoryStateRepository.save(state);
+                        applied.put(item.ean(), qty);
+                    }, () -> {
+                        log.warn("markNonRfidItemsSold: no inventory_state row for product {} at store {}", productId, storeId);
+                        applied.put(item.ean(), 0);
+                    });
+
+            kafkaTemplate.send(KafkaTopics.INVENTORY_EPC_SOLD, productId.toString(),
+                    new EpcSoldEvent(storeId, productId, qty));
+        }
+
+        log.info("Marked non-RFID items sold at store {}: {}", storeId, applied);
+        return applied;
     }
 
     @Transactional(readOnly = true)

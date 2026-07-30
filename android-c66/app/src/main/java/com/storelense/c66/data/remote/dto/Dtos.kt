@@ -45,6 +45,18 @@ data class MarkEpcsSoldResponse(
     val notFound: Int
 )
 
+/** Non-RFID items verified by barcode at the gate — no EPC exists, so sale is recorded
+ *  by EAN + quantity instead of by tag. */
+data class MarkNonRfidSoldRequest(
+    val storeId: String,
+    val items: List<NonRfidSaleItem>
+)
+
+data class NonRfidSaleItem(
+    val ean: String,
+    val qty: Int
+)
+
 // ── Store features ────────────────────────────────────────────────────────────
 
 data class StoreFeatureDto(

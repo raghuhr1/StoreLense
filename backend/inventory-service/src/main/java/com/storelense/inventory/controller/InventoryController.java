@@ -167,6 +167,20 @@ public class InventoryController {
         )));
     }
 
+    @PostMapping("/non-rfid/sold")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','SECURITY_GUARD')")
+    @Operation(summary = "Mark non-RFID bill items sold",
+               description = "Called by the C66 security gate app after a non-RFID item is verified by " +
+                             "barcode scan (it has no EPC to mark sold). Decrements the store-level " +
+                             "on-hand count per EAN by the verified quantity.")
+    public ResponseEntity<ApiResponse<Map<String, Integer>>> markNonRfidSold(
+            @Valid @RequestBody com.storelense.inventory.dto.MarkNonRfidSoldRequest req,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+
+        UUID storeId = principal.isAdmin() ? req.storeId() : principal.storeId();
+        return ResponseEntity.ok(ApiResponse.ok(inventoryService.markNonRfidItemsSold(storeId, req.items())));
+    }
+
     @PostMapping("/expected")
     @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER')")
     @ResponseStatus(HttpStatus.OK)

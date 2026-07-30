@@ -418,38 +418,48 @@ class GateScanViewModel @Inject constructor(
     fun releaseCustomer(flagged: Boolean = false) {
         val s = _state.value
         val matchedEpcs = s.items.flatMap { it.matchedEpcs }
-        if (matchedEpcs.isEmpty()) return
+        // Non-RFID items have no EPC — a verified barcode count is the only sale signal
+        // for them, so a bill made up entirely of non-RFID items must still be releasable.
+        val nonRfidSales = s.items
+            .filter { it.isNonRfid && it.barcodeVerifiedCount > 0 }
+            .associate { it.ean to it.barcodeVerifiedCount }
+        if (matchedEpcs.isEmpty() && nonRfidSales.isEmpty()) return
 
         viewModelScope.launch {
             _state.update { it.copy(isReleasing = true, error = null) }
             stopRfidScan()
             val outcome = if (flagged) "FLAGGED" else "RELEASED"
-            when (val result = gateRepo.markSold(matchedEpcs)) {
-                is Result.Success -> {
-                    // Fire-and-forget: record gate check event for dashboard
-                    launch {
-                        gateRepo.recordGateCheck(
-                            billRef       = s.billRef,
-                            expectedCount = s.totalRequired,
-                            matchedCount  = s.totalMatched,
-                            extraCount    = s.extraEpcs.size,
-                            outcome       = outcome,
-                            epcsMatched   = matchedEpcs,
-                            epcsExtra     = s.extraEpcs
-                        )
-                    }
-                    _state.update { it.copy(
-                        isReleasing = false,
-                        released    = true,
-                        markedCount = result.data
-                    ) }
-                    loadRecentBills()
-                }
-                is Result.Error -> _state.update { it.copy(
-                    isReleasing = false,
-                    error = result.message
-                ) }
+
+            val epcResult = if (matchedEpcs.isNotEmpty()) gateRepo.markSold(matchedEpcs) else Result.Success(0)
+            val nonRfidResult =
+                if (nonRfidSales.isNotEmpty()) gateRepo.markNonRfidSold(nonRfidSales) else Result.Success(emptyMap())
+
+            val error = (epcResult as? Result.Error)?.message ?: (nonRfidResult as? Result.Error)?.message
+            if (error != null) {
+                _state.update { it.copy(isReleasing = false, error = error) }
+                return@launch
             }
+
+            val markedCount = (epcResult as Result.Success).data
+
+            // Fire-and-forget: record gate check event for dashboard
+            launch {
+                gateRepo.recordGateCheck(
+                    billRef       = s.billRef,
+                    expectedCount = s.totalRequired,
+                    matchedCount  = s.totalMatched,
+                    extraCount    = s.extraEpcs.size + s.extraBarcodes.size,
+                    outcome       = outcome,
+                    epcsMatched   = matchedEpcs,
+                    epcsExtra     = s.extraEpcs
+                )
+            }
+            _state.update { it.copy(
+                isReleasing = false,
+                released    = true,
+                markedCount = markedCount
+            ) }
+            loadRecentBills()
         }
     }
 
