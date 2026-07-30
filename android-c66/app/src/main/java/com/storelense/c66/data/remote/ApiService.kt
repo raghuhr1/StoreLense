@@ -24,6 +24,12 @@ interface ApiService {
     @POST("api/inventory/non-rfid/sold")
     suspend fun markNonRfidSold(@Body req: MarkNonRfidSoldRequest): Response<ApiResponse<Map<String, Int>>>
 
+    @GET("api/inventory/identify-epc/{epc}")
+    suspend fun identifyEpc(
+        @Path("epc") epc: String,
+        @Query("storeId") storeId: String
+    ): Response<ApiResponse<IdentifyEpcResponse>>
+
     @POST("api/gate/checks")
     suspend fun recordGateCheck(@Body req: GateCheckRequest): Response<ApiResponse<Unit>>
 

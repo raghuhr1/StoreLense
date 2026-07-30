@@ -228,7 +228,7 @@ public class InventoryController {
     }
 
     @GetMapping("/identify-epc/{epc}")
-    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE')")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE','SECURITY_GUARD')")
     @Operation(summary = "Identify an EPC — returns product mapping and store status",
                description = "Looks up an EPC in the global tag registry (products.epc_tags) and " +
                              "returns the product it is assigned to, plus its current status/zone at " +

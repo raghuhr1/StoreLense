@@ -148,6 +148,7 @@ fun GateScanScreen(
                 items          = state.items,
                 extraEpcs      = state.extraEpcs,
                 extraBarcodes  = state.extraBarcodes,
+                extraEpcInfo   = state.extraEpcInfo,
                 onNextCustomer = { vm.reset() }
             )
             !state.hasBill      -> NoBillView(
@@ -607,6 +608,7 @@ private fun ReleasedView(
     items: List<BillLineItem>,
     extraEpcs: List<String>,
     extraBarcodes: List<String> = emptyList(),
+    extraEpcInfo: Map<String, com.storelense.c66.data.remote.dto.IdentifyEpcResponse?> = emptyMap(),
     onNextCustomer: () -> Unit
 ) {
     val okItems       = items.filter { it.status == LineStatus.FULFILLED && !it.isNonRfid }
@@ -685,9 +687,7 @@ private fun ReleasedView(
                     )
                 }
                 if (extraEpcs.isNotEmpty()) {
-                    // Non-inventory / off-bill EPCs — shown as raw tags only, never with
-                    // synthesized product details since we have no real product for them.
-                    item { ExtraEpcsCard(epcs = extraEpcs) }
+                    item { ExtraEpcsCard(epcs = extraEpcs, epcInfo = extraEpcInfo) }
                 }
                 if (extraBarcodes.isNotEmpty()) {
                     item { ExtraBarcodesCard(barcodes = extraBarcodes) }
@@ -850,7 +850,7 @@ private fun ActiveGateView(
                     BillLineCard(line, justMatched = line.ean == flashEan)
                 }
                 if (state.extraEpcs.isNotEmpty()) {
-                    ExtraEpcsCard(epcs = state.extraEpcs)
+                    ExtraEpcsCard(epcs = state.extraEpcs, epcInfo = state.extraEpcInfo)
                 }
                 if (state.extraBarcodes.isNotEmpty()) {
                     ExtraBarcodesCard(barcodes = state.extraBarcodes)
@@ -1163,7 +1163,10 @@ private fun NonRfidBarcodeEntry(
 // ── Extra EPC warning ─────────────────────────────────────────────────────────
 
 @Composable
-private fun ExtraEpcsCard(epcs: List<String>) {
+private fun ExtraEpcsCard(
+    epcs: List<String>,
+    epcInfo: Map<String, com.storelense.c66.data.remote.dto.IdentifyEpcResponse?> = emptyMap()
+) {
     val count = epcs.size
     Card(
         modifier  = Modifier.fillMaxWidth(),
@@ -1191,12 +1194,43 @@ private fun ExtraEpcsCard(epcs: List<String>) {
             }
             Spacer(Modifier.height(10.dp))
             epcs.forEach { epc ->
-                Text(
-                    "• $epc",
-                    fontSize = 12.sp,
-                    color    = Color(0xFF92400E),
-                    modifier = Modifier.padding(start = 34.dp, top = 2.dp)
-                )
+                // Not in the map yet = still resolving; present with null value = confirmed
+                // not registered in products.epc_tags — only then do we say "Unknown EPC".
+                val hasKey = epcInfo.containsKey(epc)
+                val info   = epcInfo[epc]
+                Column(modifier = Modifier.padding(start = 34.dp, top = 4.dp)) {
+                    when {
+                        info != null -> {
+                            Text(
+                                info.productName ?: "Unnamed product",
+                                fontSize   = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color      = Color(0xFF7C2D12)
+                            )
+                            Text(
+                                buildString {
+                                    info.sku?.let { append("SKU $it") }
+                                    if (!info.statusInStore.isNullOrBlank()) {
+                                        if (isNotEmpty()) append("  ·  ")
+                                        append(info.statusInStore)
+                                    }
+                                },
+                                fontSize = 11.sp,
+                                color    = Color(0xFF92400E)
+                            )
+                        }
+                        hasKey -> Text(
+                            "Unknown EPC — $epc",
+                            fontSize = 12.sp,
+                            color    = Color(0xFF92400E)
+                        )
+                        else -> Text(
+                            "Looking up… $epc",
+                            fontSize = 12.sp,
+                            color    = Color(0xFF92400E).copy(alpha = 0.6f)
+                        )
+                    }
+                }
             }
         }
     }

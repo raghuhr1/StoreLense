@@ -63,3 +63,16 @@ data class StoreFeatureDto(
     val feature: String,
     val enabled: Boolean
 )
+
+// ── Identify EPC (extra/unexpected tag lookup) ────────────────────────────────
+
+data class IdentifyEpcResponse(
+    val epc: String,
+    val productId: String?,
+    val sku: String?,
+    val productName: String?,
+    val eans: List<String> = emptyList(),
+    val statusInStore: String?,
+    val zoneName: String?,
+    val alreadyRegistered: Boolean = false
+)

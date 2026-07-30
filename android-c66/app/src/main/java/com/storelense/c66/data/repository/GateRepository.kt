@@ -7,6 +7,7 @@ import com.storelense.c66.data.remote.dto.GateCheckRequest
 import com.storelense.c66.data.remote.dto.GateCheckDto
 import com.storelense.c66.data.remote.dto.GateCheckSummaryDto
 import com.storelense.c66.data.remote.dto.EpcsByEanResponse
+import com.storelense.c66.data.remote.dto.IdentifyEpcResponse
 import com.storelense.c66.data.remote.dto.MarkEpcsSoldRequest
 import com.storelense.c66.data.remote.dto.MarkNonRfidSoldRequest
 import com.storelense.c66.data.remote.dto.NonRfidSaleItem
@@ -45,6 +46,22 @@ class GateRepository @Inject constructor(
                 Result.Success(body.data ?: emptyMap())
             else
                 Result.Error(body?.message ?: "Failed to mark non-RFID items sold")
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Network error")
+        }
+    }
+
+    /** Success(null) = confirmed not registered in products.epc_tags (real 404, show "Unknown EPC").
+     *  Error(...) = couldn't tell either way (network issue) — leave unresolved, don't mislabel. */
+    suspend fun identifyEpc(epc: String): Result<IdentifyEpcResponse?> {
+        return try {
+            val storeId = tokenManager.storeId ?: return Result.Error("Not logged in")
+            val resp = api.identifyEpc(epc, storeId)
+            when {
+                resp.code() == 404 -> Result.Success(null)
+                resp.isSuccessful && resp.body()?.success == true -> Result.Success(resp.body()?.data)
+                else -> Result.Error(resp.body()?.message ?: "Lookup failed")
+            }
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")
         }

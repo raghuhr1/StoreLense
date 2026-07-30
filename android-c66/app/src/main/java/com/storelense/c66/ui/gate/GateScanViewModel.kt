@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.storelense.c66.data.remote.dto.BillLookupItem
 import com.storelense.c66.data.remote.dto.GateCheckDto
+import com.storelense.c66.data.remote.dto.IdentifyEpcResponse
 import com.storelense.c66.data.repository.AuthRepository
 import com.storelense.c66.data.repository.GateRepository
 import com.storelense.c66.data.repository.Result
@@ -80,6 +81,9 @@ data class GateState(
     val extraEpcs: List<String>     = emptyList(),
     /** EANs scanned via the non-RFID barcode field that don't match any pending non-RFID line on this bill. */
     val extraBarcodes: List<String> = emptyList(),
+    /** epc -> lookup result, populated lazily per extra EPC. Key absent = still resolving;
+     *  key present with null value = confirmed not in products.epc_tags ("Unknown EPC"). */
+    val extraEpcInfo: Map<String, IdentifyEpcResponse?> = emptyMap(),
     val isResolvingBill: Boolean    = false,
     val isScanning: Boolean         = false,
     val isReleasing: Boolean        = false,
@@ -334,6 +338,7 @@ class GateScanViewModel @Inject constructor(
             epc !in allValidEpcs && epc !in snapshot.extraEpcs -> ScanEvent.Extra
             else -> ScanEvent.Duplicate
         }
+        if (event == ScanEvent.Extra) resolveExtraEpc(epc)
 
         _state.update { s ->
             val targetIndex = s.items.indexOfFirst { line ->
@@ -369,6 +374,18 @@ class GateScanViewModel @Inject constructor(
             ScanEvent.Duplicate, null -> { /* no haptic — already counted */ }
             is ScanEvent.BarcodeVerified, ScanEvent.BarcodeNotOnBill -> {
                 /* handled by onBarcodeScanned directly — RFID scan path never produces these */
+            }
+        }
+    }
+
+    /** Looks up an unexpected/extra EPC so the UI can show the real product it belongs to,
+     *  instead of a raw tag string — falls back to "Unknown EPC" only on a confirmed 404. */
+    private fun resolveExtraEpc(epc: String) {
+        if (_state.value.extraEpcInfo.containsKey(epc)) return
+        viewModelScope.launch {
+            when (val result = gateRepo.identifyEpc(epc)) {
+                is Result.Success -> _state.update { it.copy(extraEpcInfo = it.extraEpcInfo + (epc to result.data)) }
+                is Result.Error -> { /* leave unresolved (key absent) so the UI can retry later */ }
             }
         }
     }
