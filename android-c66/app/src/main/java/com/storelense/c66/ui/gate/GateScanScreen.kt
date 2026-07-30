@@ -804,57 +804,66 @@ private fun ActiveGateView(
     }
 
     Column(modifier = modifier.fillMaxSize()) {
-        ProgressHeader(
-            totalMatched  = state.totalMatched,
-            totalRequired = state.totalRequired,
-            allFulfilled  = state.allFulfilled,
-            isScanning    = state.isScanning,
-            extraCount    = state.extraEpcs.size
-        )
+        // Everything except the action bar scrolls as ONE unit — previously the header/
+        // banners/entry row were fixed siblings of a weight(1f) item list, and on a
+        // crowded screen their combined height could starve the list down to near-zero.
+        // Scrolling the whole stack means nothing gets silently squeezed away; the user
+        // just scrolls to see it all, and the item list is always fully rendered.
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+        ) {
+            ProgressHeader(
+                totalMatched  = state.totalMatched,
+                totalRequired = state.totalRequired,
+                allFulfilled  = state.allFulfilled,
+                isScanning    = state.isScanning,
+                extraCount    = state.extraEpcs.size
+            )
 
-        state.error?.let { err ->
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF2F2))
+            state.error?.let { err ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF2F2))
+                ) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Error, null, Modifier.size(16.dp), tint = Color(0xFFDC2626))
+                        Spacer(Modifier.width(8.dp))
+                        Text(err, fontSize = 13.sp, color = Color(0xFFDC2626))
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+
+            if (state.nonRfidItems.isNotEmpty()) {
+                Box(Modifier.padding(top = 8.dp)) { NonRfidWarningCard(items = state.nonRfidItems) }
+            }
+
+            Column(
+                modifier            = Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Error, null, Modifier.size(16.dp), tint = Color(0xFFDC2626))
-                    Spacer(Modifier.width(8.dp))
-                    Text(err, fontSize = 13.sp, color = Color(0xFFDC2626))
+                state.items.forEach { line ->
+                    BillLineCard(line, justMatched = line.ean == flashEan)
+                }
+                if (state.extraEpcs.isNotEmpty()) {
+                    ExtraEpcsCard(epcs = state.extraEpcs)
+                }
+                if (state.extraBarcodes.isNotEmpty()) {
+                    ExtraBarcodesCard(barcodes = state.extraBarcodes)
                 }
             }
-            Spacer(Modifier.height(8.dp))
-        }
 
-        if (state.nonRfidItems.isNotEmpty()) {
-            NonRfidWarningCard(items = state.nonRfidItems)
-            Spacer(Modifier.height(8.dp))
-        }
-
-        LazyColumn(
-            modifier            = Modifier.weight(1f),
-            contentPadding      = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(state.items, key = { it.ean }) { line ->
-                BillLineCard(line, justMatched = line.ean == flashEan)
+            if (state.nonRfidItems.isNotEmpty()) {
+                NonRfidBarcodeEntry(
+                    onBarcodeScanned = onBarcodeScanned,
+                    onScanButtonPressed = { if (hasNonRfidPending) barcodeReader.startScan() }
+                )
             }
-            if (state.extraEpcs.isNotEmpty()) {
-                item { ExtraEpcsCard(epcs = state.extraEpcs) }
-            }
-            if (state.extraBarcodes.isNotEmpty()) {
-                item { ExtraBarcodesCard(barcodes = state.extraBarcodes) }
-            }
-        }
-
-        if (state.nonRfidItems.isNotEmpty()) {
-            NonRfidBarcodeEntry(
-                onBarcodeScanned = onBarcodeScanned,
-                onScanButtonPressed = { if (hasNonRfidPending) barcodeReader.startScan() }
-            )
-        }
+        } // end scrollable Column
 
         ActionBar(
             isScanning         = state.isScanning,
