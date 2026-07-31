@@ -1168,69 +1168,100 @@ private fun ExtraEpcsCard(
     epcInfo: Map<String, com.storelense.c66.data.remote.dto.IdentifyEpcResponse?> = emptyMap()
 ) {
     val count = epcs.size
-    Card(
-        modifier  = Modifier.fillMaxWidth(),
-        colors    = CardDefaults.cardColors(containerColor = Color(0xFFFFF7ED)),
-        shape     = RoundedCornerShape(10.dp),
-        elevation = CardDefaults.cardElevation(1.dp)
-    ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Warning, null, Modifier.size(22.dp), tint = OrangeExtra)
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text(
-                        "Extra items detected",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize   = 14.sp,
-                        color      = OrangeExtra
-                    )
-                    Text(
-                        "$count item${if (count != 1) "s" else ""} in bag not on this bill — inspect bag",
-                        fontSize = 12.sp,
-                        color    = Color(0xFF92400E)
-                    )
-                }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+            Icon(Icons.Default.Warning, null, Modifier.size(20.dp), tint = OrangeExtra)
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(
+                    "Extra items detected",
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize   = 14.sp,
+                    color      = OrangeExtra
+                )
+                Text(
+                    "$count item${if (count != 1) "s" else ""} in bag not on this bill — inspect bag",
+                    fontSize = 12.sp,
+                    color    = Color(0xFF92400E)
+                )
             }
-            Spacer(Modifier.height(10.dp))
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             epcs.forEach { epc ->
                 // Not in the map yet = still resolving; present with null value = confirmed
                 // not registered in products.epc_tags — only then do we say "Unknown EPC".
                 val hasKey = epcInfo.containsKey(epc)
                 val info   = epcInfo[epc]
-                Column(modifier = Modifier.padding(start = 34.dp, top = 4.dp)) {
+                ExtraEpcRow(epc = epc, info = info, resolved = hasKey)
+            }
+        }
+    }
+}
+
+/** Styled to match BillLineCard so an unexpected tag reads the same visual language
+ *  as a matched bill item — just with a red/orange status dot and an EXTRA tag
+ *  instead of a matched-quantity column. */
+@Composable
+private fun ExtraEpcRow(
+    epc: String,
+    info: com.storelense.c66.data.remote.dto.IdentifyEpcResponse?,
+    resolved: Boolean
+) {
+    val statusColor = if (info != null) OrangeExtra else Color(0xFFDC2626)
+
+    Card(
+        modifier  = Modifier.fillMaxWidth(),
+        colors    = CardDefaults.cardColors(containerColor = SurfaceWhite),
+        shape     = RoundedCornerShape(10.dp),
+        elevation = CardDefaults.cardElevation(1.dp)
+    ) {
+        Row(
+            modifier          = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(if (!resolved) GrayPending else statusColor)
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
                     when {
-                        info != null -> {
-                            Text(
-                                info.productName ?: "Unnamed product",
-                                fontSize   = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color      = Color(0xFF7C2D12)
-                            )
-                            Text(
-                                buildString {
-                                    info.sku?.let { append("SKU $it") }
-                                    if (!info.statusInStore.isNullOrBlank()) {
-                                        if (isNotEmpty()) append("  ·  ")
-                                        append(info.statusInStore)
-                                    }
-                                },
-                                fontSize = 11.sp,
-                                color    = Color(0xFF92400E)
-                            )
-                        }
-                        hasKey -> Text(
-                            "Unknown EPC — $epc",
-                            fontSize = 12.sp,
-                            color    = Color(0xFF92400E)
-                        )
-                        else -> Text(
-                            "Looking up… $epc",
-                            fontSize = 12.sp,
-                            color    = Color(0xFF92400E).copy(alpha = 0.6f)
-                        )
+                        info != null -> info.productName ?: "Unnamed product"
+                        resolved     -> "Unknown EPC"
+                        else         -> "Looking up…"
+                    },
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize   = 15.sp,
+                    color      = DarkText,
+                    maxLines   = 1,
+                    overflow   = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(2.dp))
+                Row {
+                    if (info?.sku != null) {
+                        Text(info.sku, fontSize = 12.sp, color = SubText)
+                        Text("  ·  ", fontSize = 12.sp, color = SubText)
                     }
+                    Text(
+                        if (info != null) (info.statusInStore ?: "EPC $epc") else "EPC $epc",
+                        fontSize = 12.sp,
+                        color    = SubText,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
+            }
+            Spacer(Modifier.width(12.dp))
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(statusColor.copy(alpha = 0.12f))
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Text("EXTRA", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = statusColor)
             }
         }
     }
