@@ -1,0 +1,23 @@
+# Copy this file to local.properties and fill in values
+# local.properties is gitignored
+
+sdk.dir=/path/to/Android/sdk
+
+# API base URL
+# Emulator: http://10.0.2.2:8080/ (maps to localhost on host machine)
+# Physical Zebra on same LAN: http://192.168.X.X:8080/
+storelense.debug.url=http://10.0.2.2:8080/
+
+# Production URL for release build
+storelense.release.url=https://api.storelense.internal/
+
+# Real device vs emulator RFID
+# Set to false when sideloading onto a Chainway C72 or Zebra device with the SDK JAR present
+# Set to true (default) for emulator / UI testing
+storelense.use.mock.rfid=true
+
+# EMDK: place com.symbol.emdk.jar from developer.zebra.com into app/libs/
+# The JAR is compileOnly — it ships as a system library on Zebra devices
+
+# Chainway: place RFIDWithUHFUART.jar from the C72 SDK into app/chainway-libs/
+# The JAR is compileOnly — it ships as a system library on C72 devices

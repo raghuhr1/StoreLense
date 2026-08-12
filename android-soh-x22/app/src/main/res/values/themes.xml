@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.StoreLense" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <style name="Theme.StoreLense.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@android:color/white</item>
+        <!-- Commenting out missing resource to fix build failure -->
+        <!-- <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item> -->
+        <item name="postSplashScreenTheme">@style/Theme.StoreLense</item>
+    </style>
+</resources>

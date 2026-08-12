@@ -12,6 +12,10 @@ deploy/.env
 **/hs_err_pid*
 .mvn/wrapper/maven-wrapper.jar
 
+# Vendor device SDKs are build dependencies, not build output — they must be tracked
+# or a fresh clone cannot compile the device apps.
+!**/xr22-libs/*.jar
+
 # ── Node / Next.js ────────────────────────────────────────────────────────────
 frontend/node_modules/
 frontend/.next/
