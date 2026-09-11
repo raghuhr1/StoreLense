@@ -96,7 +96,9 @@ class GpoConfig:
     rest_password: str = ""
     rest_verify_tls: bool = False
     rest_login_path: str = "/cloud/localRestLogin"
-    rest_gpo_path: str = "/cloud/setGPO"
+    # Verified present on FX9600 at 10.1.2.16 (unauthenticated probe returns
+    # 500, not 404). /cloud/setGPO does not exist on this firmware.
+    rest_gpo_path: str = "/cloud/gpo"
     rest_gpo_method: str = "PUT"
     rest_gpo_payload: str = '{{"pin":{port},"state":{state}}}'
 

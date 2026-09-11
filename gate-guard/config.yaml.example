@@ -59,7 +59,7 @@ gpo:
   rest_password: ""
   rest_verify_tls: false
   rest_login_path: "/cloud/localRestLogin"
-  rest_gpo_path: "/cloud/setGPO"
+  rest_gpo_path: "/cloud/gpo"
   rest_gpo_method: "PUT"
   rest_gpo_payload: '{{"pin":{port},"state":{state}}}'
 
