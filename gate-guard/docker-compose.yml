@@ -1,0 +1,19 @@
+services:
+  gate-guard:
+    build: .
+    container_name: gate-guard
+    restart: unless-stopped
+    # Needed only for the llrp/rest GPO drivers, which talk straight to
+    # 10.1.2.16. The mqtt driver just needs the broker to be reachable.
+    network_mode: host
+    volumes:
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
+    environment:
+      # Keep the password out of the image and out of git.
+      GG_API_PASSWORD: "${GATE_GUARD_API_PASSWORD}"
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"

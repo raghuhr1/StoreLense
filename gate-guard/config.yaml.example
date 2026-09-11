@@ -1,0 +1,94 @@
+# StoreLense gate-guard — exit portal configuration
+#
+# Copy to config.yaml and fill in the marked values.
+# Any key can be overridden by an env var: GG_<SECTION>_<KEY>
+#   e.g. GG_API_PASSWORD=secret  ->  api.password
+
+api:
+  base_url: "http://150.241.244.61:8080"
+  # MUST be an ADMIN or STORE_MANAGER account.
+  # GET /api/gate/checks/bills rejects SECURITY_GUARD with 403.
+  username: "CHANGE_ME"
+  password: "CHANGE_ME"
+  store_id: "e26b776e-b06a-4633-98aa-5b20303f790c"
+  verify_tls: true
+  timeout_s: 10
+  refresh_margin_s: 60
+
+mqtt:
+  host: "CHANGE_ME"          # broker the FX9600 publishes to
+  port: 1883
+  client_id: "gate-guard-exit-1"
+  username: null
+  password: null
+  tls: false
+  tls_insecure: false
+  ca_cert: null
+  keepalive_s: 30
+  clean_session: false       # durable session: do not silently miss reads
+  qos: 1
+  # >>> YOU PROVIDE THESE <<<
+  tag_topic: "CHANGE_ME"     # e.g. fx9600/84:24:8D:xx:xx:xx/tags
+  control_topic: "CHANGE_ME" # e.g. fx9600/84:24:8D:xx:xx:xx/control
+
+# Dotted paths tried in order. Run `gate-guard tap` to see your reader's real
+# payload, then delete the ones that do not apply.
+tag_fields:
+  epc:     ["data.idHex", "idHex", "data.epc", "epc", "tag.epc", "EPC", "tagID"]
+  rssi:    ["data.peakRssi", "peakRssi", "data.rssi", "rssi", "RSSI"]
+  antenna: ["data.antenna", "antenna", "antennaPort", "data.antennaPort"]
+  batch:   ["data.tags", "tags", "tagList", "reads"]
+
+gpo:
+  # mqtt = publish a control command on mqtt.control_topic  (recommended)
+  # llrp = raw LLRP SET_READER_CONFIG to the reader on 5084 (fallback)
+  # rest = IoT Connector local REST API
+  # null = log only, no hardware
+  driver: "mqtt"
+  port: 1                    # which of the four GPO ports drives the relay
+  reader_ip: "10.1.2.16"
+
+  # {port} and {state} are substituted. Adjust to match whatever command your
+  # reader's web UI issues — `gate-guard gpo-test` proves it before you rely on it.
+  mqtt_on_payload:  '{{"command":"set_gpo","command_id":"gg-on","payload":{{"pin":{port},"state":true}}}}'
+  mqtt_off_payload: '{{"command":"set_gpo","command_id":"gg-off","payload":{{"pin":{port},"state":false}}}}'
+
+  # rest driver only
+  rest_base_url: "https://10.1.2.16"
+  rest_username: "admin"
+  rest_password: ""
+  rest_verify_tls: false
+  rest_login_path: "/cloud/localRestLogin"
+  rest_gpo_path: "/cloud/setGPO"
+  rest_gpo_method: "PUT"
+  rest_gpo_payload: '{{"pin":{port},"state":{state}}}'
+
+  # llrp driver only
+  llrp_port: 5084
+  llrp_timeout_s: 5
+
+tuning:
+  bill_window_hours: 3       # only bills this recent count as live exits
+  sync_interval_s: 4
+  rssi_min: -60              # raise toward -50 if the portal picks up the floor
+  debounce_s: 5
+  alarm_hold_s: 2
+  stale_snapshot_s: 300
+  on_stale: "suppress"       # suppress | alarm
+  exit_ledger_ttl_s: 10800
+  bill_cache_ttl_s: 600
+  ean_cache_ttl_s: 20
+  sync_workers: 8
+  report_interval_s: 30
+  report_enabled: true
+
+logging:
+  dir: "./logs"
+  events_file: "events.jsonl"
+  ops_file: "gate-guard.log"
+  exit_ledger_file: "exit-ledger.json"
+  level: "INFO"
+  log_allowed: true
+  log_drops: false           # true only while debugging; very noisy
+  rotate_mb: 64
+  backup_count: 14
