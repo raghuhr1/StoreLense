@@ -3,8 +3,12 @@ package com.storelense.inventory.service;
 import com.storelense.inventory.dto.BillItemDto;
 import com.storelense.inventory.dto.BillLookupResponse;
 import com.storelense.inventory.dto.BillRegistrationRequest;
+import com.storelense.inventory.dto.BillSummaryDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
@@ -93,6 +97,74 @@ public class BillService {
 
         return new BillLookupResponse(billId, (String) bill[1], (UUID) bill[2],
                 (OffsetDateTime) bill[3], fetchItems(billId), (String) bill[4], (OffsetDateTime) bill[5]);
+    }
+
+    /**
+     * Paged bill list for the dashboard. {@code status} filters on the exact bill
+     * status; {@code pendingOnly} is the "never reached the guard app" shortcut and
+     * keys off gate_checked_at rather than status, so bills left PENDING by a reset
+     * registration are included.
+     */
+    @Transactional(readOnly = true)
+    public Page<BillSummaryDto> list(UUID storeId,
+                                     String status,
+                                     boolean pendingOnly,
+                                     OffsetDateTime from,
+                                     OffsetDateTime to,
+                                     String billRef,
+                                     Pageable pageable) {
+
+        String where = """
+                WHERE (CAST(:storeId AS uuid)        IS NULL OR b.store_id  = CAST(:storeId AS uuid))
+                  AND (CAST(:status  AS varchar)     IS NULL OR b.status    = CAST(:status AS varchar))
+                  AND (CAST(:pendingOnly AS boolean) = FALSE  OR b.gate_checked_at IS NULL)
+                  AND (CAST(:from AS timestamptz)    IS NULL OR b.created_at >= CAST(:from AS timestamptz))
+                  AND (CAST(:to   AS timestamptz)    IS NULL OR b.created_at <= CAST(:to   AS timestamptz))
+                  AND (CAST(:billRef AS varchar)     IS NULL OR UPPER(b.bill_ref) LIKE UPPER(CAST(:billRef AS varchar)))
+                """;
+
+        var binder = (java.util.function.Function<JdbcClient.StatementSpec, JdbcClient.StatementSpec>) spec -> spec
+                .param("storeId",     storeId != null ? storeId.toString() : null)
+                .param("status",      status)
+                .param("pendingOnly", pendingOnly)
+                .param("from",        from != null ? from.toString() : null)
+                .param("to",          to   != null ? to.toString()   : null)
+                .param("billRef",     billRef != null ? "%" + billRef + "%" : null);
+
+        Long total = binder.apply(
+                        jdbcClient.sql("SELECT COUNT(*) FROM inventory.bills b " + where))
+                .query(Long.class).single();
+
+        if (total == null || total == 0) {
+            return new PageImpl<>(List.of(), pageable, 0);
+        }
+
+        List<BillSummaryDto> rows = binder.apply(jdbcClient.sql("""
+                        SELECT b.id, b.bill_ref, b.store_id, b.cashier_id, b.total_items,
+                               b.status, b.created_at, b.gate_checked_at,
+                               COALESCE((SELECT SUM(bi.qty * bi.unit_price)
+                                         FROM inventory.bill_items bi
+                                         WHERE bi.bill_id = b.id), 0) AS total_value
+                        FROM inventory.bills b
+                        """ + where + """
+                        ORDER BY b.created_at DESC
+                        LIMIT :limit OFFSET :offset
+                        """))
+                .param("limit",  pageable.getPageSize())
+                .param("offset", pageable.getOffset())
+                .query((rs, n) -> new BillSummaryDto(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("bill_ref"),
+                        rs.getObject("store_id", UUID.class),
+                        rs.getObject("cashier_id", UUID.class),
+                        rs.getInt("total_items"),
+                        rs.getBigDecimal("total_value"),
+                        rs.getString("status"),
+                        rs.getObject("created_at", OffsetDateTime.class),
+                        rs.getObject("gate_checked_at", OffsetDateTime.class)))
+                .list();
+
+        return new PageImpl<>(rows, pageable, total);
     }
 
     /**

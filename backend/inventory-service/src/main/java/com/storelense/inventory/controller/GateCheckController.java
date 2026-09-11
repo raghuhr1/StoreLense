@@ -5,6 +5,7 @@ import com.storelense.common.dto.PageResponse;
 import com.storelense.common.security.StoreLensePrincipal;
 import com.storelense.inventory.dto.BillLookupResponse;
 import com.storelense.inventory.dto.BillRegistrationRequest;
+import com.storelense.inventory.dto.BillSummaryDto;
 import com.storelense.inventory.dto.GateCheckDto;
 import com.storelense.inventory.dto.GateCheckRequest;
 import com.storelense.inventory.dto.GateCheckSummaryDto;
@@ -73,6 +74,29 @@ public class GateCheckController {
     public ResponseEntity<ApiResponse<BillLookupResponse>> registerBill(
             @Valid @RequestBody BillRegistrationRequest req) {
         return ResponseEntity.ok(ApiResponse.ok(billService.register(req)));
+    }
+
+    @GetMapping("/bills")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER')")
+    @Operation(summary = "List bills - use pendingOnly=true for bills that never passed the guard app")
+    public ResponseEntity<ApiResponse<PageResponse<BillSummaryDto>>> listBills(
+            @RequestParam(required = false) UUID storeId,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "false") boolean pendingOnly,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
+            @RequestParam(required = false) String billRef,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+
+        // Admins may pass any storeId (or omit it for all stores); everyone else is
+        // pinned to their own store.
+        UUID effectiveStoreId = principal.isAdmin() ? storeId : principal.storeId();
+
+        var result = billService.list(effectiveStoreId, status, pendingOnly,
+                from, to, billRef, PageRequest.of(page, Math.min(size, 200)));
+        return ResponseEntity.ok(ApiResponse.ok(PageResponse.from(result)));
     }
 
     @GetMapping("/bills/{billRef}")
