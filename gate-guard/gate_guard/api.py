@@ -149,16 +149,38 @@ class StoreLenseApi:
             raise ApiError(f"POST {path} failed: {exc}") from exc
         return self._unwrap(resp)
 
+    # nginx returns these when an upstream service is momentarily unavailable.
+    # Measured ~40% on this deployment, so a single attempt is not enough to
+    # build a complete allowlist.
+    _RETRY_STATUS = (502, 503, 504)
+    # At a measured ~40% failure rate, 3 attempts still leaves a ~40% chance
+    # that at least one of 8 EANs fails outright. 5 brings that under 10%.
+    _RETRIES = 5
+    _BACKOFF_S = 0.2
+
     def _get(self, path: str, params: dict | None = None) -> Any:
         self.ensure_token()
-        try:
-            resp = self._session.get(
-                self._base + path, params=params, headers=self._headers(),
-                timeout=self._cfg.timeout_s,
-            )
-        except requests.RequestException as exc:
-            raise ApiError(f"GET {path} failed: {exc}") from exc
-        return self._unwrap(resp)
+        last: Exception | None = None
+        for attempt in range(self._RETRIES):
+            if attempt:
+                time.sleep(self._BACKOFF_S * (2 ** (attempt - 1)))
+            try:
+                resp = self._session.get(
+                    self._base + path, params=params, headers=self._headers(),
+                    timeout=self._cfg.timeout_s,
+                )
+            except requests.RequestException as exc:
+                last = ApiError(f"GET {path} failed: {exc}")
+                continue
+            if resp.status_code in self._RETRY_STATUS:
+                last = ApiError(
+                    f"HTTP {resp.status_code} (upstream unavailable) from {path}",
+                    resp.status_code,
+                )
+                continue
+            return self._unwrap(resp)
+        assert last is not None
+        raise last
 
     # -- endpoints ---------------------------------------------------------- #
 
