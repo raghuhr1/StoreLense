@@ -46,8 +46,10 @@ class MqttConfig:
     tls_insecure: bool = False
     ca_cert: str | None = None
     keepalive_s: int = 30
-    # Durable session so a broker-side disconnect does not silently drop reads.
-    clean_session: bool = False
+    # Clean session on purpose. A persistent session lets the broker replay
+    # backlogged reads on reconnect -- observed ~10 minutes stale against a
+    # live FX9600 -- and a stale read must never ring an exit buzzer.
+    clean_session: bool = True
     qos: int = 1
     tag_topic: str = ""          # e.g. "fx9600/10.1.2.16/tags"  -- you provide
     control_topic: str = ""      # e.g. "fx9600/10.1.2.16/control"

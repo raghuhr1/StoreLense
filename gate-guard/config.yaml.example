@@ -25,7 +25,7 @@ mqtt:
   tls_insecure: false
   ca_cert: null
   keepalive_s: 30
-  clean_session: false       # durable session: do not silently miss reads
+  clean_session: true        # avoid replay of stale reads on reconnect
   qos: 1
   # >>> YOU PROVIDE THESE <<<
   tag_topic: "CHANGE_ME"     # e.g. fx9600/84:24:8D:xx:xx:xx/tags
