@@ -121,30 +121,45 @@ class RestGpoDriver(GpoDriver):
         ops.info("GPO(rest) logged in to %s", self._base())
 
     def set(self, state: bool) -> None:
+        """Set the port, re-authenticating on any failure.
+
+        The FX9600 does NOT return 401 for a bad token -- it returns 500 with
+        {"code":-1,"message":"jwt token signature verification failed"}. And it
+        appears to keep only one active REST session, so anyone logging into
+        the reader's web UI silently invalidates ours. Keying recovery off 401
+        alone would leave the buzzer permanently dead after that happens, so
+        any failure drops the token and retries with a fresh login.
+        """
+        url = self._base() + self._cfg.rest_gpo_path
+        payload = self._cfg.rest_gpo_payload.format(
+            port=self._cfg.port, state="true" if state else "false"
+        )
         with self._lock:
-            if self._token is None:
-                self._login()
-            headers = {"Content-Type": "application/json"}
-            if self._token:
-                headers["Authorization"] = f"Bearer {self._token}"
-            url = self._base() + self._cfg.rest_gpo_path
-            payload = self._cfg.rest_gpo_payload.format(
-                port=self._cfg.port, state="true" if state else "false"
-            )
-            resp = self._session.request(
-                self._cfg.rest_gpo_method.upper(), url,
-                data=payload, headers=headers, timeout=10,
-            )
-            if resp.status_code in (401, 403):
-                self._login()
-                if self._token:
-                    headers["Authorization"] = f"Bearer {self._token}"
-                resp = self._session.request(
-                    self._cfg.rest_gpo_method.upper(), url,
-                    data=payload, headers=headers, timeout=10,
-                )
-            resp.raise_for_status()
-            ops.debug("GPO(rest) port %s -> %s", self._cfg.port, state)
+            last: Exception | None = None
+            for attempt in (1, 2):
+                try:
+                    if self._token is None:
+                        self._login()
+                    headers = {"Content-Type": "application/json"}
+                    if self._token:
+                        headers["Authorization"] = f"Bearer {self._token}"
+                    resp = self._session.request(
+                        self._cfg.rest_gpo_method.upper(), url,
+                        data=payload, headers=headers, timeout=10,
+                    )
+                    resp.raise_for_status()
+                    # A 200 can still carry an application-level failure.
+                    if '"code": -1' in resp.text or '"code":-1' in resp.text:
+                        raise OSError(f"reader rejected command: {resp.text[:120]}")
+                    ops.debug("GPO(rest) port %s -> %s", self._cfg.port, state)
+                    return
+                except Exception as exc:
+                    last = exc
+                    self._token = None          # force a fresh login next round
+                    if attempt == 1:
+                        ops.warning("GPO(rest) failed (%s); re-authenticating",
+                                    str(exc)[:120])
+            raise last if last else OSError("GPO set failed")
 
 
 # --------------------------------------------------------------------------- #
