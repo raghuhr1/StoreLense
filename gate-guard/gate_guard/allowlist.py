@@ -29,6 +29,12 @@ from .api import ApiError, AuthError, StoreLenseApi
 from .logs import ops
 
 
+def _brief(exc: Exception, limit: int = 120) -> str:
+    """Collapse an error to one line. nginx 503 bodies are full HTML pages and
+    would otherwise dump twelve lines into the log per failed EAN."""
+    return " ".join(str(exc).split())[:limit]
+
+
 # --------------------------------------------------------------------------- #
 # Snapshot
 # --------------------------------------------------------------------------- #
@@ -43,6 +49,13 @@ class Snapshot:
     ean_count: int
     ok: bool = True            # False if the build failed and this is stale
     error: str | None = None
+    # EANs served from an expired cache entry because the live call failed.
+    # Usable, but worth surfacing.
+    degraded: int = 0
+    # EANs we could not resolve at all. Any EPC of those products now looks
+    # unknown, so the snapshot cannot be trusted to distinguish theft from a
+    # gateway hiccup.
+    missing: int = 0
 
     def age_s(self) -> float:
         return time.time() - self.built_at
@@ -156,9 +169,19 @@ class _TtlCache:
                 return None
             ts, value = entry
             if time.time() - ts > self._ttl:
-                del self._data[key]
-                return None
+                return None          # expired, but kept for get_stale()
             return value
+
+    def get_stale(self, key):
+        """Last known value regardless of age.
+
+        Used as a fallback when the live call fails: a slightly old EPC list
+        is far better than an empty one, which would false-alarm on every
+        item of that product.
+        """
+        with self._lock:
+            entry = self._data.get(key)
+            return entry[1] if entry else None
 
     def put(self, key, value) -> None:
         with self._lock:
@@ -216,7 +239,12 @@ class AllowlistBuilder:
 
         eans = sorted(qty_by_ean)
         epc_to_ean: dict[str, str] = {}
-        for ean, epcs in zip(eans, self._pool.map(self._fetch_epcs, eans)):
+        degraded = missing = 0
+        for ean, (epcs, status) in zip(eans, self._pool.map(self._fetch_epcs, eans)):
+            if status == "degraded":
+                degraded += 1
+            elif status == "missing":
+                missing += 1
             for epc in epcs:
                 epc_to_ean[epc] = ean
 
@@ -229,6 +257,11 @@ class AllowlistBuilder:
         }
         allowed = frozenset(epc_to_ean) | exited_epcs
 
+        if missing:
+            ops.error("Snapshot incomplete: %d/%d EANs unresolved. Marking it "
+                      "untrustworthy so the stale policy applies rather than "
+                      "alarming on a half-built allowlist.", missing, len(eans))
+
         return Snapshot(
             built_at=time.time(),
             allowed_epcs=allowed,
@@ -236,7 +269,12 @@ class AllowlistBuilder:
             quota=quota,
             bill_count=len(refs),
             ean_count=len(eans),
-            ok=True,
+            # A partial build is the dangerous case: the EPCs we failed to
+            # fetch are indistinguishable from stolen goods.
+            ok=(missing == 0),
+            error=(f"{missing} EAN(s) unresolved" if missing else None),
+            degraded=degraded,
+            missing=missing,
         )
 
     def _fetch_bill(self, bill_ref: str) -> dict | None:
@@ -246,23 +284,30 @@ class AllowlistBuilder:
         try:
             bill = self._api.lookup_bill(bill_ref, self._store_id)
         except ApiError as exc:
-            ops.warning("Bill %s lookup failed: %s", bill_ref, exc)
+            ops.warning("Bill %s lookup failed: %s", bill_ref, _brief(exc))
             return None
         self._bill_cache.put(bill_ref, bill)
         return bill
 
-    def _fetch_epcs(self, ean: str) -> list[str]:
+    def _fetch_epcs(self, ean: str):
+        """Returns (epcs, status) where status is ok | degraded | missing."""
         cached = self._ean_cache.get(ean)
         if cached is not None:
-            return cached
+            return cached, "ok"
         try:
             data = self._api.epcs_by_ean(ean, self._store_id) or {}
         except ApiError as exc:
-            ops.warning("epc-by-ean %s failed: %s", ean, exc)
-            return []
+            stale = self._ean_cache.get_stale(ean)
+            if stale is not None:
+                ops.warning("epc-by-ean %s failed (%s); using last known %d EPCs",
+                            ean, _brief(exc), len(stale))
+                return stale, "degraded"
+            ops.error("epc-by-ean %s failed (%s) and nothing cached -- items of "
+                      "this product would false-alarm", ean, _brief(exc))
+            return [], "missing"
         epcs = [e.strip().upper() for e in (data.get("epcs") or []) if e]
         self._ean_cache.put(ean, epcs)
-        return epcs
+        return epcs, "ok"
 
 
 class AllowlistService:
@@ -306,7 +351,8 @@ class AllowlistService:
                 if self._events:
                     self._events.write(
                         "SNAPSHOT", bills=snap.bill_count, eans=snap.ean_count,
-                        epcs=len(snap.allowed_epcs),
+                        epcs=len(snap.allowed_epcs), ok=snap.ok,
+                        degraded=snap.degraded, missing=snap.missing,
                         build_ms=round((time.time() - started) * 1000),
                     )
             except AuthError as exc:
