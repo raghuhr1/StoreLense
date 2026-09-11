@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import collections
 import json
 import logging
 import logging.handlers
@@ -25,10 +26,17 @@ ops = logging.getLogger("gate_guard")
 
 
 class EventLog:
-    """Append-only JSONL sink with size-based rotation."""
+    """Append-only JSONL sink with size-based rotation.
 
-    def __init__(self, path: str, rotate_mb: int, backup_count: int):
+    Also keeps the last `ring_size` records in memory so the dashboard can
+    show recent activity without re-reading (and re-parsing) the file on
+    every poll.
+    """
+
+    def __init__(self, path: str, rotate_mb: int, backup_count: int,
+                 ring_size: int = 500):
         self._lock = threading.Lock()
+        self._ring: collections.deque = collections.deque(maxlen=ring_size)
         self._logger = logging.getLogger("gate_guard.events")
         self._logger.setLevel(logging.INFO)
         self._logger.propagate = False
@@ -50,7 +58,13 @@ class EventLog:
         record.update(payload)
         line = json.dumps(record, separators=(",", ":"), default=str)
         with self._lock:
+            self._ring.append(record)
             self._logger.info(line)
+
+    def recent(self, limit: int = 200) -> list[dict]:
+        with self._lock:
+            items = list(self._ring)
+        return items[-limit:]
 
 
 def setup(cfg) -> EventLog:

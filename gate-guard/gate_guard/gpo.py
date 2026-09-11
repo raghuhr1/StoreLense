@@ -358,6 +358,10 @@ class AlarmController:
             if expired:
                 self._apply(False, "hold-expired")
 
+    def is_active(self) -> bool:
+        with self._lock:
+            return self._on
+
     def force_off(self, reason: str) -> None:
         with self._lock:
             self._on = False

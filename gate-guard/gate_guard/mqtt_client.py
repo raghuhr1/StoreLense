@@ -98,6 +98,9 @@ class MqttTransport:
     def wait_connected(self, timeout: float) -> bool:
         return self._connected.wait(timeout)
 
+    def is_connected(self) -> bool:
+        return self._connected.is_set()
+
     def publish(self, topic: str, payload: str, qos: int = 1) -> None:
         info = self._client.publish(topic, payload, qos=qos)
         if info.rc != mqtt.MQTT_ERR_SUCCESS:

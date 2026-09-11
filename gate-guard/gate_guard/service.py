@@ -11,6 +11,7 @@ from . import logs
 from .allowlist import AllowlistBuilder, AllowlistService, ExitLedger
 from .api import StoreLenseApi
 from .config import Config
+from .dashboard import DashboardServer
 from .decider import Decider
 from .gpo import AlarmController, build_driver
 from .logs import ops
@@ -54,6 +55,7 @@ class GateGuard:
             enrich=self.enricher.submit, report=self.reporter.submit,
         )
         self.heartbeat = Heartbeat(self.decider, self.allowlist, self.events)
+        self.dashboard = DashboardServer(cfg, self) if cfg.dashboard.enabled else None
 
         self._stopping = threading.Event()
 
@@ -85,6 +87,8 @@ class GateGuard:
         self.enricher.start()
         self.reporter.start()
         self.heartbeat.start()
+        if self.dashboard:
+            self.dashboard.start()
 
         if self.allowlist.wait_ready(30):
             snap = self.allowlist.snapshot
@@ -116,6 +120,8 @@ class GateGuard:
 
     def shutdown(self) -> None:
         ops.info("Stopping...")
+        if self.dashboard:
+            self.dashboard.stop()
         self.heartbeat.stop()
         self.reporter.stop()
         self.enricher.stop()

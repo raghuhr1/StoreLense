@@ -158,6 +158,16 @@ class LoggingConfig:
 
 
 @dataclass
+class DashboardConfig:
+    enabled: bool = True
+    # 127.0.0.1 by default: change to 0.0.0.0 to reach it from other devices
+    # on the store LAN (phone, laptop). Not authenticated -- never expose it
+    # beyond a trusted LAN.
+    host: str = "127.0.0.1"
+    port: int = 8899
+
+
+@dataclass
 class Config:
     api: ApiConfig = field(default_factory=ApiConfig)
     mqtt: MqttConfig = field(default_factory=MqttConfig)
@@ -165,6 +175,7 @@ class Config:
     gpo: GpoConfig = field(default_factory=GpoConfig)
     tuning: TuningConfig = field(default_factory=TuningConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    dashboard: DashboardConfig = field(default_factory=DashboardConfig)
 
 
 # --------------------------------------------------------------------------- #
