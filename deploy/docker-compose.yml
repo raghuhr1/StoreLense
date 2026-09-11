@@ -360,7 +360,29 @@ services:
       retries:  5
       start_period: 60s
 
+  # ─── FX9600 exit-portal EPC monitor ────────────────────────────────────────
+  # Only deploy here if the MQTT broker the reader publishes to is reachable
+  # from this host; otherwise run it in-store via gate-guard/systemd/.
+  gate-guard:
+    build:
+      context: ../gate-guard
+      dockerfile: Dockerfile
+    depends_on:
+      nginx-gateway: { condition: service_started }
+    environment:
+      # Stay inside the compose network — skips the public hop on every sync.
+      GG_API_BASE_URL:  http://nginx-gateway:8080
+      GG_API_PASSWORD:  ${GATE_GUARD_API_PASSWORD:-}
+    volumes:
+      - ../gate-guard/config:/app/config:ro
+      - gate_guard_logs:/app/logs
+    restart: unless-stopped
+    logging: *default-logging
+    # Python service, ~60 MB resident. Kept small deliberately on a 2 GB box.
+    mem_limit: 128m
+
 volumes:
   postgres_data:
   redis_data:
   kafka_data:
+  gate_guard_logs:
