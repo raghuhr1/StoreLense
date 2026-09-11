@@ -61,7 +61,7 @@ gpo:
   rest_login_path: "/cloud/localRestLogin"
   rest_gpo_path: "/cloud/gpo"
   rest_gpo_method: "PUT"
-  rest_gpo_payload: '{{"pin":{port},"state":{state}}}'
+  rest_gpo_payload: '{{"port":{port},"state":{state}}}'
 
   # llrp driver only
   llrp_port: 5084

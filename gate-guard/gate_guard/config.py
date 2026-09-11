@@ -100,7 +100,10 @@ class GpoConfig:
     # 500, not 404). /cloud/setGPO does not exist on this firmware.
     rest_gpo_path: str = "/cloud/gpo"
     rest_gpo_method: str = "PUT"
-    rest_gpo_payload: str = '{{"pin":{port},"state":{state}}}'
+    # Verified against FX9600 firmware at 10.1.2.16:
+    #   GET /cloud/gpo -> {"1":"LOW", ...}; PUT {"port":N,"state":bool} -> 200.
+    # {"pin":...} and {"N":"HIGH"} are both rejected with 422.
+    rest_gpo_payload: str = '{{"port":{port},"state":{state}}}'
 
     # -- llrp driver -------------------------------------------------------- #
     llrp_port: int = 5084
