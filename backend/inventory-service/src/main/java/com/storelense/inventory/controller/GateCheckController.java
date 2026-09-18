@@ -77,7 +77,7 @@ public class GateCheckController {
     }
 
     @GetMapping("/bills")
-    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE','SECURITY_GUARD')")
     @Operation(summary = "List bills - use pendingOnly=true for bills that never passed the guard app")
     public ResponseEntity<ApiResponse<PageResponse<BillSummaryDto>>> listBills(
             @RequestParam(required = false) UUID storeId,
@@ -91,8 +91,8 @@ public class GateCheckController {
             @AuthenticationPrincipal StoreLensePrincipal principal) {
 
         // Admins may pass any storeId (or omit it for all stores); everyone else is
-        // pinned to their own store.
-        UUID effectiveStoreId = principal.isAdmin() ? storeId : principal.storeId();
+        // pinned to their own store, whether they passed one or not.
+        UUID effectiveStoreId = principal.canAccessStore(storeId) ? storeId : principal.storeId();
 
         var result = billService.list(effectiveStoreId, status, pendingOnly,
                 from, to, billRef, PageRequest.of(page, Math.min(size, 200)));
