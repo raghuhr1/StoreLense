@@ -45,6 +45,16 @@ android-soh/**/*.aab
 android-soh/**/*.keystore
 android-soh/**/*.iml
 
+# guard-tc22 project
+guard-tc22/**/.gradle/
+guard-tc22/**/local.properties
+guard-tc22/**/build/
+guard-tc22/**/.idea/
+guard-tc22/**/*.apk
+guard-tc22/**/*.aab
+guard-tc22/**/*.keystore
+guard-tc22/**/*.iml
+
 # ── IDEs ──────────────────────────────────────────────────────────────────────
 .idea/
 *.iml
