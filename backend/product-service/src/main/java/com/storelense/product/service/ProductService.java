@@ -12,13 +12,20 @@ import com.storelense.product.domain.repository.ProductRepository;
 import com.storelense.product.dto.*;
 import com.storelense.product.mapper.ProductMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -37,6 +44,9 @@ public class ProductService {
 
     private static final String EPC_CACHE_PREFIX = "product:epc:";
     private static final Duration EPC_CACHE_TTL  = Duration.ofMinutes(30);
+
+    @Value("${storelense.product.image-dir:./data/product-images}")
+    private String imageDir;
 
     @Transactional(readOnly = true)
     public PageResponse<ProductResponse> listProducts(String search, UUID storeId,
@@ -154,6 +164,44 @@ public class ProductService {
                 .stream()
                 .map(EpcTag::getEpc)
                 .toList();
+    }
+
+    @Transactional
+    public ProductResponse uploadImage(UUID id, MultipartFile file) {
+        Product product = findOrThrow(id);
+        if (file.isEmpty()) {
+            throw new BusinessException("EMPTY_FILE", "No file provided", HttpStatus.BAD_REQUEST);
+        }
+
+        String ext = switch (file.getContentType() == null ? "" : file.getContentType()) {
+            case "image/jpeg" -> ".jpg";
+            case "image/png"  -> ".png";
+            case "image/webp" -> ".webp";
+            default -> throw new BusinessException(
+                    "UNSUPPORTED_IMAGE_TYPE", "Only JPEG, PNG or WEBP images are allowed", HttpStatus.BAD_REQUEST);
+        };
+
+        try {
+            Path dir = Path.of(imageDir);
+            Files.createDirectories(dir);
+            String filename = id + ext;
+            file.transferTo(dir.resolve(filename).normalize());
+            product.setImageUrl("/api/products/images/" + filename);
+        } catch (IOException e) {
+            throw new BusinessException("IMAGE_SAVE_FAILED", "Failed to save product image", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+
+        return productMapper.toResponse(productRepository.save(product));
+    }
+
+    @Transactional(readOnly = true)
+    public Resource loadImage(String filename) {
+        Path root = Path.of(imageDir).normalize().toAbsolutePath();
+        Path path = root.resolve(filename).normalize();
+        if (!path.startsWith(root) || !Files.isRegularFile(path)) {
+            throw new ResourceNotFoundException("ProductImage", filename);
+        }
+        return new FileSystemResource(path);
     }
 
     private Product findOrThrow(UUID id) {

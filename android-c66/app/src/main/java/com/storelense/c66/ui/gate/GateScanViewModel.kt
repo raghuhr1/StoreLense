@@ -62,7 +62,8 @@ data class BillLineItem(
     val validEpcs: Set<String> = emptySet(),
     val matchedEpcs: List<String> = emptyList(),
     val barcodeVerifiedCount: Int = 0,
-    val resolveError: String? = null
+    val resolveError: String? = null,
+    val imageUrl: String? = null
 ) {
     /** Only a confirmed `false` means "verify by barcode" — null (unknown/data gap) stays on the RFID path. */
     val isNonRfid: Boolean get() = isRfidEnabled == false
@@ -117,7 +118,8 @@ private data class BillQrItem(
     val ean: String = "",
     val qty: Int = 1,
     val isRfidEnabled: Boolean? = null,
-    val productName: String? = null
+    val productName: String? = null,
+    val imageUrl: String? = null
 )
 
 // ── ViewModel ─────────────────────────────────────────────────────────────────
@@ -222,7 +224,8 @@ class GateScanViewModel @Inject constructor(
                         items   = result.data.items.map {
                             BillQrItem(
                                 ean = it.ean, qty = it.qty,
-                                isRfidEnabled = it.isRfidEnabled, productName = it.productName
+                                isRfidEnabled = it.isRfidEnabled, productName = it.productName,
+                                imageUrl = it.imageUrl
                             )
                         }
                     )
@@ -247,7 +250,8 @@ class GateScanViewModel @Inject constructor(
                     qrItem.productName ?: "EAN ${qrItem.ean}"
                 } else "Resolving…",
                 qtyRequired   = qrItem.qty.coerceAtLeast(1),
-                isRfidEnabled = qrItem.isRfidEnabled
+                isRfidEnabled = qrItem.isRfidEnabled,
+                imageUrl      = qrItem.imageUrl
             )
         }
         _state.update { it.copy(
@@ -279,7 +283,8 @@ class GateScanViewModel @Inject constructor(
                         is Result.Success -> lineItem.copy(
                             sku         = result.data.sku ?: "",
                             productName = result.data.productName,
-                            validEpcs   = result.data.epcs.toSet()
+                            validEpcs   = result.data.epcs.toSet(),
+                            imageUrl    = result.data.imageUrl ?: lineItem.imageUrl
                         )
                         is Result.Error -> lineItem.copy(
                             productName  = "EAN: ${lineItem.ean}",

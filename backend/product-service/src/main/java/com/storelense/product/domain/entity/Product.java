@@ -54,6 +54,9 @@ public class Product {
     @Builder.Default
     private boolean active = true;
 
+    @Column(name = "image_url", length = 500)
+    private String imageUrl;
+
     @Column(name = "erp_synced_at")
     private OffsetDateTime erpSyncedAt;
 

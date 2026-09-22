@@ -20,4 +20,12 @@ export const productsApi = {
   lookupEpc: (epc: string) =>
     client.get<ApiResponse<{ epc: string; productId: string }>>(`/products/epc/${epc}`)
       .then(r => r.data.data),
+
+  uploadImage: (id: string, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return client.post<ApiResponse<Product>>(`/products/${id}/image`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data.data)
+  },
 }

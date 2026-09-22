@@ -29,7 +29,8 @@ data class EpcsByEanResponse(
     val ean: String,
     val sku: String?,
     val productName: String,
-    val epcs: List<String> = emptyList()
+    val epcs: List<String> = emptyList(),
+    val imageUrl: String? = null
 )
 
 // ── Mark sold ─────────────────────────────────────────────────────────────────

@@ -9,13 +9,19 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaTypeFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.time.Duration;
 
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -105,6 +111,24 @@ public class ProductController {
     @Operation(summary = "Get all active EPC values for products matching an EAN barcode")
     public ResponseEntity<ApiResponse<List<String>>> getEpcsByEan(@PathVariable String ean) {
         return ResponseEntity.ok(ApiResponse.ok(productService.getEpcsByEan(ean)));
+    }
+
+    @PostMapping("/{id}/image")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER')")
+    @Operation(summary = "Upload/replace the product's image (JPEG, PNG or WEBP)")
+    public ResponseEntity<ApiResponse<ProductResponse>> uploadImage(
+            @PathVariable UUID id, @RequestParam("file") MultipartFile file) {
+        return ResponseEntity.ok(ApiResponse.ok("Image uploaded", productService.uploadImage(id, file)));
+    }
+
+    @GetMapping("/images/{filename}")
+    @Operation(summary = "Serve a stored product image")
+    public ResponseEntity<Resource> getImage(@PathVariable String filename) {
+        Resource resource = productService.loadImage(filename);
+        return ResponseEntity.ok()
+                .contentType(MediaTypeFactory.getMediaType(filename).orElse(org.springframework.http.MediaType.APPLICATION_OCTET_STREAM))
+                .cacheControl(CacheControl.maxAge(Duration.ofDays(30)).cachePublic())
+                .body(resource);
     }
 
     @PostMapping("/{id}/epc")

@@ -175,7 +175,7 @@ public class BillService {
      */
     private List<BillItemDto> fetchItems(UUID billId) {
         return jdbcClient.sql("""
-                SELECT bi.ean, bi.product_name, bi.qty, bi.unit_price, p.is_rfid_enabled
+                SELECT bi.ean, bi.product_name, bi.qty, bi.unit_price, p.is_rfid_enabled, p.image_url
                 FROM inventory.bill_items bi
                 LEFT JOIN products.barcodes b ON UPPER(b.barcode_value) = UPPER(bi.ean)
                 LEFT JOIN products.products p ON p.id = b.product_id
@@ -188,7 +188,8 @@ public class BillService {
                         rs.getString("product_name"),
                         rs.getInt("qty"),
                         rs.getBigDecimal("unit_price"),
-                        (Boolean) rs.getObject("is_rfid_enabled")
+                        (Boolean) rs.getObject("is_rfid_enabled"),
+                        rs.getString("image_url")
                 ))
                 .list();
     }

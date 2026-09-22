@@ -4,7 +4,8 @@ data class BillLookupItem(
     val ean:           String,
     val productName:   String?,
     val qty:           Int,
-    val isRfidEnabled: Boolean? = null
+    val isRfidEnabled: Boolean? = null,
+    val imageUrl:      String? = null
 )
 
 data class BillLookupResponse(

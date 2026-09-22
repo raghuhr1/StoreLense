@@ -51,6 +51,11 @@ export default function ProductsPage() {
     onSuccess:  () => { qc.invalidateQueries({ queryKey: ['products'] }); setEditing(null); reset() },
   })
 
+  const uploadImageMut = useMutation({
+    mutationFn: ({ id, file }: { id: string; file: File }) => productsApi.uploadImage(id, file),
+    onSuccess:  (updated) => { qc.invalidateQueries({ queryKey: ['products'] }); setEditing(updated) },
+  })
+
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { unitOfMeasure: 'EACH', rfidEnabled: true },
@@ -117,6 +122,16 @@ export default function ProductsPage() {
   }, [data, brands])
 
   const columns = useMemo<ColumnDef<Product, unknown>[]>(() => [
+    {
+      id: 'image',
+      header: '',
+      cell: ({ row }) => row.original.imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={row.original.imageUrl} alt="" className="w-8 h-8 rounded object-cover border border-gray-200" />
+      ) : (
+        <div className="w-8 h-8 rounded bg-gray-100" />
+      ),
+    },
     { accessorKey: 'sku',           header: 'SKU',    cell: i => <span className="font-mono text-xs font-semibold">{i.getValue<string>()}</span> },
     { accessorKey: 'name',          header: 'Name',   cell: i => <span className="font-medium">{i.getValue<string>()}</span> },
     { accessorKey: 'brand',         header: 'Brand',  cell: i => i.getValue<string | null>() ?? '—' },
@@ -293,6 +308,35 @@ export default function ProductsPage() {
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
             <div className="bg-white rounded-2xl p-6 w-[480px] shadow-xl">
               <h3 className="font-semibold text-gray-900 mb-4">Edit Product</h3>
+
+              <div className="flex items-center gap-3 mb-4">
+                {editing.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={editing.imageUrl} alt="" className="w-16 h-16 rounded-lg object-cover border border-gray-200" />
+                ) : (
+                  <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center text-[10px] text-gray-400">No image</div>
+                )}
+                <div>
+                  <label className="btn-secondary cursor-pointer inline-block">
+                    {uploadImageMut.isPending ? 'Uploading…' : 'Change image'}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      disabled={uploadImageMut.isPending}
+                      onChange={e => {
+                        const file = e.target.files?.[0]
+                        if (file) uploadImageMut.mutate({ id: editing.id, file })
+                        e.target.value = ''
+                      }}
+                    />
+                  </label>
+                  {uploadImageMut.isError && (
+                    <p className="text-xs text-red-500 mt-1">Failed to upload image. JPEG/PNG/WEBP, max 5MB.</p>
+                  )}
+                </div>
+              </div>
+
               <ProductForm
                 onSubmit={v => updateMut.mutate({ id: editing.id, body: v })}
                 isPending={updateMut.isPending}

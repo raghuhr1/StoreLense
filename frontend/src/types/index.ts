@@ -52,7 +52,8 @@ export interface RfidReader {
 export interface Product {
   id: string; sku: string; name: string; description: string | null
   categoryId: string | null; brand: string | null; unitOfMeasure: string
-  rfidEnabled: boolean; active: boolean; primaryEan: string | null; createdAt: string
+  rfidEnabled: boolean; active: boolean; primaryEan: string | null
+  imageUrl: string | null; createdAt: string
 }
 
 // ─── Users ────────────────────────────────────────────────────────────────────

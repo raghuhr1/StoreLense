@@ -6,5 +6,6 @@ public record EpcsByEanResponse(
         String       ean,
         String       sku,
         String       productName,
-        List<String> epcs
+        List<String> epcs,
+        String       imageUrl
 ) {}

@@ -7,5 +7,6 @@ public record BillItemDto(
         String      productName,
         int         qty,
         BigDecimal  unitPrice,
-        Boolean     isRfidEnabled
+        Boolean     isRfidEnabled,
+        String      imageUrl
 ) {}

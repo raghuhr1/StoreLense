@@ -235,9 +235,9 @@ public class InventoryService {
     @Transactional(readOnly = true)
     public EpcsByEanResponse getEpcsByEan(String ean, UUID storeId) {
         // Fetch sku + name for the product matching this EAN
-        record ProductInfo(String sku, String name) {}
+        record ProductInfo(String sku, String name, String imageUrl) {}
         var product = jdbcClient.sql("""
-                SELECT p.sku, p.name
+                SELECT p.sku, p.name, p.image_url
                 FROM products.products p
                 JOIN products.barcodes b ON b.product_id = p.id
                 WHERE UPPER(b.barcode_value) = UPPER(:ean)
@@ -246,11 +246,11 @@ public class InventoryService {
                 LIMIT 1
                 """)
                 .param("ean", ean)
-                .query((rs, rowNum) -> new ProductInfo(rs.getString("sku"), rs.getString("name")))
+                .query((rs, rowNum) -> new ProductInfo(rs.getString("sku"), rs.getString("name"), rs.getString("image_url")))
                 .optional();
 
         if (product.isEmpty()) {
-            return new EpcsByEanResponse(ean, null, "Unknown product", List.of());
+            return new EpcsByEanResponse(ean, null, "Unknown product", List.of(), null);
         }
 
         // Fetch all in_store EPCs for this product at this store
@@ -269,7 +269,7 @@ public class InventoryService {
                 .query(String.class)
                 .list();
 
-        return new EpcsByEanResponse(ean, product.get().sku(), product.get().name(), epcs);
+        return new EpcsByEanResponse(ean, product.get().sku(), product.get().name(), epcs, product.get().imageUrl());
     }
 
     @Transactional(readOnly = true)

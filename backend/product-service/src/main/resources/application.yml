@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: product-service
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 5MB
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:storelense}
     username: ${DB_USERNAME:storelense_app}
@@ -31,6 +35,8 @@ storelense:
     secret: ${JWT_SECRET:storelense-dev-secret-key-minimum-32-chars}
     access-token-expiry-ms: 900000
     refresh-token-expiry-ms: 604800000
+  product:
+    image-dir: ${PRODUCT_IMAGE_DIR:./data/product-images}
 
 management:
   endpoints:

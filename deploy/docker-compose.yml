@@ -168,6 +168,9 @@ services:
       redis:    { condition: service_healthy }
     environment:
       <<: *spring-env
+      PRODUCT_IMAGE_DIR: /data/product-images
+    volumes:
+      - product-images:/data/product-images
     ports:
       - "8083:8083"
     logging: *default-logging
@@ -364,3 +367,4 @@ volumes:
   postgres_data:
   redis_data:
   kafka_data:
+  product-images:

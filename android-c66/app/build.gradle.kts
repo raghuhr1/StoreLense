@@ -95,6 +95,8 @@ dependencies {
     implementation(libs.okhttp.logging)
     implementation(libs.gson)
 
+    implementation(libs.coil.compose)
+
     // CameraX + ML Kit barcode
     implementation(libs.camerax.core)
     implementation(libs.camerax.camera2)
