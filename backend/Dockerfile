@@ -54,6 +54,11 @@ ARG SERVICE_NAME
 COPY --from=build /workspace/${SERVICE_NAME}/target/*.jar app.jar
 RUN chown spring:spring app.jar
 
+# product-service's image storage mount point — pre-owned by spring so that a
+# freshly created named volume mounted here inherits the right ownership
+# (Docker copies the image directory's content/perms into an empty new volume).
+RUN mkdir -p /data/product-images && chown -R spring:spring /data
+
 USER spring
 
 ARG SERVICE_PORT=8081
