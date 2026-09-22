@@ -837,6 +837,7 @@ public class InventoryService {
                     p.id         AS product_id,
                     p.sku,
                     p.name       AS product_name,
+                    p.image_url  AS image_url,
                     er.status    AS status_in_store,
                     z.name       AS zone_name,
                     COALESCE((
@@ -868,7 +869,8 @@ public class InventoryService {
                             eans,
                             rs.getString("status_in_store"),
                             rs.getString("zone_name"),
-                            true
+                            true,
+                            rs.getString("image_url")
                     );
                 })
                 .optional();

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.storelense.c66.data.remote.dto.BillLookupItem
+import com.storelense.c66.data.remote.dto.EpcsByEanResponse
 import com.storelense.c66.data.remote.dto.GateCheckDto
 import com.storelense.c66.data.remote.dto.IdentifyEpcResponse
 import com.storelense.c66.data.repository.AuthRepository
@@ -85,6 +86,9 @@ data class GateState(
     /** epc -> lookup result, populated lazily per extra EPC. Key absent = still resolving;
      *  key present with null value = confirmed not in products.epc_tags ("Unknown EPC"). */
     val extraEpcInfo: Map<String, IdentifyEpcResponse?> = emptyMap(),
+    /** ean -> lookup result, populated lazily per extra scanned barcode. Same absent/null
+     *  convention as extraEpcInfo. */
+    val extraBarcodeInfo: Map<String, EpcsByEanResponse?> = emptyMap(),
     val isResolvingBill: Boolean    = false,
     val isScanning: Boolean         = false,
     val isReleasing: Boolean        = false,
@@ -395,6 +399,19 @@ class GateScanViewModel @Inject constructor(
         }
     }
 
+    /** Looks up an unexpected/extra barcode so the UI can show the real product (and its
+     *  image, if any) instead of a raw EAN — reuses the same EAN resolution the bill lines
+     *  use, since a scanned extra is just an EAN with no matching pending line. */
+    private fun resolveExtraBarcode(ean: String) {
+        if (_state.value.extraBarcodeInfo.containsKey(ean)) return
+        viewModelScope.launch {
+            when (val result = gateRepo.resolveEan(ean)) {
+                is Result.Success -> _state.update { it.copy(extraBarcodeInfo = it.extraBarcodeInfo + (ean to result.data)) }
+                is Result.Error -> { /* leave unresolved (key absent) so the UI can retry later */ }
+            }
+        }
+    }
+
     // ── Non-RFID barcode verification ────────────────────────────────────────
 
     /** Scanning/typing a non-RFID item's own barcode is the only way to verify it —
@@ -421,6 +438,7 @@ class GateScanViewModel @Inject constructor(
                 s.copy(extraBarcodes = s.extraBarcodes + scannedEan)
             } else s
         }
+        if (targetIndex == -1) resolveExtraBarcode(scannedEan)
 
         _scanEvents.tryEmit(event)
         val vibrator = context.getSystemService(android.os.Vibrator::class.java)

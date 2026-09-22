@@ -75,5 +75,6 @@ data class IdentifyEpcResponse(
     val eans: List<String> = emptyList(),
     val statusInStore: String?,
     val zoneName: String?,
-    val alreadyRegistered: Boolean = false
+    val alreadyRegistered: Boolean = false,
+    val imageUrl: String? = null
 )

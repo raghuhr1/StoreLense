@@ -46,7 +46,8 @@ data class IdentifyEpcResponse(
     val eans:                List<String> = emptyList(),
     val statusInStore:       String?      = null,
     val zoneName:            String?      = null,
-    val alreadyRegistered:   Boolean      = false
+    val alreadyRegistered:   Boolean      = false,
+    val imageUrl:            String?      = null
 )
 
 // ── Mark sold ─────────────────────────────────────────────────────────────────

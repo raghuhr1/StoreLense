@@ -11,5 +11,6 @@ public record IdentifyEpcResponse(
         List<String> eans,
         String      statusInStore,
         String      zoneName,
-        boolean     alreadyRegistered
+        boolean     alreadyRegistered,
+        String      imageUrl
 ) {}

@@ -40,6 +40,11 @@ import com.storelense.gateBt.data.remote.dto.GateCheckDto
 import com.storelense.gateBt.data.remote.dto.IdentifyEpcResponse
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 
 // ── Colours ───────────────────────────────────────────────────────────────────
 
@@ -55,6 +60,57 @@ private val DarkText       = Color(0xFF1E293B)
 private val SubText        = Color(0xFF64748B)
 private val AmberBt        = Color(0xFFF59E0B)
 
+/** Set by GateScanScreen so any nested card can trigger the full-screen zoom viewer
+ *  without threading a callback through every intermediate composable. */
+private val LocalImageZoomHandler = compositionLocalOf<(String) -> Unit> { {} }
+
+private fun resolveImageUrl(relativeUrl: String) =
+    com.storelense.gateBt.BuildConfig.BASE_URL.trimEnd('/') + relativeUrl
+
+@Composable
+private fun ZoomableImageDialog(imageUrl: String, onDismiss: () -> Unit) {
+    var scale by remember { mutableStateOf(1f) }
+    var offsetX by remember { mutableStateOf(0f) }
+    var offsetY by remember { mutableStateOf(0f) }
+
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.95f))
+                .pointerInput(Unit) {
+                    detectTransformGestures { _, pan, zoom, _ ->
+                        scale = (scale * zoom).coerceIn(1f, 5f)
+                        offsetX += pan.x
+                        offsetY += pan.y
+                    }
+                }
+        ) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current).data(imageUrl).crossfade(true).build(),
+                contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer(
+                        scaleX = scale, scaleY = scale,
+                        translationX = offsetX, translationY = offsetY
+                    )
+            )
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.15f))
+            ) {
+                Icon(Icons.Default.Close, "Close", tint = Color.White)
+            }
+        }
+    }
+}
+
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -68,6 +124,7 @@ fun GateScanScreen(
     val state       by vm.state.collectAsStateWithLifecycle()
     val storeConfig by vm.storeConfig.collectAsStateWithLifecycle()
 
+    var zoomedImageUrl by remember { mutableStateOf<String?>(null) }
     var flashEan by remember { mutableStateOf<String?>(null) }
     val toneGenerator = remember {
         android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 80)
@@ -95,6 +152,7 @@ fun GateScanScreen(
         if (flashEan != null) { kotlinx.coroutines.delay(600); flashEan = null }
     }
 
+    CompositionLocalProvider(LocalImageZoomHandler provides { url -> zoomedImageUrl = url }) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -161,6 +219,7 @@ fun GateScanScreen(
                     extraEpcs      = state.extraEpcs,
                     extraBarcodes  = state.extraBarcodes,
                     extraEpcInfo   = state.extraEpcInfo,
+                    extraBarcodeInfo = state.extraBarcodeInfo,
                     onNextCustomer = { vm.reset() }
                 )
                 !state.hasBill        -> NoBillView(
@@ -189,6 +248,11 @@ fun GateScanScreen(
             }
             }
         }
+    }
+    }
+
+    zoomedImageUrl?.let { url ->
+        ZoomableImageDialog(imageUrl = url, onDismiss = { zoomedImageUrl = null })
     }
 }
 
@@ -601,6 +665,7 @@ private fun ReleasedView(
     extraEpcs: List<String>,
     extraBarcodes: List<String> = emptyList(),
     extraEpcInfo: Map<String, IdentifyEpcResponse?> = emptyMap(),
+    extraBarcodeInfo: Map<String, com.storelense.gateBt.data.remote.dto.EpcsByEanResponse?> = emptyMap(),
     onNextCustomer: () -> Unit
 ) {
     val okItems      = items.filter { it.status == LineStatus.FULFILLED && !it.isNonRfid }
@@ -664,7 +729,7 @@ private fun ReleasedView(
                     item { ExtraEpcsCard(epcs = extraEpcs, epcInfo = extraEpcInfo) }
                 }
                 if (extraBarcodes.isNotEmpty()) {
-                    item { ExtraBarcodesCard(eans = extraBarcodes) }
+                    item { ExtraBarcodesCard(eans = extraBarcodes, barcodeInfo = extraBarcodeInfo) }
                 }
             }
             if (missingItems.isNotEmpty()) {
@@ -807,7 +872,7 @@ private fun ActiveGateView(
                     ExtraEpcsCard(epcs = state.extraEpcs, epcInfo = state.extraEpcInfo)
                 }
                 if (state.extraBarcodes.isNotEmpty()) {
-                    ExtraBarcodesCard(eans = state.extraBarcodes)
+                    ExtraBarcodesCard(eans = state.extraBarcodes, barcodeInfo = state.extraBarcodeInfo)
                 }
             }
 
@@ -922,9 +987,11 @@ private fun BillLineCard(line: BillLineItem, justMatched: Boolean = false) {
     ) {
         Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             if (line.imageUrl != null) {
+                val fullUrl = resolveImageUrl(line.imageUrl)
+                val zoomHandler = LocalImageZoomHandler.current
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
-                        .data(com.storelense.gateBt.BuildConfig.BASE_URL.trimEnd('/') + line.imageUrl)
+                        .data(fullUrl)
                         .crossfade(true)
                         .build(),
                     contentDescription = null,
@@ -933,6 +1000,7 @@ private fun BillLineCard(line: BillLineItem, justMatched: Boolean = false) {
                         .size(44.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color(0xFFF3F4F6))
+                        .clickable { zoomHandler(fullUrl) }
                 )
                 Spacer(Modifier.width(12.dp))
             }
@@ -1052,6 +1120,24 @@ private fun ExtraEpcRow(
             modifier          = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (info?.imageUrl != null) {
+                val fullUrl = resolveImageUrl(info.imageUrl)
+                val zoomHandler = LocalImageZoomHandler.current
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(fullUrl)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = null,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFFF3F4F6))
+                        .clickable { zoomHandler(fullUrl) }
+                )
+                Spacer(Modifier.width(12.dp))
+            }
             Box(
                 modifier = Modifier
                     .size(10.dp)
@@ -1126,29 +1212,95 @@ private fun NonRfidWarningCard(items: List<BillLineItem>) {
 // ── Extra barcodes warning ────────────────────────────────────────────────────
 
 @Composable
-private fun ExtraBarcodesCard(eans: List<String>) {
+private fun ExtraBarcodesCard(
+    eans: List<String>,
+    barcodeInfo: Map<String, com.storelense.gateBt.data.remote.dto.EpcsByEanResponse?> = emptyMap()
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+            Icon(Icons.Default.Warning, null, Modifier.size(20.dp), tint = OrangeExtra)
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text("Extra barcodes scanned", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = OrangeExtra)
+                Text(
+                    "${eans.size} barcode${if (eans.size != 1) "s" else ""} not on this bill — inspect bag",
+                    fontSize = 12.sp, color = Color(0xFF92400E)
+                )
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            eans.forEach { ean ->
+                val hasKey = barcodeInfo.containsKey(ean)
+                ExtraBarcodeRow(ean = ean, info = barcodeInfo[ean], resolved = hasKey)
+            }
+        }
+    }
+}
+
+/** Styled to match ExtraEpcRow so a scanned-but-unbilled barcode reads the same
+ *  visual language as an unexpected RFID tag. */
+@Composable
+private fun ExtraBarcodeRow(
+    ean: String,
+    info: com.storelense.gateBt.data.remote.dto.EpcsByEanResponse?,
+    resolved: Boolean
+) {
     Card(
         modifier  = Modifier.fillMaxWidth(),
-        colors    = CardDefaults.cardColors(containerColor = Color(0xFFFFF7ED)),
+        colors    = CardDefaults.cardColors(containerColor = SurfaceWhite),
         shape     = RoundedCornerShape(10.dp),
         elevation = CardDefaults.cardElevation(1.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Warning, null, Modifier.size(22.dp), tint = OrangeExtra)
+        Row(
+            modifier          = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (info?.imageUrl != null) {
+                val fullUrl = resolveImageUrl(info.imageUrl)
+                val zoomHandler = LocalImageZoomHandler.current
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(fullUrl)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = null,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFFF3F4F6))
+                        .clickable { zoomHandler(fullUrl) }
+                )
                 Spacer(Modifier.width(12.dp))
-                Column {
-                    Text("Extra barcodes scanned", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = OrangeExtra)
-                    Text(
-                        "${eans.size} barcode${if (eans.size != 1) "s" else ""} not on this bill — inspect bag",
-                        fontSize = 12.sp, color = Color(0xFF92400E)
-                    )
-                }
             }
-            Spacer(Modifier.height(8.dp))
-            eans.forEach { ean ->
-                Text("• EAN $ean", fontSize = 12.sp, color = Color(0xFF92400E),
-                    modifier = Modifier.padding(start = 34.dp, top = 2.dp))
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(if (!resolved) GrayPending else OrangeExtra)
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    when {
+                        info != null -> info.productName
+                        resolved     -> "Unknown barcode"
+                        else         -> "Looking up…"
+                    },
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize   = 15.sp,
+                    color      = DarkText,
+                    maxLines   = 1,
+                    overflow   = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(2.dp))
+                Row {
+                    if (info?.sku != null) {
+                        Text(info.sku, fontSize = 12.sp, color = SubText)
+                        Text("  ·  ", fontSize = 12.sp, color = SubText)
+                    }
+                    Text("EAN $ean", fontSize = 12.sp, color = SubText)
+                }
             }
         }
     }
