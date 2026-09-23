@@ -34,6 +34,9 @@ class GateRfidAdapter @Inject constructor(
 
     suspend fun connect() = reader.connect()
 
+    /** Pushes the configured antenna TX power to the reader. No-op until connected. */
+    fun setTxPower(dbm: Int) = reader.setTxPower(dbm)
+
     suspend fun disconnect() {
         autoReconnectJob?.cancel()
         reader.disconnect()

@@ -4,12 +4,12 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
-import com.storelense.gateBt.data.remote.dto.BillLookupItem
+import com.storelense.gateBt.data.remote.dto.BillSummaryDto
 import com.storelense.gateBt.data.remote.dto.EpcsByEanResponse
-import com.storelense.gateBt.data.remote.dto.GateCheckDto
 import com.storelense.gateBt.data.remote.dto.IdentifyEpcResponse
 import com.storelense.gateBt.data.repository.AuthRepository
 import com.storelense.gateBt.data.repository.GateRepository
+import com.storelense.gateBt.data.repository.ReaderSettingsRepository
 import com.storelense.gateBt.data.repository.Result
 import com.storelense.gateBt.data.repository.StoreConfig
 import com.storelense.gateBt.data.repository.StoreConfigRepository
@@ -48,7 +48,8 @@ data class BillLineItem(
     val matchedEpcs:          List<String>  = emptyList(),
     val barcodeVerifiedCount: Int           = 0,
     val resolveError:         String?       = null,
-    val imageUrl:             String?       = null
+    val imageUrl:             String?       = null,
+    val unitPrice:            java.math.BigDecimal? = null
 ) {
     val isNonRfid:    Boolean    get() = isRfidEnabled == false
     val verifiedCount: Int       get() = if (isNonRfid) barcodeVerifiedCount else matchedEpcs.size
@@ -77,11 +78,11 @@ data class GateState(
     val isReleasing:           Boolean                         = false,
     val released:              Boolean                         = false,
     val markedCount:           Int                             = 0,
+    val gateCheckId:           String?                         = null,
+    val needsResolution:       Boolean                         = false,
     val error:                 String?                         = null,
     val hasBill:               Boolean                         = false,
-    val recentBills:           List<GateCheckDto>              = emptyList(),
-    val billDetailsCache:      Map<String, List<BillLookupItem>> = emptyMap(),
-    val loadingBillDetailsFor: String?                         = null,
+    val pendingBills:          List<BillSummaryDto>            = emptyList(),
     val btConnected:           Boolean                         = false,
     val btConnecting:          Boolean                         = false,
     val btError:               String?                         = null
@@ -106,7 +107,8 @@ private data class BillQrItem(
     val qty:           Int      = 1,
     val isRfidEnabled: Boolean? = null,
     val productName:   String?  = null,
-    val imageUrl:      String?  = null
+    val imageUrl:      String?  = null,
+    val unitPrice:     java.math.BigDecimal? = null
 )
 
 // ── ViewModel ─────────────────────────────────────────────────────────────────
@@ -117,6 +119,7 @@ class GateScanViewModel @Inject constructor(
     private val authRepo:        AuthRepository,
     private val storeConfigRepo: StoreConfigRepository,
     private val rfid:            GateRfidAdapter,
+    private val readerSettings:  ReaderSettingsRepository,
     private val gson:            Gson,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -138,7 +141,7 @@ class GateScanViewModel @Inject constructor(
         }
         rfid.watchAndAutoReconnect()
         connectReader()
-        loadRecentBills()
+        loadPendingBills()
     }
 
     // ── BT connection ──────────────────────────────────────────────────────────
@@ -148,6 +151,10 @@ class GateScanViewModel @Inject constructor(
             _state.update { it.copy(btConnecting = true, btError = null) }
             try {
                 rfid.connect()
+                // The MUBR01 boots at its own hardware-default TX power, which can be
+                // too low to energize tags across a full bag — push the configured
+                // power (Settings → BT Device) on every successful connect.
+                rfid.setTxPower(readerSettings.load().txPowerDbm)
                 _state.update { it.copy(btConnecting = false, btError = null) }
             } catch (e: Exception) {
                 _state.update { it.copy(btConnecting = false, btError = e.message) }
@@ -156,29 +163,13 @@ class GateScanViewModel @Inject constructor(
         }
     }
 
-    // ── Recent bills ───────────────────────────────────────────────────────────
+    // ── Pending bills ──────────────────────────────────────────────────────────
 
-    fun loadRecentBills() {
+    fun loadPendingBills() {
         viewModelScope.launch {
-            when (val r = gateRepo.getMyRecentChecks()) {
-                is Result.Success -> _state.update { it.copy(recentBills = r.data) }
+            when (val r = gateRepo.getPendingBills()) {
+                is Result.Success -> _state.update { it.copy(pendingBills = r.data) }
                 is Result.Error   -> { /* non-critical */ }
-            }
-        }
-    }
-
-    fun loadBillDetails(billRef: String) {
-        if (billRef.isBlank() || _state.value.billDetailsCache.containsKey(billRef)) return
-        viewModelScope.launch {
-            _state.update { it.copy(loadingBillDetailsFor = billRef) }
-            when (val r = gateRepo.lookupBill(billRef)) {
-                is Result.Success -> _state.update {
-                    it.copy(
-                        billDetailsCache      = it.billDetailsCache + (billRef to r.data.items),
-                        loadingBillDetailsFor = null
-                    )
-                }
-                is Result.Error -> _state.update { it.copy(loadingBillDetailsFor = null) }
             }
         }
     }
@@ -206,6 +197,17 @@ class GateScanViewModel @Inject constructor(
         lookupBillByRef(billRef)
     }
 
+    /** Renders a raw ISO-8601 timestamp from the backend as a short local time for
+     *  display in the "already checked" error — falls back to the raw string if it
+     *  doesn't parse (defensive against format drift, never worth crashing over). */
+    private fun formatCheckedAt(iso: String): String = try {
+        val instant = java.time.OffsetDateTime.parse(iso)
+        instant.atZoneSameInstant(java.time.ZoneId.systemDefault())
+            .format(java.time.format.DateTimeFormatter.ofPattern("d MMM, h:mm a"))
+    } catch (_: Exception) {
+        iso
+    }
+
     private fun lookupBillByRef(billRef: String) {
         viewModelScope.launch {
             _state.update { it.copy(isResolvingBill = true, hasBill = true, billRef = billRef, error = null) }
@@ -217,10 +219,12 @@ class GateScanViewModel @Inject constructor(
                                 isResolvingBill = false,
                                 hasBill = false, billRef = "",
                                 error = "Bill '$billRef' was already ${r.data.status.lowercase()} at the gate" +
-                                    (r.data.gateCheckedAt?.let { ts -> " ($ts)" } ?: "") +
+                                    (r.data.gateCheckedAt?.let { ts -> " (${formatCheckedAt(ts)})" } ?: "") +
                                     " — contact your manager if it needs re-checking."
                             )
                         }
+                        // Our cached pending list is stale for this bill — refresh it.
+                        loadPendingBills()
                         return@launch
                     }
                     val payload = BillQrPayload(
@@ -229,7 +233,7 @@ class GateScanViewModel @Inject constructor(
                             BillQrItem(
                                 ean = it.ean, qty = it.qty,
                                 isRfidEnabled = it.isRfidEnabled, productName = it.productName,
-                                imageUrl = it.imageUrl
+                                imageUrl = it.imageUrl, unitPrice = it.unitPrice
                             )
                         }
                     )
@@ -250,7 +254,8 @@ class GateScanViewModel @Inject constructor(
                 productName   = qrItem.productName ?: "Resolving…",
                 qtyRequired   = qrItem.qty.coerceAtLeast(1),
                 isRfidEnabled = qrItem.isRfidEnabled,
-                imageUrl      = qrItem.imageUrl
+                imageUrl      = qrItem.imageUrl,
+                unitPrice     = qrItem.unitPrice
             )
         }
         _state.update {
@@ -301,19 +306,6 @@ class GateScanViewModel @Inject constructor(
                 s.copy(items = updatedItems, isResolvingBill = false)
             }
         }
-    }
-
-    fun loadDemoBill() {
-        if (!com.storelense.gateBt.BuildConfig.DEBUG) return
-        processBillPayload(
-            BillQrPayload(
-                billRef = "DEMO-BILL-001",
-                items   = listOf(
-                    BillQrItem(ean = "8901234567890", qty = 2, isRfidEnabled = true),
-                    BillQrItem(ean = "8901234567891", qty = 1, isRfidEnabled = false, productName = "Demo Non-RFID Item")
-                )
-            )
-        )
     }
 
     // ── RFID scan ──────────────────────────────────────────────────────────────
@@ -451,19 +443,35 @@ class GateScanViewModel @Inject constructor(
             }
 
             val markedCount = (epcResult as Result.Success).data
-            launch {
-                gateRepo.recordGateCheck(
-                    billRef       = s.billRef,
-                    expectedCount = s.totalRequired,
-                    matchedCount  = s.totalMatched,
-                    extraCount    = s.extraEpcs.size + s.extraBarcodes.size,
-                    outcome       = outcome,
-                    epcsMatched   = matchedEpcs,
-                    epcsExtra     = s.extraEpcs
+            val checkResult = gateRepo.recordGateCheck(
+                billRef       = s.billRef,
+                expectedCount = s.totalRequired,
+                matchedCount  = s.totalMatched,
+                extraCount    = s.extraEpcs.size + s.extraBarcodes.size,
+                outcome       = outcome,
+                epcsMatched   = matchedEpcs,
+                epcsExtra     = s.extraEpcs
+            )
+            val gateCheckId = (checkResult as? Result.Success)?.data
+            _state.update {
+                it.copy(
+                    isReleasing = false, released = true, markedCount = markedCount,
+                    gateCheckId = gateCheckId, needsResolution = flagged
                 )
             }
-            _state.update { it.copy(isReleasing = false, released = true, markedCount = markedCount) }
-            loadRecentBills()
+            loadPendingBills()
+        }
+    }
+
+    /** Records how the guard/manager closed out a FLAGGED release. */
+    fun resolveFlag(resolution: String) {
+        val gateCheckId = _state.value.gateCheckId ?: run {
+            _state.update { it.copy(needsResolution = false) }
+            return
+        }
+        viewModelScope.launch {
+            gateRepo.resolveGateCheck(gateCheckId, resolution)
+            _state.update { it.copy(needsResolution = false) }
         }
     }
 
@@ -471,7 +479,9 @@ class GateScanViewModel @Inject constructor(
 
     fun reset() {
         stopRfidScan()
-        _state.update { GateState(recentBills = it.recentBills, btConnected = it.btConnected) }
+        _state.update {
+            GateState(pendingBills = it.pendingBills, btConnected = it.btConnected)
+        }
     }
 
     fun logout() {

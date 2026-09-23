@@ -216,6 +216,34 @@ public class GateCheckService {
                 .list();
     }
 
+    private static final List<String> VALID_RESOLUTIONS =
+            List.of("CUSTOMER_VERIFIED", "THEFT_PREVENTED", "ESCALATED");
+
+    /** Records how a guard/manager closed out a FLAGGED release — customer verified
+     *  fine, an item was physically recovered, or it was escalated to a supervisor. */
+    @Transactional
+    public void resolve(UUID gateCheckId, String resolution, UUID resolvedBy) {
+        String normalized = resolution == null ? null : resolution.toUpperCase();
+        if (normalized == null || !VALID_RESOLUTIONS.contains(normalized)) {
+            throw new IllegalArgumentException("Invalid resolution: " + resolution);
+        }
+
+        int updated = jdbcClient.sql("""
+                UPDATE inventory.gate_checks
+                SET resolution = :resolution, resolved_by = CAST(:resolvedBy AS uuid), resolved_at = :now
+                WHERE id = CAST(:id AS uuid)
+                """)
+                .param("resolution", normalized)
+                .param("resolvedBy", resolvedBy != null ? resolvedBy.toString() : null)
+                .param("now", OffsetDateTime.now(ZoneOffset.UTC))
+                .param("id", gateCheckId.toString())
+                .update();
+
+        if (updated == 0) {
+            throw new java.util.NoSuchElementException("Gate check not found: " + gateCheckId);
+        }
+    }
+
     private List<String> arrayToList(String[] arr) {
         return arr != null ? Arrays.asList(arr) : List.of();
     }

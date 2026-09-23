@@ -73,6 +73,29 @@ data class NonRfidSaleItem(
     val qty: Int
 )
 
+data class PageResponse<T>(
+    val content:       List<T> = emptyList(),
+    val page:           Int    = 0,
+    val size:           Int    = 0,
+    val totalElements:  Long   = 0,
+    val totalPages:     Int    = 0,
+    val last:            Boolean = true
+)
+
+/** One row in the pending-bills list — a bill registered at POS that has never
+ *  passed the guard app (status stays PENDING until a gate check stamps it). */
+data class BillSummaryDto(
+    val id:            String,
+    val billRef:       String,
+    val storeId:       String,
+    val cashierId:     String?,
+    val totalItems:    Int,
+    val totalValue:    String?,
+    val status:        String,
+    val createdAt:     String?,
+    val gateCheckedAt: String?
+)
+
 // ── Gate check ────────────────────────────────────────────────────────────────
 
 data class GateCheckRequest(
@@ -94,6 +117,8 @@ data class GateCheckSummaryDto(
     val totalExtraItems: Int = 0
 )
 
+data class GateCheckResolutionRequest(val resolution: String)
+
 data class GateCheckDto(
     val id:            String,
     val billRef:       String?,
@@ -101,7 +126,8 @@ data class GateCheckDto(
     val expectedCount: Int,
     val matchedCount:  Int,
     val extraCount:    Int,
-    val checkedAt:     String?
+    val checkedAt:     String?,
+    val epcsExtra:     List<String> = emptyList()
 )
 
 // ── Bill lookup ───────────────────────────────────────────────────────────────
@@ -121,7 +147,8 @@ data class BillLookupItem(
     /** From products.is_rfid_enabled, joined at bill-lookup time. null = unknown/no
      *  barcode row yet (treat as RFID); only a confirmed false means "verify by barcode". */
     val isRfidEnabled: Boolean? = null,
-    val imageUrl:      String? = null
+    val imageUrl:      String? = null,
+    val unitPrice:     java.math.BigDecimal? = null
 )
 
 // ── Store features ────────────────────────────────────────────────────────────

@@ -87,6 +87,8 @@ class GateRepository @Inject constructor(
         }
     }
 
+    /** Returns the created gate check's id (used to later record its resolution),
+     *  or null if logging failed — fire-and-forget, never blocks the release itself. */
     suspend fun recordGateCheck(
         billRef:       String,
         expectedCount: Int,
@@ -95,17 +97,30 @@ class GateRepository @Inject constructor(
         outcome:       String,
         epcsMatched:   List<String>,
         epcsExtra:     List<String>
-    ): Result<Unit> {
+    ): Result<String?> {
         val storeId = tokenManager.storeId ?: return Result.Error("Not logged in")
         return try {
             val resp = api.recordGateCheck(
                 GateCheckRequest(storeId, billRef, expectedCount, matchedCount, extraCount, outcome, epcsMatched, epcsExtra)
             )
-            if (resp.isSuccessful) Result.Success(Unit)
+            val body = resp.body()
+            if (resp.isSuccessful && body?.success == true) Result.Success(body.data?.id)
             else Result.Error("Failed to record gate check")
         } catch (e: Exception) {
             Timber.e(e, "Error recording gate check (ignored)")
-            Result.Success(Unit) // fire-and-forget — don't block release on logging failure
+            Result.Success(null) // fire-and-forget — don't block release on logging failure
+        }
+    }
+
+    /** Records how a FLAGGED gate check was resolved (customer verified / item
+     *  recovered / escalated to supervisor). */
+    suspend fun resolveGateCheck(gateCheckId: String, resolution: String): Result<Unit> {
+        return try {
+            val resp = api.resolveGateCheck(gateCheckId, GateCheckResolutionRequest(resolution))
+            if (resp.isSuccessful) Result.Success(Unit)
+            else Result.Error(resp.body()?.message ?: "Failed to save resolution")
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Network error")
         }
     }
 
@@ -132,6 +147,22 @@ class GateRepository @Inject constructor(
                 Result.Success(body.data)
             else
                 Result.Error(body?.message ?: "Failed to load recent checks")
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Network error")
+        }
+    }
+
+    /** Bills registered at POS that have never passed the guard app — shown on the
+     *  gate home screen so a guard can see the store's un-checked bills at a glance. */
+    suspend fun getPendingBills(): Result<List<BillSummaryDto>> {
+        val storeId = tokenManager.storeId ?: return Result.Error("Not logged in")
+        return try {
+            val resp = api.getPendingBills(storeId)
+            val body = resp.body()
+            if (resp.isSuccessful && (body?.success == true) && (body.data != null))
+                Result.Success(body.data.content)
+            else
+                Result.Error(body?.message ?: "Failed to load pending bills")
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")
         }

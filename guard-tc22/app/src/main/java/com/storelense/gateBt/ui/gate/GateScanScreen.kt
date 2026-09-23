@@ -10,6 +10,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,8 +37,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.storelense.gateBt.data.remote.dto.BillLookupItem
-import com.storelense.gateBt.data.remote.dto.GateCheckDto
+import com.storelense.gateBt.data.remote.dto.BillSummaryDto
 import com.storelense.gateBt.data.remote.dto.IdentifyEpcResponse
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -45,6 +46,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.launch
 
 // ── Colours ───────────────────────────────────────────────────────────────────
 
@@ -214,22 +216,20 @@ fun GateScanScreen(
             Box(modifier = Modifier.weight(1f)) {
             when {
                 state.released        -> ReleasedView(
-                    markedCount    = state.markedCount,
-                    items          = state.items,
-                    extraEpcs      = state.extraEpcs,
-                    extraBarcodes  = state.extraBarcodes,
-                    extraEpcInfo   = state.extraEpcInfo,
+                    markedCount      = state.markedCount,
+                    items            = state.items,
+                    extraEpcs        = state.extraEpcs,
+                    extraBarcodes    = state.extraBarcodes,
+                    extraEpcInfo     = state.extraEpcInfo,
                     extraBarcodeInfo = state.extraBarcodeInfo,
-                    onNextCustomer = { vm.reset() }
+                    needsResolution  = state.needsResolution,
+                    onResolve        = { vm.resolveFlag(it) },
+                    onNextCustomer   = { vm.reset() }
                 )
                 !state.hasBill        -> NoBillView(
-                    onLoadDemo          = { vm.loadDemoBill() },
                     onQrScanned         = { vm.onQrScanned(it) },
                     errorMessage        = state.error,
-                    recentBills         = state.recentBills,
-                    billDetailsCache    = state.billDetailsCache,
-                    loadingBillRef      = state.loadingBillDetailsFor,
-                    onExpandBill        = { vm.loadBillDetails(it) },
+                    pendingBills        = state.pendingBills,
                     cameraEnabled       = storeConfig.cameraEnabled,
                     manualEntryEnabled  = storeConfig.manualEntryEnabled
                 )
@@ -243,7 +243,8 @@ fun GateScanScreen(
                     onStop            = { vm.stopRfidScan() },
                     onRelease         = { vm.releaseCustomer(flagged = false) },
                     onFlagRelease     = { vm.releaseCustomer(flagged = true) },
-                    onBarcodeScanned  = { vm.onBarcodeScanned(it) }
+                    onBarcodeScanned  = { vm.onBarcodeScanned(it) },
+                    onCancelBill      = { vm.reset() }
                 )
             }
             }
@@ -364,13 +365,9 @@ private fun BtStatusBanner(
 
 @Composable
 private fun NoBillView(
-    onLoadDemo:         () -> Unit,
     onQrScanned:        (String) -> Unit,
     errorMessage:       String?  = null,
-    recentBills:        List<GateCheckDto> = emptyList(),
-    billDetailsCache:   Map<String, List<BillLookupItem>> = emptyMap(),
-    loadingBillRef:     String?  = null,
-    onExpandBill:       (String) -> Unit = {},
+    pendingBills:       List<BillSummaryDto> = emptyList(),
     cameraEnabled:      Boolean  = false,
     manualEntryEnabled: Boolean  = true
 ) {
@@ -393,8 +390,6 @@ private fun NoBillView(
         if (ok) { cameraDenied = false; showCamera = true }
         else cameraLauncher.launch(android.Manifest.permission.CAMERA)
     }
-
-    LaunchedEffect(Unit) { try { focusRequester.requestFocus() } catch (_: Exception) {} }
 
     if (showCamera) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -526,114 +521,50 @@ private fun NoBillView(
             }
         }
 
-        if (com.storelense.gateBt.BuildConfig.DEBUG) {
-            Spacer(Modifier.height(12.dp))
-            OutlinedButton(
-                onClick = onLoadDemo,
-                colors  = ButtonDefaults.outlinedButtonColors(contentColor = TealPrimary)
-            ) {
-                Icon(Icons.Default.BugReport, null, Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Load Demo Bill")
-            }
-        }
-
-        if (recentBills.isNotEmpty()) {
+        if (pendingBills.isNotEmpty()) {
             Spacer(Modifier.height(28.dp))
-            RecentlyScannedSection(recentBills, billDetailsCache, loadingBillRef, onExpandBill)
+            PendingBillsSection(pendingBills)
         }
     }
 }
 
-// ── Recently scanned bills ────────────────────────────────────────────────────
+// ── Store-wide unchecked bills ────────────────────────────────────────────────
 
 @Composable
-private fun RecentlyScannedSection(
-    recentBills:      List<GateCheckDto>,
-    billDetailsCache: Map<String, List<BillLookupItem>>,
-    loadingBillRef:   String?,
-    onExpandBill:     (String) -> Unit
-) {
-    var expandedBillRef by remember { mutableStateOf<String?>(null) }
-
+private fun PendingBillsSection(pendingBills: List<BillSummaryDto>) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.History, null, Modifier.size(16.dp), tint = SubText)
+            Icon(Icons.Default.ReportProblem, null, Modifier.size(16.dp), tint = Color(0xFFDC2626))
             Spacer(Modifier.width(6.dp))
             Text(
-                "Recently scanned (already done — tap for items)",
-                fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = SubText
+                "Unbilled bills in store (not yet checked at gate)",
+                fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFDC2626)
             )
         }
         Spacer(Modifier.height(8.dp))
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            recentBills.take(10).forEach { check ->
-                val billRef   = check.billRef
-                val isExpanded = billRef != null && expandedBillRef == billRef
-                val outcomeColor = when (check.outcome) {
-                    "RELEASED"  -> GreenFulfilled
-                    "FLAGGED"   -> Color(0xFFDC2626)
-                    "ABANDONED" -> GrayPending
-                    else        -> SubText
-                }
+            pendingBills.forEach { bill ->
                 Card(
                     modifier  = Modifier.fillMaxWidth(),
                     colors    = CardDefaults.cardColors(containerColor = SurfaceWhite),
                     shape     = RoundedCornerShape(8.dp),
                     elevation = CardDefaults.cardElevation(1.dp)
                 ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .then(if (billRef != null) Modifier.clickable {
-                                    expandedBillRef = if (isExpanded) null else billRef
-                                    if (!isExpanded) onExpandBill(billRef)
-                                } else Modifier)
-                                .padding(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                billRef ?: "—",
-                                fontSize = 13.sp, fontWeight = FontWeight.Medium, color = DarkText,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text("${check.matchedCount}/${check.expectedCount}", fontSize = 11.sp, color = SubText)
-                            Spacer(Modifier.width(8.dp))
-                            Text(check.outcome, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = outcomeColor)
-                            if (billRef != null) {
-                                Spacer(Modifier.width(4.dp))
-                                Icon(
-                                    if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                    null, Modifier.size(16.dp), tint = SubText
-                                )
-                            }
-                        }
-                        if (isExpanded && billRef != null) {
-                            val details = billDetailsCache[billRef]
-                            Column(modifier = Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 10.dp)) {
-                                when {
-                                    loadingBillRef == billRef -> Text("Loading items…", fontSize = 12.sp, color = SubText)
-                                    details == null           -> Text("Could not load items", fontSize = 12.sp, color = Color(0xFFDC2626))
-                                    details.isEmpty()         -> Text("No items on this bill", fontSize = 12.sp, color = SubText)
-                                    else -> details.forEach { item ->
-                                        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                                            Text(
-                                                item.productName ?: "EAN ${item.ean}",
-                                                fontSize = 12.sp, color = DarkText,
-                                                modifier = Modifier.weight(1f),
-                                                maxLines = 1, overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text("EAN ${item.ean}", fontSize = 11.sp, color = SubText)
-                                            Spacer(Modifier.width(8.dp))
-                                            Text("x${item.qty}", fontSize = 11.sp, color = SubText)
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            bill.billRef,
+                            fontSize = 13.sp, fontWeight = FontWeight.Medium, color = DarkText,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "${bill.totalItems} item${if (bill.totalItems != 1) "s" else ""}",
+                            fontSize = 11.sp, color = SubText
+                        )
                     }
                 }
             }
@@ -666,6 +597,8 @@ private fun ReleasedView(
     extraBarcodes: List<String> = emptyList(),
     extraEpcInfo: Map<String, IdentifyEpcResponse?> = emptyMap(),
     extraBarcodeInfo: Map<String, com.storelense.gateBt.data.remote.dto.EpcsByEanResponse?> = emptyMap(),
+    needsResolution: Boolean = false,
+    onResolve: (String) -> Unit = {},
     onNextCustomer: () -> Unit
 ) {
     val okItems      = items.filter { it.status == LineStatus.FULFILLED && !it.isNonRfid }
@@ -675,40 +608,53 @@ private fun ReleasedView(
     val isFlagged    = hasUnbilled || missingItems.isNotEmpty()
     val bannerColor  = if (isFlagged) Color(0xFFDC2626) else GreenFulfilled
 
+    if (isFlagged && needsResolution) {
+        ResolutionBottomSheet(
+            checkByEyeCount = checkByEye.size,
+            onResolve       = onResolve
+        )
+    }
+
     Column(modifier = Modifier.fillMaxSize().background(BgPage)) {
         Column(
             modifier = Modifier.fillMaxWidth().background(bannerColor)
-                .padding(horizontal = 32.dp, vertical = 32.dp),
+                .padding(horizontal = 24.dp, vertical = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(
                 if (isFlagged) Icons.Default.ReportProblem else Icons.Default.CheckCircle,
-                null, Modifier.size(64.dp), tint = Color.White
+                null, Modifier.size(36.dp), tint = Color.White
             )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(8.dp))
             Text(
                 if (isFlagged) "FLAGGED" else "Customer Released",
-                color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold
+                color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold
             )
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(4.dp))
             if (isFlagged) {
                 val parts = mutableListOf<String>()
                 if (hasUnbilled) parts += "${extraEpcs.size + extraBarcodes.size} unbilled"
                 if (missingItems.isNotEmpty()) parts += "${missingItems.size} not in bag"
                 Text(
                     parts.joinToString(" · "),
-                    color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                    color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center
                 )
-                Spacer(Modifier.height(4.dp))
-                Text("Check with customer", color = Color.White.copy(alpha = 0.9f), fontSize = 13.sp, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(2.dp))
+                Text("Check with customer", color = Color.White.copy(alpha = 0.9f), fontSize = 11.sp, textAlign = TextAlign.Center)
             } else {
                 Text(
                     "$markedCount EPC${if (markedCount != 1) "s" else ""} marked as sold in RFID ledger",
-                    color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp, textAlign = TextAlign.Center
+                    color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp, textAlign = TextAlign.Center
                 )
             }
         }
+        ResultStatsCard(
+            total   = items.size,
+            ok      = okItems.size + checkByEye.count { it.status == LineStatus.FULFILLED },
+            extra   = extraEpcs.size + extraBarcodes.size,
+            missing = missingItems.size
+        )
         LazyColumn(
             modifier            = Modifier.weight(1f),
             contentPadding      = PaddingValues(16.dp),
@@ -760,6 +706,127 @@ private fun ReleasedView(
     }
 }
 
+// ── Result stats (Total / OK / Extra / Missing) ───────────────────────────────
+
+@Composable
+private fun ResultStatsCard(total: Int, ok: Int, extra: Int, missing: Int) {
+    Card(
+        modifier  = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        colors    = CardDefaults.cardColors(containerColor = SurfaceWhite),
+        shape     = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(1.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            ResultStat("Total", total, DarkText)
+            ResultStat("OK", ok, GreenFulfilled)
+            ResultStat("Extra", extra, Color(0xFFDC2626))
+            ResultStat("Missing", missing, AmberPartial)
+        }
+    }
+}
+
+@Composable
+private fun ResultStat(label: String, value: Int, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("$value", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = color)
+        Text(label, fontSize = 11.sp, color = SubText)
+    }
+}
+
+// ── Resolution bottom sheet ───────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ResolutionBottomSheet(
+    checkByEyeCount: Int,
+    onResolve: (String) -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = { /* must pick an action — no dismiss */ }) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(Icons.Default.Warning, null, Modifier.size(40.dp), tint = Color(0xFFD97706))
+            Spacer(Modifier.height(8.dp))
+            Text("Action needed", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = DarkText)
+            Spacer(Modifier.height(16.dp))
+
+            if (checkByEyeCount > 0) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors   = CardDefaults.cardColors(containerColor = Color(0xFFFEF3C7)),
+                    shape    = RoundedCornerShape(8.dp)
+                ) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Visibility, null, Modifier.size(16.dp), tint = Color(0xFF92400E))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "$checkByEyeCount item${if (checkByEyeCount != 1) "s" else ""} checked by eye — confirm you looked",
+                            fontSize = 13.sp, color = Color(0xFF92400E)
+                        )
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+
+            Text("How was this resolved?", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = DarkText)
+            Spacer(Modifier.height(12.dp))
+
+            ResolutionOption(
+                icon = Icons.Default.CheckCircle, iconTint = GreenFulfilled,
+                bg = Color(0xFFECFDF5),
+                text = "All good — customer verified",
+                onClick = { onResolve("CUSTOMER_VERIFIED") }
+            )
+            Spacer(Modifier.height(8.dp))
+            ResolutionOption(
+                icon = Icons.Default.Block, iconTint = Color(0xFFDC2626),
+                bg = Color(0xFFFEF2F2),
+                text = "Item recovered — theft prevented",
+                onClick = { onResolve("THEFT_PREVENTED") }
+            )
+            Spacer(Modifier.height(8.dp))
+            ResolutionOption(
+                icon = Icons.Default.Person, iconTint = Color(0xFF2563EB),
+                bg = Color(0xFFEFF6FF),
+                text = "Escalated to supervisor",
+                onClick = { onResolve("ESCALATED") }
+            )
+            Spacer(Modifier.height(20.dp))
+        }
+    }
+}
+
+@Composable
+private fun ResolutionOption(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconTint: Color,
+    bg: Color,
+    text: String,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier  = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        colors    = CardDefaults.cardColors(containerColor = bg),
+        shape     = RoundedCornerShape(10.dp),
+        elevation = CardDefaults.cardElevation(0.dp)
+    ) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier.size(28.dp).clip(CircleShape).background(iconTint.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, null, Modifier.size(16.dp), tint = iconTint)
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(text, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = DarkText)
+        }
+    }
+}
+
 // ── Result bucket header ──────────────────────────────────────────────────────
 
 @Composable
@@ -796,9 +863,13 @@ private fun ActiveGateView(
     onStop:            () -> Unit,
     onRelease:         () -> Unit,
     onFlagRelease:     () -> Unit,
-    onBarcodeScanned:  (String) -> Unit = {}
+    onBarcodeScanned:  (String) -> Unit = {},
+    onCancelBill:      () -> Unit = {}
 ) {
     var showFlagDialog by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+    val manualCheckSectionRequester = remember { BringIntoViewRequester() }
+    val manualCheckFocusRequester   = remember { FocusRequester() }
 
     if (showFlagDialog) {
         AlertDialog(
@@ -834,12 +905,29 @@ private fun ActiveGateView(
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
         ) {
+            BillRefBar(billRef = state.billRef, onCancel = onCancelBill)
+
             ProgressHeader(
                 totalMatched  = state.totalMatched,
                 totalRequired = state.totalRequired,
                 allFulfilled  = state.allFulfilled,
                 isScanning    = state.isScanning,
                 extraCount    = state.extraEpcs.size
+            )
+
+            BillStatsCard(
+                totalItems = state.totalRequired,
+                autoCheck  = state.items.filter { !it.isNonRfid }.sumOf { it.qtyRequired },
+                checkByEye = state.items.filter { it.isNonRfid }.sumOf { it.qtyRequired },
+                onAutoCheckClick   = { if (!state.isScanning) onStart() },
+                onManualCheckClick = {
+                    if (state.pendingNonRfidItems.isNotEmpty()) {
+                        coroutineScope.launch {
+                            manualCheckSectionRequester.bringIntoView()
+                            try { manualCheckFocusRequester.requestFocus() } catch (_: Exception) {}
+                        }
+                    }
+                }
             )
 
             state.error?.let { err ->
@@ -878,7 +966,11 @@ private fun ActiveGateView(
 
             // Non-RFID barcode entry strip — shown whenever there are pending non-RFID items
             if (state.pendingNonRfidItems.isNotEmpty()) {
-                NonRfidBarcodeEntry(onBarcodeScanned = onBarcodeScanned)
+                NonRfidBarcodeEntry(
+                    onBarcodeScanned = onBarcodeScanned,
+                    sectionRequester = manualCheckSectionRequester,
+                    focusRequester   = manualCheckFocusRequester
+                )
             }
         }
 
@@ -897,6 +989,71 @@ private fun ActiveGateView(
             onRelease          = onRelease,
             onFlagRelease      = { showFlagDialog = true }
         )
+    }
+}
+
+// ── Bill ref bar ──────────────────────────────────────────────────────────────
+
+@Composable
+private fun BillRefBar(billRef: String, onCancel: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .background(TealPrimary, RoundedCornerShape(12.dp))
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            billRef,
+            color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        IconButton(
+            onClick = onCancel,
+            modifier = Modifier.size(32.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.15f))
+        ) {
+            Icon(Icons.Default.Close, "Cancel bill", tint = Color.White, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+// ── Bill stats (Total Items / Auto Check / Manual Check) ─────────────────────
+
+@Composable
+private fun BillStatsCard(
+    totalItems: Int, autoCheck: Int, checkByEye: Int,
+    onAutoCheckClick:   () -> Unit = {},
+    onManualCheckClick: () -> Unit = {}
+) {
+    Card(
+        modifier  = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        colors    = CardDefaults.cardColors(containerColor = SurfaceWhite),
+        shape     = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(1.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            BillStat("Total Items", totalItems, DarkText)
+            BillStat("Auto Check", autoCheck, TealPrimary, onClick = onAutoCheckClick)
+            BillStat("Check by Eye", checkByEye, OrangeExtra, onClick = onManualCheckClick)
+        }
+    }
+}
+
+@Composable
+private fun BillStat(label: String, value: Int, color: Color, onClick: (() -> Unit)? = null) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = if (onClick != null) {
+            Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 2.dp)
+        } else Modifier
+    ) {
+        Text("$value", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = color)
+        Text(label, fontSize = 12.sp, color = SubText, textAlign = TextAlign.Center)
     }
 }
 
@@ -930,37 +1087,33 @@ private fun ProgressHeader(
                 )
                 Icon(
                     if (allFulfilled) Icons.Default.CheckCircle else Icons.Default.Nfc,
-                    null, Modifier.size(22.dp),
+                    null, Modifier.size(18.dp),
                     tint = if (allFulfilled) Color.White
-                           else TealAccent.copy(alpha = if (isScanning) pulseAlpha else 1f)
+                           else Color.White.copy(alpha = if (isScanning) pulseAlpha else 0.9f)
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    if (allFulfilled) "All items matched!" else if (isScanning) "Scanning bag…" else "Ready to scan",
-                    color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp
+                    if (allFulfilled) "All items matched" else if (isScanning) "Scanning bag…" else "Ready to scan",
+                    color = Color.White, fontWeight = FontWeight.Medium, fontSize = 14.sp
                 )
             }
-            Spacer(Modifier.height(10.dp))
-            Text("$totalMatched / $totalRequired items", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            Text("$totalMatched / $totalRequired items", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
             if (totalRequired > 0) {
                 Spacer(Modifier.height(10.dp))
                 LinearProgressIndicator(
                     progress   = { (totalMatched.toFloat() / totalRequired).coerceIn(0f, 1f) },
-                    modifier   = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-                    color      = if (allFulfilled) Color.White else TealAccent,
-                    trackColor = Color.White.copy(alpha = 0.3f)
+                    modifier   = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                    color      = Color.White,
+                    trackColor = Color.White.copy(alpha = 0.25f)
                 )
             }
             if (extraCount > 0) {
                 Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Warning, null, Modifier.size(13.dp), tint = Color(0xFFFEF3C7))
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        "$extraCount extra item${if (extraCount != 1) "s" else ""} not on bill",
-                        color = Color(0xFFFEF3C7), fontSize = 12.sp
-                    )
-                }
+                Text(
+                    "$extraCount extra item${if (extraCount != 1) "s" else ""} not on bill",
+                    color = Color(0xFFFEF3C7), fontSize = 12.sp
+                )
             }
         }
     }
@@ -1032,6 +1185,10 @@ private fun BillLineCard(line: BillLineItem, justMatched: Boolean = false) {
                         Text("  ·  ", fontSize = 12.sp, color = SubText)
                     }
                     Text("EAN ${line.ean}", fontSize = 12.sp, color = SubText)
+                }
+                line.unitPrice?.let { price ->
+                    Spacer(Modifier.height(2.dp))
+                    Text("₹$price", fontSize = 12.sp, color = SubText)
                 }
                 if (line.resolveError != null) {
                     Spacer(Modifier.height(3.dp))
@@ -1200,10 +1357,10 @@ private fun NonRfidWarningCard(items: List<BillLineItem>) {
             Icon(Icons.Default.Visibility, null, Modifier.size(18.dp), tint = Color(0xFF2563EB))
             Spacer(Modifier.width(8.dp))
             Text(
-                "${items.size} item${if (items.size != 1) "s" else ""} have no RFID — verify by barcode: " +
-                    items.joinToString(", ") { it.productName },
-                fontSize = 13.sp,
-                color    = Color(0xFF1D4ED8)
+                "${items.size} item${if (items.size != 1) "s" else ""} need manual barcode verification",
+                fontSize   = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color      = Color(0xFF1D4ED8)
             )
         }
     }
@@ -1309,10 +1466,18 @@ private fun ExtraBarcodeRow(
 // ── Non-RFID barcode entry strip ──────────────────────────────────────────────
 
 @Composable
-private fun NonRfidBarcodeEntry(onBarcodeScanned: (String) -> Unit) {
+private fun NonRfidBarcodeEntry(
+    onBarcodeScanned: (String) -> Unit,
+    sectionRequester: BringIntoViewRequester? = null,
+    focusRequester:   FocusRequester? = null
+) {
     var input by remember { mutableStateOf("") }
 
-    Surface(color = SurfaceWhite, tonalElevation = 2.dp) {
+    Surface(
+        color = SurfaceWhite,
+        tonalElevation = 2.dp,
+        modifier = Modifier.let { if (sectionRequester != null) it.bringIntoViewRequester(sectionRequester) else it }
+    ) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
             Text(
                 "NON-RFID ITEM VERIFICATION",
@@ -1335,7 +1500,9 @@ private fun NonRfidBarcodeEntry(onBarcodeScanned: (String) -> Unit) {
                             input = v
                         }
                     },
-                    modifier      = Modifier.weight(1f),
+                    modifier      = Modifier.weight(1f).let {
+                        if (focusRequester != null) it.focusRequester(focusRequester) else it
+                    },
                     label         = { Text("EAN / Barcode") },
                     placeholder   = { Text("Scan or type EAN…") },
                     singleLine    = true,

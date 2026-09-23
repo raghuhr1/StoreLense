@@ -31,7 +31,13 @@ interface ApiService {
     suspend fun markNonRfidSold(@Body req: MarkNonRfidSoldRequest): Response<ApiResponse<Map<String, Int>>>
 
     @POST("api/gate/checks")
-    suspend fun recordGateCheck(@Body req: GateCheckRequest): Response<ApiResponse<Unit>>
+    suspend fun recordGateCheck(@Body req: GateCheckRequest): Response<ApiResponse<GateCheckDto>>
+
+    @PATCH("api/gate/checks/{id}/resolution")
+    suspend fun resolveGateCheck(
+        @Path("id")  id: String,
+        @Body        req: GateCheckResolutionRequest
+    ): Response<ApiResponse<Unit>>
 
     @GET("api/gate/checks/bills/{billRef}")
     suspend fun lookupBill(
@@ -49,6 +55,13 @@ interface ApiService {
         @Query("storeId")   storeId: String,
         @Query("limit")     limit:   Int = 20
     ): Response<ApiResponse<List<GateCheckDto>>>
+
+    @GET("api/gate/checks/bills")
+    suspend fun getPendingBills(
+        @Query("storeId")     storeId:     String,
+        @Query("pendingOnly") pendingOnly: Boolean = true,
+        @Query("size")        size:        Int = 50
+    ): Response<ApiResponse<PageResponse<BillSummaryDto>>>
 
     @GET("api/stores/{storeId}/features")
     suspend fun getStoreFeatures(

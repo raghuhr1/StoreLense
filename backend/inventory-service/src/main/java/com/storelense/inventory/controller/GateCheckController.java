@@ -149,4 +149,16 @@ public class GateCheckController {
         return ResponseEntity.ok(ApiResponse.ok(
                 gateCheckService.myRecent(storeId, principal.userId(), limit)));
     }
+
+    @PatchMapping("/{id}/resolution")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE','SECURITY_GUARD')")
+    @Operation(summary = "Record how a FLAGGED gate check was resolved (customer verified / item recovered / escalated)")
+    public ResponseEntity<ApiResponse<Void>> resolve(
+            @PathVariable UUID id,
+            @Valid @RequestBody com.storelense.inventory.dto.GateCheckResolutionRequest req,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+
+        gateCheckService.resolve(id, req.resolution(), principal != null ? principal.userId() : null);
+        return ResponseEntity.ok(ApiResponse.ok(null));
+    }
 }
