@@ -349,3 +349,34 @@ export interface GateCheck {
   epcsMatched:   string[]
   epcsExtra:     string[]
 }
+
+export interface BillLookupItem {
+  ean:           string
+  productName:   string | null
+  qty:           number
+  unitPrice:     number | null
+  isRfidEnabled: boolean | null
+  imageUrl:      string | null
+}
+
+export interface BillLookupResponse {
+  id:            string
+  billRef:       string
+  storeId:       string
+  createdAt:     string
+  items:         BillLookupItem[]
+  status:        string
+  gateCheckedAt: string | null
+}
+
+export interface IdentifyEpcResponse {
+  epc:               string
+  productId:         string | null
+  sku:               string | null
+  productName:       string | null
+  eans:              string[]
+  statusInStore:     string | null
+  zoneName:          string | null
+  alreadyRegistered: boolean
+  imageUrl:          string | null
+}

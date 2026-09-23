@@ -3,10 +3,15 @@ import type {
   ApiResponse, EpcLedgerRow, InventoryState, InboundEpcRow,
   PageResponse, PutawayResponse,
   ReplenishmentRule, ReplenishmentSuggestion,
-  SkuLedgerRow, StoreLocationParLevel,
+  SkuLedgerRow, StoreLocationParLevel, IdentifyEpcResponse,
 } from '@/types'
 
 export const inventoryApi = {
+  identifyEpc: (epc: string, storeId: string) =>
+    client.get<ApiResponse<IdentifyEpcResponse>>(`/inventory/identify-epc/${encodeURIComponent(epc)}`, { params: { storeId } })
+      .then(r => r.data.data)
+      .catch(() => null),
+
   getState: (storeId: string) =>
     client.get<ApiResponse<InventoryState[]>>('/inventory/state', { params: { storeId } })
       .then(r => r.data.data),

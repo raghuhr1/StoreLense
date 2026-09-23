@@ -1,5 +1,5 @@
 import client from './client'
-import type { ApiResponse, PageResponse, GateCheckSummary, GateCheck } from '@/types'
+import type { ApiResponse, PageResponse, GateCheckSummary, GateCheck, BillLookupResponse } from '@/types'
 
 export const gateApi = {
   summary: (storeId: string, date: string) =>
@@ -17,5 +17,10 @@ export const gateApi = {
   }) =>
     client
       .get<ApiResponse<PageResponse<GateCheck>>>('/gate/checks', { params })
+      .then(r => r.data.data),
+
+  lookupBill: (billRef: string, storeId: string) =>
+    client
+      .get<ApiResponse<BillLookupResponse>>(`/gate/checks/bills/${encodeURIComponent(billRef)}`, { params: { storeId } })
       .then(r => r.data.data),
 }

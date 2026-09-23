@@ -1,6 +1,6 @@
 'use client'
 
-import { useQuery }          from '@tanstack/react-query'
+import { useQuery, useQueries } from '@tanstack/react-query'
 import { Fragment, useEffect, useState } from 'react'
 import { useRouter }         from 'next/navigation'
 import {
@@ -10,6 +10,7 @@ import {
 import Header                from '@/components/layout/Header'
 import StatCard              from '@/components/ui/StatCard'
 import { gateApi }           from '@/lib/api/gate'
+import { inventoryApi }      from '@/lib/api/inventory'
 import { storesApi }         from '@/lib/api/stores'
 import { useAuth }           from '@/lib/auth/AuthContext'
 import type { GateCheck }    from '@/types'
@@ -41,6 +42,101 @@ const OUTCOME_OPTS = [
 
 const PAGE_SIZE = 50
 const selectCls = 'text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500'
+
+function fmtPrice(v: number | null): string | null {
+  return v != null ? `₹${v.toLocaleString('en-IN')}` : null
+}
+
+// ── Expanded row — item-level detail, mirrors the guard app's result screen ────
+
+function ExpandedCheckDetails({ row, storeId }: { row: GateCheck; storeId: string }) {
+  const { data: bill, isLoading: billLoading } = useQuery({
+    queryKey: ['gate-bill', row.billRef, storeId],
+    queryFn:  () => gateApi.lookupBill(row.billRef as string, storeId),
+    enabled:  !!row.billRef,
+  })
+
+  const extraEpcQueries = useQueries({
+    queries: row.epcsExtra.map(epc => ({
+      queryKey: ['identify-epc', epc, storeId],
+      queryFn:  () => inventoryApi.identifyEpc(epc, storeId),
+    })),
+  })
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+      <div>
+        <p className="text-xs font-semibold text-gray-500 mb-2">
+          Billed Items {bill ? `(${bill.items.length})` : ''}
+        </p>
+        {billLoading ? (
+          <p className="text-xs text-gray-400">Loading…</p>
+        ) : !row.billRef ? (
+          <p className="text-xs text-gray-400">No bill reference on this check</p>
+        ) : !bill || bill.items.length === 0 ? (
+          <p className="text-xs text-gray-400">No items found</p>
+        ) : (
+          <div className="space-y-2">
+            {bill.items.map(item => (
+              <div key={item.ean} className="flex items-center gap-3 bg-white rounded-lg border border-gray-100 px-3 py-2">
+                {item.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={item.imageUrl} alt="" className="w-9 h-9 rounded object-cover bg-gray-100 shrink-0" />
+                ) : (
+                  <div className="w-9 h-9 rounded bg-gray-100 shrink-0" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-gray-800 truncate">
+                    {item.productName || `EAN ${item.ean}`}
+                  </p>
+                  <p className="text-[11px] text-gray-400">
+                    EAN {item.ean} · qty {item.qty}
+                    {item.isRfidEnabled === false ? ' · no RFID' : ''}
+                  </p>
+                </div>
+                {fmtPrice(item.unitPrice) && (
+                  <span className="text-xs font-semibold text-gray-600 shrink-0">{fmtPrice(item.unitPrice)}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <p className="text-xs font-semibold text-gray-500 mb-2">
+          Unbilled / Extra Items ({row.epcsExtra.length})
+        </p>
+        {row.epcsExtra.length === 0 ? (
+          <p className="text-xs text-gray-400">None</p>
+        ) : (
+          <div className="space-y-2">
+            {row.epcsExtra.map((epc, i) => {
+              const info = extraEpcQueries[i]?.data
+              const loading = extraEpcQueries[i]?.isLoading
+              return (
+                <div key={epc} className="flex items-center gap-3 bg-amber-50 rounded-lg border border-amber-100 px-3 py-2">
+                  {info?.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={info.imageUrl} alt="" className="w-9 h-9 rounded object-cover bg-white shrink-0" />
+                  ) : (
+                    <div className="w-9 h-9 rounded bg-white shrink-0" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-amber-800 truncate">
+                      {loading ? 'Looking up…' : (info?.productName || 'Unknown item')}
+                    </p>
+                    <p className="text-[11px] text-amber-600 font-mono truncate">{epc}</p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -234,15 +330,15 @@ export default function GuardDashboardPage() {
                   ) : (
                     checks.map((row: GateCheck) => {
                       const isExpanded = expandedId === row.id
-                      const hasEpcs = row.epcsMatched.length > 0 || row.epcsExtra.length > 0
+                      const canExpand = !!row.billRef || row.epcsMatched.length > 0 || row.epcsExtra.length > 0
                       return (
                         <Fragment key={row.id}>
                           <tr
-                            className={`hover:bg-gray-50 transition-colors ${hasEpcs ? 'cursor-pointer' : ''}`}
-                            onClick={() => hasEpcs && setExpandedId(isExpanded ? null : row.id)}
+                            className={`hover:bg-gray-50 transition-colors ${canExpand ? 'cursor-pointer' : ''}`}
+                            onClick={() => canExpand && setExpandedId(isExpanded ? null : row.id)}
                           >
                             <td className="table-td w-6">
-                              {hasEpcs && (
+                              {canExpand && (
                                 isExpanded
                                   ? <ChevronUp size={14} className="text-gray-400" />
                                   : <ChevronDown size={14} className="text-gray-400" />
@@ -285,37 +381,8 @@ export default function GuardDashboardPage() {
                           {isExpanded && (
                             <tr className="bg-gray-50">
                               <td />
-                              <td colSpan={7} className="table-td py-3">
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                  <div>
-                                    <p className="text-xs font-semibold text-gray-500 mb-1">
-                                      Matched EPCs ({row.epcsMatched.length})
-                                    </p>
-                                    {row.epcsMatched.length > 0 ? (
-                                      <div className="flex flex-wrap gap-1">
-                                        {row.epcsMatched.map(epc => (
-                                          <span key={epc} className="font-mono text-[11px] px-1.5 py-0.5 bg-green-50 text-green-700 rounded ring-1 ring-green-200">
-                                            {epc}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    ) : <span className="text-xs text-gray-400">None</span>}
-                                  </div>
-                                  <div>
-                                    <p className="text-xs font-semibold text-gray-500 mb-1">
-                                      Extra EPCs ({row.epcsExtra.length})
-                                    </p>
-                                    {row.epcsExtra.length > 0 ? (
-                                      <div className="flex flex-wrap gap-1">
-                                        {row.epcsExtra.map(epc => (
-                                          <span key={epc} className="font-mono text-[11px] px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded ring-1 ring-amber-200">
-                                            {epc}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    ) : <span className="text-xs text-gray-400">None</span>}
-                                  </div>
-                                </div>
+                              <td colSpan={7} className="table-td py-4">
+                                <ExpandedCheckDetails row={row} storeId={storeId} />
                               </td>
                             </tr>
                           )}
