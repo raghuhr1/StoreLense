@@ -1,24 +1,41 @@
 'use client'
 
-import { useQuery }          from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
-import { ImageOff, Search }  from 'lucide-react'
-import Header                from '@/components/layout/Header'
-import { inventoryApi }      from '@/lib/api/inventory'
-import { productsApi }       from '@/lib/api/products'
-import { storesApi }         from '@/lib/api/stores'
-import { useAuth }           from '@/lib/auth/AuthContext'
+import { useQuery }              from '@tanstack/react-query'
+import { useEffect, useMemo, useState } from 'react'
+import { ImageOff, Search }      from 'lucide-react'
+import Header                    from '@/components/layout/Header'
+import { inventoryApi }          from '@/lib/api/inventory'
+import { productsApi }           from '@/lib/api/products'
+import { storesApi }             from '@/lib/api/stores'
+import { useAuth }               from '@/lib/auth/AuthContext'
 import type { InventoryState, Product } from '@/types'
 
+// Product photo is only shown for this long after the item's last RFID
+// sighting — after that it reverts to a placeholder, but the item itself
+// stays listed. Ties to the real sighting timestamp (not a per-browser
+// timer) so every viewer sees the same thing regardless of when they opened
+// the page.
+const IMAGE_VISIBLE_MS = 10 * 60 * 1000
+
+function isToday(iso: string | null): boolean {
+  if (!iso) return false
+  const d = new Date(iso)
+  const now = new Date()
+  return d.getFullYear() === now.getFullYear()
+    && d.getMonth() === now.getMonth()
+    && d.getDate() === now.getDate()
+}
+
 interface UnsoldItem {
-  productId:   string
-  sku:         string
-  name:        string
-  brand:       string | null
-  primaryEan:  string | null
-  imageUrl:    string | null
-  qtyOnHand:   number
-  qtyExpected: number
+  productId:     string
+  sku:           string
+  name:          string
+  brand:         string | null
+  primaryEan:    string | null
+  imageUrl:      string | null
+  qtyOnHand:     number
+  qtyExpected:   number
+  lastCountedAt: string | null
 }
 
 export default function UnsoldItemsPage() {
@@ -27,6 +44,14 @@ export default function UnsoldItemsPage() {
   const [search, setSearch]         = useState('')
   const [filterBrand, setFilterBrand] = useState('')
   const [onlyWithImage, setOnlyWithImage] = useState(false)
+
+  // Ticks every 15s so images silently revert to a placeholder the moment
+  // their 10-minute window elapses, without needing a page reload.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 15_000)
+    return () => clearInterval(id)
+  }, [])
 
   const { data: allStores } = useQuery({
     queryKey: ['stores-all'],
@@ -68,26 +93,34 @@ export default function UnsoldItemsPage() {
     return m
   }, [allProducts])
 
-  // "Unsold" = currently on hand per RFID (store-level rows only, not per-zone breakdowns).
+  // "Unsold" = currently on hand per RFID, last sighted today (store-level
+  // rows only, not per-zone breakdowns) — stale/older inventory drops off
+  // automatically at midnight rather than lingering indefinitely.
   const items = useMemo((): UnsoldItem[] => {
     if (!invState) return []
     return (invState as InventoryState[])
-      .filter(inv => inv.zoneId == null && inv.quantityOnHand > 0)
+      .filter(inv => inv.zoneId == null && inv.quantityOnHand > 0 && isToday(inv.lastCountedAt))
       .map(inv => {
         const p = productMap[inv.productId]
         return {
-          productId:   inv.productId,
-          sku:         p?.sku ?? inv.productId.slice(-8),
-          name:        p?.name ?? '—',
-          brand:       p?.brand ?? null,
-          primaryEan:  p?.primaryEan ?? null,
-          imageUrl:    p?.imageUrl ?? null,
-          qtyOnHand:   inv.quantityOnHand,
-          qtyExpected: inv.quantityExpected,
+          productId:     inv.productId,
+          sku:           p?.sku ?? inv.productId.slice(-8),
+          name:          p?.name ?? '—',
+          brand:         p?.brand ?? null,
+          primaryEan:    p?.primaryEan ?? null,
+          imageUrl:      p?.imageUrl ?? null,
+          qtyOnHand:     inv.quantityOnHand,
+          qtyExpected:   inv.quantityExpected,
+          lastCountedAt: inv.lastCountedAt,
         }
       })
       .sort((a, b) => b.qtyOnHand - a.qtyOnHand)
   }, [invState, productMap])
+
+  // Whether an item's photo is still within its 10-minute post-sighting window.
+  const imageVisible = (item: UnsoldItem) =>
+    !!item.imageUrl && !!item.lastCountedAt
+      && (now - new Date(item.lastCountedAt).getTime()) < IMAGE_VISIBLE_MS
 
   const brands = useMemo(() => {
     const s = new Set<string>()
@@ -99,14 +132,15 @@ export default function UnsoldItemsPage() {
     const q = search.trim().toLowerCase()
     return items.filter(i => {
       if (filterBrand && i.brand !== filterBrand) return false
-      if (onlyWithImage && !i.imageUrl) return false
+      if (onlyWithImage && !imageVisible(i)) return false
       if (q && !i.name.toLowerCase().includes(q) && !i.sku.toLowerCase().includes(q)) return false
       return true
     })
-  }, [items, filterBrand, onlyWithImage, search])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, filterBrand, onlyWithImage, search, now])
 
   const totalUnits = filtered.reduce((s, i) => s + i.qtyOnHand, 0)
-  const withImages = filtered.filter(i => i.imageUrl).length
+  const withImages = filtered.filter(imageVisible).length
   const isLoading  = invLoading || productsLoading
 
   const selectCls = 'text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500'
@@ -115,6 +149,13 @@ export default function UnsoldItemsPage() {
     <>
       <Header title="Unsold Items" />
       <div className="p-6 space-y-5">
+
+        {/* Explanation banner */}
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800">
+          Showing items last RFID-sighted <strong>today</strong> — yesterday's items drop off automatically at midnight.
+          Each product's photo is visible for <strong>10 minutes</strong> after its sighting, then reverts to a placeholder;
+          the item itself stays listed either way.
+        </div>
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-3">
@@ -177,33 +218,36 @@ export default function UnsoldItemsPage() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="card text-center py-16 text-gray-400 text-sm">
-            No unsold items match the current filters.
+            No items sighted today match the current filters.
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-            {filtered.map(item => (
-              <div key={item.productId} className="card p-3 hover:shadow-md transition-shadow">
-                <div className="aspect-square bg-gray-50 rounded-lg mb-3 overflow-hidden flex items-center justify-center border border-gray-100">
-                  {item.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <ImageOff size={28} className="text-gray-300" />
-                  )}
+            {filtered.map(item => {
+              const showImage = imageVisible(item)
+              return (
+                <div key={item.productId} className="card p-3 hover:shadow-md transition-shadow">
+                  <div className="aspect-square bg-gray-50 rounded-lg mb-3 overflow-hidden flex items-center justify-center border border-gray-100">
+                    {showImage ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={item.imageUrl!} alt={item.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <ImageOff size={28} className="text-gray-300" />
+                    )}
+                  </div>
+                  <p className="text-sm font-medium text-gray-900 leading-snug line-clamp-2" title={item.name}>
+                    {item.name}
+                  </p>
+                  <div className="flex items-center justify-between mt-1.5">
+                    <span className="font-mono text-[11px] text-gray-500">{item.sku}</span>
+                    <span className="text-xs font-semibold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full">
+                      {item.qtyOnHand} on hand
+                    </span>
+                  </div>
+                  {item.brand && <p className="text-[11px] text-gray-400 mt-1">{item.brand}</p>}
+                  {item.primaryEan && <p className="font-mono text-[10px] text-gray-300 mt-0.5">{item.primaryEan}</p>}
                 </div>
-                <p className="text-sm font-medium text-gray-900 leading-snug line-clamp-2" title={item.name}>
-                  {item.name}
-                </p>
-                <div className="flex items-center justify-between mt-1.5">
-                  <span className="font-mono text-[11px] text-gray-500">{item.sku}</span>
-                  <span className="text-xs font-semibold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full">
-                    {item.qtyOnHand} on hand
-                  </span>
-                </div>
-                {item.brand && <p className="text-[11px] text-gray-400 mt-1">{item.brand}</p>}
-                {item.primaryEan && <p className="font-mono text-[10px] text-gray-300 mt-0.5">{item.primaryEan}</p>}
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
 
