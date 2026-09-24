@@ -94,7 +94,7 @@ public class GateCheckService {
     public Page<GateCheckDto> list(UUID storeId, OffsetDateTime from, OffsetDateTime to,
                                     String outcome, Pageable pageable, boolean fx9600Only) {
         String outcomeFilter = (outcome != null && !outcome.isBlank()) ? outcome.toUpperCase() : null;
-        String billRefClause = fx9600Only ? "bill_ref IS NULL" : "bill_ref IS NOT NULL";
+        String billRefClause = fx9600Only ? " bill_ref IS NULL" : " bill_ref IS NOT NULL";
 
         // Cast the standalone `:outcome IS NULL` occurrence explicitly — Postgres
         // can't infer a bound-null parameter's type from that check alone, since
@@ -173,7 +173,7 @@ public class GateCheckService {
     private GateCheckSummaryDto summarize(UUID storeId, UUID guardUserId, LocalDate date, boolean fx9600Only) {
         OffsetDateTime start = date.atStartOfDay().atOffset(ZoneOffset.UTC);
         OffsetDateTime end   = date.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
-        String billRefClause = fx9600Only ? "bill_ref IS NULL" : "bill_ref IS NOT NULL";
+        String billRefClause = fx9600Only ? " bill_ref IS NULL" : " bill_ref IS NOT NULL";
 
         record Row(String outcome, long cnt, long extraSum) {}
 
