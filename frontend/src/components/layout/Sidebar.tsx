@@ -7,6 +7,7 @@ import {
   LayoutDashboard, Package, RotateCw,
   ArrowLeftRight, BarChart3, Users, Store, Cpu, ScanLine, Tag, TrendingUp,
   Truck, RefreshCw, ShoppingCart, GitCompare, PackageOpen, Radio, ShieldCheck, KeyRound,
+  Images,
 } from 'lucide-react'
 import { useAuth }       from '@/lib/auth/AuthContext'
 import { useFeatures }  from '@/lib/features/FeaturesContext'
@@ -22,6 +23,7 @@ type NavItem = {
 const allNavItems: NavItem[] = [
   { href: '/dashboard',            label: 'Dashboard',       icon: LayoutDashboard, roles: ['ADMIN','STORE_MANAGER','STORE_ASSOCIATE','REFILL_ASSOCIATE'] },
   { href: '/inventory',            label: 'Inventory',       icon: Package,         roles: ['ADMIN','STORE_MANAGER'],                          feature: 'INVENTORY' },
+  { href: '/unsold-items',         label: 'Unsold Items',    icon: Images,          roles: ['ADMIN','STORE_MANAGER','STORE_ASSOCIATE'],         feature: 'INVENTORY' },
   { href: '/inbound',              label: 'Inbound',         icon: Truck,           roles: ['ADMIN','STORE_MANAGER','REFILL_ASSOCIATE'],        feature: 'INBOUND' },
   { href: '/replenishment',        label: 'Replenishment',   icon: RefreshCw,       roles: ['ADMIN','STORE_MANAGER','REFILL_ASSOCIATE'],        feature: 'REPLENISHMENT' },
   { href: '/soh-sessions',         label: 'SOH Sessions',    icon: RotateCw,        roles: ['ADMIN','STORE_MANAGER','STORE_ASSOCIATE'],         feature: 'CYCLE_COUNT' },
