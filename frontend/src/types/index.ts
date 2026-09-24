@@ -56,6 +56,12 @@ export interface Product {
   imageUrl: string | null; createdAt: string
 }
 
+export interface BulkImageImportStatus {
+  jobId: string; state: 'RUNNING' | 'DONE' | 'FAILED'
+  totalRows: number; processed: number; imported: number
+  skippedNoProduct: number; failed: number; errors: string[]
+}
+
 // ─── Users ────────────────────────────────────────────────────────────────────
 export interface User {
   id: string; username: string; email: string; firstName: string; lastName: string

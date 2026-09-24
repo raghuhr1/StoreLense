@@ -12,6 +12,7 @@ import com.storelense.product.domain.repository.ProductRepository;
 import com.storelense.product.dto.*;
 import com.storelense.product.mapper.ProductMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
@@ -24,14 +25,24 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProductService {
@@ -44,6 +55,14 @@ public class ProductService {
 
     private static final String EPC_CACHE_PREFIX = "product:epc:";
     private static final Duration EPC_CACHE_TTL  = Duration.ofMinutes(30);
+
+    // Bulk image import — one-off admin tool, in-memory only (see BulkImageImportStatus).
+    private final Map<UUID, BulkImageImportStatus> bulkJobs = new ConcurrentHashMap<>();
+    private final ExecutorService bulkImportExecutor = Executors.newSingleThreadExecutor();
+    private final HttpClient bulkImportHttpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+    private static final long MAX_REMOTE_IMAGE_BYTES = 8L * 1024 * 1024;
 
     @Value("${storelense.product.image-dir:./data/product-images}")
     private String imageDir;
@@ -172,26 +191,114 @@ public class ProductService {
         if (file.isEmpty()) {
             throw new BusinessException("EMPTY_FILE", "No file provided", HttpStatus.BAD_REQUEST);
         }
+        String ext = extensionForContentType(file.getContentType());
+        try {
+            saveImageBytes(product, file.getBytes(), ext);
+        } catch (IOException e) {
+            throw new BusinessException("IMAGE_SAVE_FAILED", "Failed to save product image", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        return productMapper.toResponse(productRepository.save(product));
+    }
 
-        String ext = switch (file.getContentType() == null ? "" : file.getContentType()) {
+    private static String extensionForContentType(String contentType) {
+        return switch (contentType == null ? "" : contentType) {
             case "image/jpeg" -> ".jpg";
             case "image/png"  -> ".png";
             case "image/webp" -> ".webp";
             default -> throw new BusinessException(
                     "UNSUPPORTED_IMAGE_TYPE", "Only JPEG, PNG or WEBP images are allowed", HttpStatus.BAD_REQUEST);
         };
+    }
 
+    private void saveImageBytes(Product product, byte[] bytes, String ext) throws IOException {
+        Path dir = Path.of(imageDir);
+        Files.createDirectories(dir);
+        String filename = product.getId() + ext;
+        Files.write(dir.resolve(filename).normalize(), bytes);
+        product.setImageUrl("/api/products/images/" + filename);
+    }
+
+    /** Kicks off a background job matching each CSV row's GTIN to a product and downloading
+     *  its image; returns immediately with a job id to poll via {@link #getBulkImportStatus}.
+     *  The CSV is read fully into memory up front since the underlying multipart temp file
+     *  is not guaranteed to survive past this request. */
+    public UUID startBulkImageImport(MultipartFile csv) throws IOException {
+        List<String> lines = new String(csv.getBytes(), StandardCharsets.UTF_8).lines().toList();
+        List<String> dataRows = lines.size() > 1 ? lines.subList(1, lines.size()) : List.of();
+
+        UUID jobId = UUID.randomUUID();
+        BulkImageImportStatus status = new BulkImageImportStatus(dataRows.size());
+        bulkJobs.put(jobId, status);
+        bulkImportExecutor.submit(() -> runBulkImageImport(dataRows, status));
+        return jobId;
+    }
+
+    public BulkImageImportStatusResponse getBulkImportStatus(UUID jobId) {
+        BulkImageImportStatus status = bulkJobs.get(jobId);
+        if (status == null) throw new ResourceNotFoundException("BulkImageImportJob", jobId);
+        return new BulkImageImportStatusResponse(
+                jobId, status.getState().name(), status.getTotalRows(), status.getProcessed(),
+                status.getImported(), status.getSkippedNoProduct(), status.getFailed(), status.getErrors());
+    }
+
+    private void runBulkImageImport(List<String> dataRows, BulkImageImportStatus status) {
         try {
-            Path dir = Path.of(imageDir);
-            Files.createDirectories(dir);
-            String filename = id + ext;
-            file.transferTo(dir.resolve(filename).normalize());
-            product.setImageUrl("/api/products/images/" + filename);
-        } catch (IOException e) {
-            throw new BusinessException("IMAGE_SAVE_FAILED", "Failed to save product image", HttpStatus.INTERNAL_SERVER_ERROR);
-        }
+            for (String line : dataRows) {
+                if (line.isBlank()) { status.onSkippedNoProduct(); continue; }
+                String[] parts = line.split(",", 2);
+                if (parts.length < 2) { status.onFailed(line, "malformed row"); continue; }
+                String gtin = parts[0].trim();
+                String imageUrl = parts[1].trim();
 
-        return productMapper.toResponse(productRepository.save(product));
+                var barcode = barcodeRepository.findByBarcodeValueIgnoreCase(gtin);
+                if (barcode.isEmpty() || barcode.get().getProduct() == null) {
+                    status.onSkippedNoProduct();
+                    continue;
+                }
+                try {
+                    HttpResponse<byte[]> resp = bulkImportHttpClient.send(
+                            HttpRequest.newBuilder(URI.create(imageUrl))
+                                    .timeout(Duration.ofSeconds(15))
+                                    .GET().build(),
+                            HttpResponse.BodyHandlers.ofByteArray());
+                    if (resp.statusCode() != 200) {
+                        status.onFailed(gtin, "HTTP " + resp.statusCode());
+                        continue;
+                    }
+                    byte[] bytes = resp.body();
+                    if (bytes.length == 0 || bytes.length > MAX_REMOTE_IMAGE_BYTES) {
+                        status.onFailed(gtin, "image size " + bytes.length + " bytes out of bounds");
+                        continue;
+                    }
+                    String ext = extensionForUrl(imageUrl, resp.headers().firstValue("Content-Type").orElse(null));
+
+                    Product product = barcode.get().getProduct();
+                    saveImageBytes(product, bytes, ext);
+                    productRepository.save(product);
+                    status.onImported();
+                } catch (Exception e) {
+                    status.onFailed(gtin, e.getClass().getSimpleName() + ": " + e.getMessage());
+                }
+            }
+            status.markDone();
+        } catch (Exception e) {
+            log.error("Bulk image import job failed", e);
+            status.markFailed();
+        }
+    }
+
+    private static String extensionForUrl(String url, String contentTypeHeader) {
+        if (contentTypeHeader != null) {
+            try {
+                return extensionForContentType(contentTypeHeader.split(";")[0].trim());
+            } catch (BusinessException ignored) {
+                // fall through to URL-suffix sniffing below
+            }
+        }
+        String lower = url.toLowerCase();
+        if (lower.endsWith(".png"))  return ".png";
+        if (lower.endsWith(".webp")) return ".webp";
+        return ".jpg";
     }
 
     @Transactional(readOnly = true)

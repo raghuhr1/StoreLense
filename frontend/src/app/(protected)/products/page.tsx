@@ -6,7 +6,7 @@ import { type ColumnDef }     from '@tanstack/react-table'
 import { useForm }            from 'react-hook-form'
 import { zodResolver }        from '@hookform/resolvers/zod'
 import { z }                  from 'zod'
-import { Plus, Pencil }       from 'lucide-react'
+import { Plus, Pencil, Upload } from 'lucide-react'
 import Header                 from '@/components/layout/Header'
 import DataTable              from '@/components/ui/DataTable'
 import SearchWithSuggestions  from '@/components/ui/SearchWithSuggestions'
@@ -55,6 +55,29 @@ export default function ProductsPage() {
     mutationFn: ({ id, file }: { id: string; file: File }) => productsApi.uploadImage(id, file),
     onSuccess:  (updated) => { qc.invalidateQueries({ queryKey: ['products'] }); setEditing(updated) },
   })
+
+  // ── Bulk image import ─────────────────────────────────────────────────────
+  const [bulkImportOpen, setBulkImportOpen]   = useState(false)
+  const [bulkImportJobId, setBulkImportJobId] = useState<string | null>(null)
+
+  const startBulkImportMut = useMutation({
+    mutationFn: (file: File) => productsApi.startBulkImageImport(file),
+    onSuccess:  (jobId) => setBulkImportJobId(jobId),
+  })
+
+  const { data: bulkImportStatus } = useQuery({
+    queryKey: ['bulk-image-import', bulkImportJobId],
+    queryFn:  () => productsApi.bulkImportStatus(bulkImportJobId as string),
+    enabled:  !!bulkImportJobId,
+    refetchInterval: q => (q.state.data?.state === 'RUNNING' ? 2000 : false),
+  })
+
+  const closeBulkImport = () => {
+    setBulkImportOpen(false)
+    setBulkImportJobId(null)
+    startBulkImportMut.reset()
+    if (bulkImportStatus?.state === 'DONE') qc.invalidateQueries({ queryKey: ['products'] })
+  }
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -273,6 +296,10 @@ export default function ProductsPage() {
               </button>
             )}
 
+            <button onClick={() => setBulkImportOpen(true)} className="btn-secondary">
+              <Upload size={16} /> Bulk Import Images
+            </button>
+
             <button onClick={() => { reset({ unitOfMeasure: 'EACH', rfidEnabled: true }); setOpen(true) }} className="btn-primary">
               <Plus size={16} /> Add Product
             </button>
@@ -299,6 +326,98 @@ export default function ProductsPage() {
                 isPending={createMut.isPending}
                 submitLabel="Add Product"
               />
+            </div>
+          </div>
+        )}
+
+        {/* Bulk image import modal */}
+        {bulkImportOpen && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl p-6 w-[520px] shadow-xl">
+              <h3 className="font-semibold text-gray-900 mb-1">Bulk Import Images</h3>
+              <p className="text-xs text-gray-400 mb-4">
+                CSV with two columns: <code className="font-mono">gtin,image_url</code> (no header row required to skip — the first row is always skipped).
+                Each GTIN is matched against a product&apos;s EAN/barcode; the image is downloaded and stored automatically.
+              </p>
+
+              {!bulkImportJobId ? (
+                <>
+                  <label className="btn-primary cursor-pointer inline-block">
+                    {startBulkImportMut.isPending ? 'Starting…' : 'Choose CSV file'}
+                    <input
+                      type="file"
+                      accept=".csv,text/csv"
+                      className="hidden"
+                      disabled={startBulkImportMut.isPending}
+                      onChange={e => {
+                        const file = e.target.files?.[0]
+                        if (file) startBulkImportMut.mutate(file)
+                        e.target.value = ''
+                      }}
+                    />
+                  </label>
+                  {startBulkImportMut.isError && (
+                    <p className="text-xs text-red-500 mt-2">Failed to start the import. Check the file and try again.</p>
+                  )}
+                  <div className="flex justify-end pt-4">
+                    <button onClick={() => setBulkImportOpen(false)} className="btn-secondary">Cancel</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Status</span>
+                      <span className={`font-semibold ${
+                        bulkImportStatus?.state === 'DONE' ? 'text-green-600'
+                          : bulkImportStatus?.state === 'FAILED' ? 'text-red-600' : 'text-blue-600'
+                      }`}>
+                        {bulkImportStatus?.state ?? 'Starting…'}
+                      </span>
+                    </div>
+                    {bulkImportStatus && (
+                      <>
+                        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                          <div
+                            className="bg-brand-600 h-2 rounded-full transition-all"
+                            style={{ width: `${bulkImportStatus.totalRows > 0 ? Math.round(100 * bulkImportStatus.processed / bulkImportStatus.totalRows) : 0}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-gray-500">
+                          <span>{bulkImportStatus.processed.toLocaleString()} / {bulkImportStatus.totalRows.toLocaleString()} rows</span>
+                          <span>{Math.round(100 * bulkImportStatus.processed / Math.max(1, bulkImportStatus.totalRows))}%</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-center pt-2">
+                          <div>
+                            <p className="text-lg font-bold text-green-600">{bulkImportStatus.imported}</p>
+                            <p className="text-[11px] text-gray-400">Imported</p>
+                          </div>
+                          <div>
+                            <p className="text-lg font-bold text-gray-500">{bulkImportStatus.skippedNoProduct}</p>
+                            <p className="text-[11px] text-gray-400">No matching product</p>
+                          </div>
+                          <div>
+                            <p className="text-lg font-bold text-red-600">{bulkImportStatus.failed}</p>
+                            <p className="text-[11px] text-gray-400">Failed</p>
+                          </div>
+                        </div>
+                        {bulkImportStatus.errors.length > 0 && (
+                          <div className="max-h-24 overflow-y-auto bg-red-50 border border-red-100 rounded-lg p-2 mt-2">
+                            {bulkImportStatus.errors.map((e, i) => (
+                              <p key={i} className="text-[11px] text-red-600 font-mono truncate">{e}</p>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  <div className="flex justify-end pt-4">
+                    <button onClick={closeBulkImport} className="btn-secondary">
+                      {bulkImportStatus?.state === 'RUNNING' ? 'Run in background' : 'Close'}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}

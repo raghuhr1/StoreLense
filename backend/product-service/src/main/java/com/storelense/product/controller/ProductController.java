@@ -131,6 +131,25 @@ public class ProductController {
                 .body(resource);
     }
 
+    @PostMapping("/images/bulk-import")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Bulk-import product images from a CSV of gtin,image_url rows",
+               description = "Matches each GTIN against products.barcodes and downloads the " +
+                             "image server-side — runs as a background job since large CSVs " +
+                             "take longer than an HTTP request timeout allows. Poll the " +
+                             "returned jobId via GET /images/bulk-import/{jobId}.")
+    public ResponseEntity<ApiResponse<UUID>> startBulkImageImport(
+            @RequestParam("file") MultipartFile file) throws java.io.IOException {
+        return ResponseEntity.ok(ApiResponse.ok("Bulk image import started", productService.startBulkImageImport(file)));
+    }
+
+    @GetMapping("/images/bulk-import/{jobId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Poll a bulk image import job's progress")
+    public ResponseEntity<ApiResponse<BulkImageImportStatusResponse>> getBulkImportStatus(@PathVariable UUID jobId) {
+        return ResponseEntity.ok(ApiResponse.ok(productService.getBulkImportStatus(jobId)));
+    }
+
     @PostMapping("/{id}/epc")
     @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER')")
     @Operation(summary = "Associate an EPC tag with a product")

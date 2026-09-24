@@ -1,5 +1,5 @@
 import client from './client'
-import type { ApiResponse, PageResponse, Product } from '@/types'
+import type { ApiResponse, PageResponse, Product, BulkImageImportStatus } from '@/types'
 
 export const productsApi = {
   list: (params?: { search?: string; storeId?: string; page?: number; size?: number }) =>
@@ -28,4 +28,16 @@ export const productsApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(r => r.data.data)
   },
+
+  startBulkImageImport: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return client.post<ApiResponse<string>>('/products/images/bulk-import', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data.data)
+  },
+
+  bulkImportStatus: (jobId: string) =>
+    client.get<ApiResponse<BulkImageImportStatus>>(`/products/images/bulk-import/${jobId}`)
+      .then(r => r.data.data),
 }
