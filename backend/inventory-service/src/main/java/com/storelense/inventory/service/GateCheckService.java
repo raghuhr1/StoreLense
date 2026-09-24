@@ -82,10 +82,19 @@ public class GateCheckService {
                 req.epcsExtra()   != null ? req.epcsExtra()   : List.of());
     }
 
+    /**
+     * @param fx9600Only false = guard-app bill checks (bill_ref present) — the Guard
+     *        Dashboard. true = unattended FX9600 exit-portal alarms (bill_ref is
+     *        deliberately null for these — see gate_guard's Reporter) — the separate
+     *        Gate Alarms view. The two sources share this table but must never mix
+     *        in either UI: an FX9600 alarm isn't a guard decision, and counting it
+     *        as one skews flag-rate stats.
+     */
     @Transactional(readOnly = true)
     public Page<GateCheckDto> list(UUID storeId, OffsetDateTime from, OffsetDateTime to,
-                                    String outcome, Pageable pageable) {
+                                    String outcome, Pageable pageable, boolean fx9600Only) {
         String outcomeFilter = (outcome != null && !outcome.isBlank()) ? outcome.toUpperCase() : null;
+        String billRefClause = fx9600Only ? "bill_ref IS NULL" : "bill_ref IS NOT NULL";
 
         // Cast the standalone `:outcome IS NULL` occurrence explicitly — Postgres
         // can't infer a bound-null parameter's type from that check alone, since
@@ -95,6 +104,8 @@ public class GateCheckService {
                 WHERE store_id = CAST(:storeId AS uuid)
                   AND checked_at BETWEEN :from AND :to
                   AND (CAST(:outcome AS varchar) IS NULL OR outcome = CAST(:outcome AS varchar))
+                  AND """ + billRefClause + """
+
                 """;
 
         long total = jdbcClient.sql(countSql)
@@ -111,6 +122,8 @@ public class GateCheckService {
                 WHERE store_id = CAST(:storeId AS uuid)
                   AND checked_at BETWEEN :from AND :to
                   AND (CAST(:outcome AS varchar) IS NULL OR outcome = CAST(:outcome AS varchar))
+                  AND """ + billRefClause + """
+
                 ORDER BY checked_at DESC
                 LIMIT :limit OFFSET :offset
                 """;
@@ -139,20 +152,28 @@ public class GateCheckService {
         return new PageImpl<>(rows, pageable, total);
     }
 
+    /** Guard Dashboard KPIs — guard-app bill checks only (see {@link #list(UUID, OffsetDateTime, OffsetDateTime, String, Pageable, boolean)}). */
     @Transactional(readOnly = true)
     public GateCheckSummaryDto summary(UUID storeId, LocalDate date) {
-        return summarize(storeId, null, date);
+        return summarize(storeId, null, date, false);
     }
 
     /** Same KPI shape as {@link #summary}, scoped to a single guard's own checks. */
     @Transactional(readOnly = true)
     public GateCheckSummaryDto mySummary(UUID storeId, UUID guardUserId, LocalDate date) {
-        return summarize(storeId, guardUserId, date);
+        return summarize(storeId, guardUserId, date, false);
     }
 
-    private GateCheckSummaryDto summarize(UUID storeId, UUID guardUserId, LocalDate date) {
+    /** Gate Alarms KPIs — unattended FX9600 exit-portal alarms only. */
+    @Transactional(readOnly = true)
+    public GateCheckSummaryDto alarmSummary(UUID storeId, LocalDate date) {
+        return summarize(storeId, null, date, true);
+    }
+
+    private GateCheckSummaryDto summarize(UUID storeId, UUID guardUserId, LocalDate date, boolean fx9600Only) {
         OffsetDateTime start = date.atStartOfDay().atOffset(ZoneOffset.UTC);
         OffsetDateTime end   = date.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+        String billRefClause = fx9600Only ? "bill_ref IS NULL" : "bill_ref IS NOT NULL";
 
         record Row(String outcome, long cnt, long extraSum) {}
 
@@ -164,6 +185,8 @@ public class GateCheckService {
                 WHERE store_id  = CAST(:storeId AS uuid)
                   AND checked_at BETWEEN :start AND :end
                   AND (CAST(:guardId AS uuid) IS NULL OR guard_user_id = CAST(:guardId AS uuid))
+                  AND """ + billRefClause + """
+
                 GROUP BY outcome
                 """)
                 .param("storeId", storeId.toString())

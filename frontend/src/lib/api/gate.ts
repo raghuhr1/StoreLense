@@ -23,4 +23,22 @@ export const gateApi = {
     client
       .get<ApiResponse<BillLookupResponse>>(`/gate/checks/bills/${encodeURIComponent(billRef)}`, { params: { storeId } })
       .then(r => r.data.data),
+
+  // Unattended FX9600 exit-portal alarms — never mixed with guard-app checks above.
+  alarmSummary: (storeId: string, date: string) =>
+    client
+      .get<ApiResponse<GateCheckSummary>>('/gate/checks/alarms/summary', { params: { storeId, date } })
+      .then(r => r.data.data),
+
+  listAlarms: (params: {
+    storeId: string
+    from:    string
+    to:      string
+    outcome?: string
+    page?:   number
+    size?:   number
+  }) =>
+    client
+      .get<ApiResponse<PageResponse<GateCheck>>>('/gate/checks/alarms', { params })
+      .then(r => r.data.data),
 }

@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Package, RotateCw,
   ArrowLeftRight, BarChart3, Users, Store, Cpu, ScanLine, Tag, TrendingUp,
   Truck, RefreshCw, ShoppingCart, GitCompare, PackageOpen, Radio, ShieldCheck, KeyRound,
-  Images,
+  Images, AlertTriangle,
 } from 'lucide-react'
 import { useAuth }       from '@/lib/auth/AuthContext'
 import { useFeatures }  from '@/lib/features/FeaturesContext'
@@ -40,6 +40,7 @@ const allNavItems: NavItem[] = [
   { href: '/devices',              label: 'Devices',         icon: Cpu,             roles: ['ADMIN','STORE_MANAGER'],                          feature: 'DEVICES' },
   { href: '/devices/antenna-mapping', label: 'Antenna Mapping', icon: Radio,        roles: ['ADMIN'],                                          feature: 'DEVICES' },
   { href: '/guard-dashboard',     label: 'Guard Dashboard', icon: ShieldCheck,     roles: ['ADMIN','STORE_MANAGER'] },
+  { href: '/gate-alarms',         label: 'Gate Alarms',     icon: AlertTriangle,   roles: ['ADMIN','STORE_MANAGER'] },
 ]
 
 export default function Sidebar() {

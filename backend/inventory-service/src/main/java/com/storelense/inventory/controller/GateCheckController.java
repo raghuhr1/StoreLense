@@ -49,7 +49,9 @@ public class GateCheckController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER')")
-    @Operation(summary = "List gate checks for dashboard")
+    @Operation(summary = "List gate checks for dashboard",
+               description = "Guard-app bill checks only — unattended FX9600 exit-portal " +
+                             "alarms are excluded (see GET /alarms).")
     public ResponseEntity<ApiResponse<PageResponse<GateCheckDto>>> list(
             @RequestParam(required = false) UUID storeId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
@@ -64,8 +66,48 @@ public class GateCheckController {
         OffsetDateTime effectiveTo   = to   != null ? to   : OffsetDateTime.now(ZoneOffset.UTC);
 
         var result = gateCheckService.list(effectiveStoreId, effectiveFrom, effectiveTo,
-                outcome, PageRequest.of(page, size));
+                outcome, PageRequest.of(page, size), false);
         return ResponseEntity.ok(ApiResponse.ok(PageResponse.from(result)));
+    }
+
+    @GetMapping("/alarms")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER')")
+    @Operation(summary = "List unattended FX9600 exit-portal alarms",
+               description = "Records posted by the standalone gate-guard service when a " +
+                             "tag exits with no bill scan — bill_ref is null for these by " +
+                             "design. Never mixed with guard-app checks (see GET without " +
+                             "/alarms).")
+    public ResponseEntity<ApiResponse<PageResponse<GateCheckDto>>> listAlarms(
+            @RequestParam(required = false) UUID storeId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
+            @RequestParam(required = false) String outcome,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+
+        UUID effectiveStoreId = principal.isAdmin() && storeId != null ? storeId : principal.storeId();
+        OffsetDateTime effectiveFrom = from != null ? from : OffsetDateTime.now(ZoneOffset.UTC).minusDays(7);
+        OffsetDateTime effectiveTo   = to   != null ? to   : OffsetDateTime.now(ZoneOffset.UTC);
+
+        var result = gateCheckService.list(effectiveStoreId, effectiveFrom, effectiveTo,
+                outcome, PageRequest.of(page, size), true);
+        return ResponseEntity.ok(ApiResponse.ok(PageResponse.from(result)));
+    }
+
+    @GetMapping("/alarms/summary")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER')")
+    @Operation(summary = "KPI summary for the FX9600 alarms view")
+    public ResponseEntity<ApiResponse<GateCheckSummaryDto>> alarmSummary(
+            @RequestParam(required = false) UUID storeId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+
+        UUID effectiveStoreId = principal.isAdmin() && storeId != null ? storeId : principal.storeId();
+        LocalDate effectiveDate = date != null ? date : LocalDate.now(ZoneOffset.UTC);
+
+        return ResponseEntity.ok(ApiResponse.ok(
+                gateCheckService.alarmSummary(effectiveStoreId, effectiveDate)));
     }
 
     @PostMapping("/bills")
