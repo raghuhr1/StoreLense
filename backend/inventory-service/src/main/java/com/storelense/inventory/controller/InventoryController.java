@@ -43,7 +43,7 @@ public class InventoryController {
     private final InventoryService inventoryService;
 
     @GetMapping("/state")
-    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','SECURITY_GUARD')")
     @Operation(summary = "Get current inventory state for a store")
     public ResponseEntity<ApiResponse<List<InventoryState>>> getStoreInventory(
             @RequestParam UUID storeId,

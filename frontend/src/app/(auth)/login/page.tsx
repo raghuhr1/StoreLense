@@ -26,8 +26,8 @@ export default function LoginPage() {
   const onSubmit = async (values: FormValues) => {
     setError(null)
     try {
-      await login(values)
-      router.replace('/dashboard')
+      const loggedInUser = await login(values)
+      router.replace(loggedInUser.role === 'SECURITY_GUARD' ? '/unsold-items' : '/dashboard')
     } catch {
       setError('Invalid username or password.')
     }

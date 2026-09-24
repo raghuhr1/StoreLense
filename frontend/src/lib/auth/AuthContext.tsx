@@ -10,7 +10,7 @@ interface AuthContextType {
   user:        AuthUser | null
   isLoading:   boolean
   isAuthed:    boolean
-  login:       (req: LoginRequest) => Promise<void>
+  login:       (req: LoginRequest) => Promise<AuthUser>
   logout:      () => Promise<void>
   isAdmin:     boolean
   isManager:   boolean
@@ -88,7 +88,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (req: LoginRequest) => {
     const resp = await apiLogin(req)
-    setUser({ userId: resp.userId, username: resp.username, role: resp.role, storeId: resp.storeId })
+    const loggedInUser = { userId: resp.userId, username: resp.username, role: resp.role, storeId: resp.storeId }
+    setUser(loggedInUser)
+    return loggedInUser
   }, [])
 
   const logout = useCallback(async () => {
