@@ -831,30 +831,40 @@ public class InventoryService {
      */
     @Transactional(readOnly = true)
     public java.util.Optional<IdentifyEpcResponse> identifyEpc(String epc, UUID storeId) {
+        // products.epc_tags (the per-tag registry product-service explicitly registers
+        // physical tags into) is the primary source. But inventory.epc_registry gets a
+        // product_id the moment an SOH scan commissions the tag, independent of whether
+        // anyone ever registered it in epc_tags — so a tag can be genuine, in-store stock
+        // (alarm-worthy at the gate, per inventory.epc_registry) while still being unknown
+        // to epc_tags. Fall back to epc_registry's product so those tags still resolve to
+        // an image instead of coming back empty.
         return jdbcClient.sql("""
                 SELECT
-                    et.epc,
-                    p.id         AS product_id,
-                    p.sku,
-                    p.name       AS product_name,
-                    p.image_url  AS image_url,
-                    er.status    AS status_in_store,
-                    z.name       AS zone_name,
+                    COALESCE(et.epc, er.epc)             AS epc,
+                    COALESCE(p1.id, p2.id)                AS product_id,
+                    COALESCE(p1.sku, p2.sku)               AS sku,
+                    COALESCE(p1.name, p2.name)             AS product_name,
+                    COALESCE(p1.image_url, p2.image_url)   AS image_url,
+                    er.status                              AS status_in_store,
+                    z.name                                 AS zone_name,
                     COALESCE((
                         SELECT STRING_AGG(b.barcode_value, ',')
                         FROM   products.barcodes b
-                        WHERE  b.product_id = p.id
+                        WHERE  b.product_id = COALESCE(p1.id, p2.id)
                           AND  b.barcode_type IN ('ean13','ean8','upc_a')
                     ), '') AS eans
-                FROM  products.epc_tags et
-                JOIN  products.products p  ON p.id = et.product_id
+                FROM (SELECT UPPER(:epc) AS epc) q
+                LEFT JOIN products.epc_tags et
+                       ON UPPER(et.epc) = q.epc AND et.is_active = true
+                LEFT JOIN products.products p1 ON p1.id = et.product_id
                 LEFT JOIN inventory.epc_registry er
-                       ON er.epc = et.epc AND er.store_id = CAST(:storeId AS uuid)
+                       ON UPPER(er.epc) = q.epc AND er.store_id = CAST(:storeId AS uuid)
+                LEFT JOIN products.products p2 ON p2.id = er.product_id
                 LEFT JOIN stores.zones z ON z.id = er.zone_id
-                WHERE et.epc = :epc AND et.is_active = true
+                WHERE et.epc IS NOT NULL OR er.epc IS NOT NULL
                 LIMIT 1
                 """)
-                .param("epc", epc.toUpperCase())
+                .param("epc", epc)
                 .param("storeId", storeId.toString())
                 .query((rs, n) -> {
                     String eansRaw = rs.getString("eans");
