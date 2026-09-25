@@ -27,7 +27,7 @@ export default function LoginPage() {
     setError(null)
     try {
       const loggedInUser = await login(values)
-      router.replace(loggedInUser.role === 'SECURITY_GUARD' ? '/unsold-items' : '/dashboard')
+      router.replace(loggedInUser.role === 'SECURITY_GUARD' ? '/gate-alarms/live' : '/dashboard')
     } catch {
       setError('Invalid username or password.')
     }

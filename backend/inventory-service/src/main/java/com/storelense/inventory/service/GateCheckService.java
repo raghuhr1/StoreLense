@@ -83,6 +83,50 @@ public class GateCheckService {
                 null, null, null);
     }
 
+    /** Today's unresolved FX9600 alarms, newest first — backs the live gate screen a
+     *  guard watches in real time. Deliberately not paged: this is meant to be polled
+     *  every few seconds and shows only what's still outstanding, so the result set
+     *  is naturally small (it shrinks every time something gets cleared). */
+    @Transactional(readOnly = true)
+    public List<GateCheckDto> liveUnresolvedAlarms(UUID storeId, int limit) {
+        OffsetDateTime start = LocalDate.now(ZoneOffset.UTC).atStartOfDay().atOffset(ZoneOffset.UTC);
+        OffsetDateTime end   = start.plusDays(1);
+
+        return jdbcClient.sql("""
+                SELECT id, store_id, bill_ref, checked_at, expected_count,
+                       matched_count, extra_count, outcome, epcs_matched, epcs_extra,
+                       resolution, resolved_by, resolved_at
+                FROM inventory.gate_checks
+                WHERE store_id = CAST(:storeId AS uuid)
+                  AND checked_at BETWEEN :start AND :end
+                  AND bill_ref IS NULL
+                  AND outcome = 'FLAGGED'
+                  AND resolution IS NULL
+                ORDER BY checked_at DESC
+                LIMIT :limit
+                """)
+                .param("storeId", storeId.toString())
+                .param("start", start)
+                .param("end", end)
+                .param("limit", limit)
+                .query((rs, n) -> new GateCheckDto(
+                        rs.getObject("id", UUID.class),
+                        rs.getObject("store_id", UUID.class),
+                        rs.getString("bill_ref"),
+                        rs.getObject("checked_at", OffsetDateTime.class),
+                        rs.getInt("expected_count"),
+                        rs.getInt("matched_count"),
+                        rs.getInt("extra_count"),
+                        rs.getString("outcome"),
+                        arrayToList((String[]) rs.getArray("epcs_matched").getArray()),
+                        arrayToList((String[]) rs.getArray("epcs_extra").getArray()),
+                        rs.getString("resolution"),
+                        rs.getObject("resolved_by", UUID.class),
+                        rs.getObject("resolved_at", OffsetDateTime.class)
+                ))
+                .list();
+    }
+
     /**
      * @param fx9600Only false = guard-app bill checks (bill_ref present) — the Guard
      *        Dashboard. true = unattended FX9600 exit-portal alarms (bill_ref is

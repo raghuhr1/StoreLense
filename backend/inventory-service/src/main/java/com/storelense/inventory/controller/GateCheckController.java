@@ -95,6 +95,20 @@ public class GateCheckController {
         return ResponseEntity.ok(ApiResponse.ok(PageResponse.from(result)));
     }
 
+    @GetMapping("/alarms/live")
+    @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER','STORE_ASSOCIATE','SECURITY_GUARD')")
+    @Operation(summary = "Today's unresolved FX9600 alarms, newest first",
+               description = "Backs the live gate screen a guard watches in real time — " +
+                             "unlike the paged alarm log, this is meant to be polled every " +
+                             "few seconds and only ever returns what's still outstanding.")
+    public ResponseEntity<ApiResponse<java.util.List<GateCheckDto>>> liveAlarms(
+            @RequestParam UUID storeId,
+            @RequestParam(defaultValue = "5") int limit,
+            @AuthenticationPrincipal StoreLensePrincipal principal) {
+        UUID effectiveStoreId = principal.canAccessStore(storeId) ? storeId : principal.storeId();
+        return ResponseEntity.ok(ApiResponse.ok(gateCheckService.liveUnresolvedAlarms(effectiveStoreId, limit)));
+    }
+
     @GetMapping("/alarms/summary")
     @PreAuthorize("hasAnyRole('ADMIN','STORE_MANAGER')")
     @Operation(summary = "KPI summary for the FX9600 alarms view")

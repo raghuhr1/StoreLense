@@ -209,10 +209,20 @@ export default function GateAlarmsPage() {
       <div className="p-6 space-y-6">
 
         {/* Explanation banner */}
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800">
-          <strong>Unattended exit-portal alarms</strong> — tags detected leaving the store
-          by the fixed FX9600 reader with no bill scan and no guard check. These are raw
-          sensor events, separate from the Guard Dashboard's guard-app bill checks.
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-center justify-between gap-4">
+          <span>
+            <strong>Unattended exit-portal alarms</strong> — tags detected leaving the store
+            by the fixed FX9600 reader with no bill scan and no guard check. These are raw
+            sensor events, separate from the Guard Dashboard's guard-app bill checks.
+          </span>
+          <a
+            href="/gate-alarms/live"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-primary text-xs whitespace-nowrap shrink-0"
+          >
+            Open Live Screen
+          </a>
         </div>
 
         {/* Store selector (admin) */}

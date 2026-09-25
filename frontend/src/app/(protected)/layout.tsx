@@ -6,7 +6,9 @@ import Sidebar              from '@/components/layout/Sidebar'
 import { useAuth }          from '@/lib/auth/AuthContext'
 import { FeaturesProvider } from '@/lib/features/FeaturesContext'
 
-const GUARD_HOME = '/unsold-items'
+// The live gate-alarm screen — a full-bleed kiosk view with its own header,
+// not the standard admin Header component, hence no top padding below.
+const GUARD_HOME = '/gate-alarms/live'
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const router        = useRouter()
@@ -20,7 +22,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
   // Security guards get a single-purpose view — no sidebar, no other pages.
   // Any attempt to navigate elsewhere (typed URL, back button, stale link)
-  // bounces straight back to the unsold-items gallery.
+  // bounces straight back to the live gate-alarm screen.
   useEffect(() => {
     if (!isLoading && isAuthed && isGuard && pathname !== GUARD_HOME) {
       router.replace(GUARD_HOME)
@@ -41,10 +43,8 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   if (isGuard) {
     return (
       <FeaturesProvider storeId={user?.storeId ?? null} isAdmin={false}>
-        <div className="min-h-screen" style={{ ['--sidebar-width' as string]: '0px' }}>
-          <main className="pt-16 min-h-screen bg-gray-50">
-            {children}
-          </main>
+        <div style={{ ['--sidebar-width' as string]: '0px' }}>
+          {children}
         </div>
       </FeaturesProvider>
     )

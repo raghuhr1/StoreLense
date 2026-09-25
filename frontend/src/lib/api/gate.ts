@@ -45,4 +45,9 @@ export const gateApi = {
   resolve: (id: string, resolution: GateCheckResolution) =>
     client.patch<ApiResponse<void>>(`/gate/checks/${id}/resolution`, { resolution })
       .then(r => r.data.data),
+
+  // Today's unresolved alarms only, newest first — for the live gate screen.
+  liveAlarms: (storeId: string, limit = 5) =>
+    client.get<ApiResponse<GateCheck[]>>('/gate/checks/alarms/live', { params: { storeId, limit } })
+      .then(r => r.data.data ?? []),
 }
