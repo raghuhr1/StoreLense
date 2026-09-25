@@ -341,7 +341,16 @@ export interface GateCheckSummary {
   abandoned:       number
   totalExtraItems: number
   flagRate:        number
+  /** FLAGGED rows still awaiting a resolution — the number that should keep
+   *  nagging a guard/manager until it hits zero. */
+  unresolved:      number
+  /** FLAGGED rows already reviewed and closed out. */
+  resolved:        number
 }
+
+export type GateCheckResolution =
+  | 'CUSTOMER_VERIFIED' | 'THEFT_PREVENTED' | 'ESCALATED'
+  | 'REVIEWED_FALSE_ALARM' | 'CONFIRMED_THEFT'
 
 export interface GateCheck {
   id:            string
@@ -354,6 +363,9 @@ export interface GateCheck {
   outcome:       'RELEASED' | 'FLAGGED' | 'ABANDONED'
   epcsMatched:   string[]
   epcsExtra:     string[]
+  resolution:    GateCheckResolution | null
+  resolvedBy:    string | null
+  resolvedAt:    string | null
 }
 
 export interface BillLookupItem {

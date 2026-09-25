@@ -1,10 +1,10 @@
 'use client'
 
-import { useQuery, useQueries } from '@tanstack/react-query'
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Fragment, useEffect, useState } from 'react'
 import { useRouter }         from 'next/navigation'
 import {
-  Radio, AlertTriangle, PackageOpen, RefreshCw,
+  Radio, AlertTriangle, PackageOpen, RefreshCw, CheckCircle2,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import Header                from '@/components/layout/Header'
@@ -13,7 +13,17 @@ import { gateApi }           from '@/lib/api/gate'
 import { inventoryApi }      from '@/lib/api/inventory'
 import { storesApi }         from '@/lib/api/stores'
 import { useAuth }           from '@/lib/auth/AuthContext'
-import type { GateCheck }    from '@/types'
+import type { GateCheck, GateCheckResolution } from '@/types'
+
+const RESOLUTION_OPTS: { value: GateCheckResolution; label: string }[] = [
+  { value: 'REVIEWED_FALSE_ALARM', label: 'Reviewed — false alarm' },
+  { value: 'CONFIRMED_THEFT',      label: 'Confirmed theft — reported' },
+  { value: 'ESCALATED',            label: 'Escalated to management' },
+]
+
+const RESOLUTION_LABEL: Record<string, string> = Object.fromEntries(
+  RESOLUTION_OPTS.map(o => [o.value, o.label])
+)
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -38,45 +48,82 @@ const selectCls = 'text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-whit
 
 // ── Expanded row — which tags triggered this alarm ──────────────────────────
 
-function ExpandedAlarmDetails({ row, storeId }: { row: GateCheck; storeId: string }) {
+function ExpandedAlarmDetails({
+  row, storeId, onResolve, isResolving,
+}: {
+  row: GateCheck
+  storeId: string
+  onResolve: (id: string, resolution: GateCheckResolution) => void
+  isResolving: boolean
+}) {
   const extraEpcQueries = useQueries({
     queries: row.epcsExtra.map(epc => ({
       queryKey: ['identify-epc', epc, storeId],
       queryFn:  () => inventoryApi.identifyEpc(epc, storeId),
     })),
   })
+  const [pendingResolution, setPendingResolution] = useState<GateCheckResolution>('REVIEWED_FALSE_ALARM')
 
   return (
-    <div>
-      <p className="text-xs font-semibold text-gray-500 mb-2">
-        Tags that triggered this alarm ({row.epcsExtra.length})
-      </p>
-      {row.epcsExtra.length === 0 ? (
-        <p className="text-xs text-gray-400">None</p>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {row.epcsExtra.map((epc, i) => {
-            const info = extraEpcQueries[i]?.data
-            const loading = extraEpcQueries[i]?.isLoading
-            return (
-              <div key={epc} className="flex items-center gap-3 bg-red-50 rounded-lg border border-red-100 px-3 py-2">
-                {info?.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={info.imageUrl} alt="" className="w-9 h-9 rounded object-cover bg-white shrink-0" />
-                ) : (
-                  <div className="w-9 h-9 rounded bg-white shrink-0" />
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-red-800 truncate">
-                    {loading ? 'Looking up…' : (info?.productName || 'Unknown / foreign tag')}
-                  </p>
-                  <p className="text-[11px] text-red-600 font-mono truncate">{epc}</p>
+    <div className="space-y-4">
+      <div>
+        <p className="text-xs font-semibold text-gray-500 mb-2">
+          Tags that triggered this alarm ({row.epcsExtra.length})
+        </p>
+        {row.epcsExtra.length === 0 ? (
+          <p className="text-xs text-gray-400">None</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {row.epcsExtra.map((epc, i) => {
+              const info = extraEpcQueries[i]?.data
+              const loading = extraEpcQueries[i]?.isLoading
+              return (
+                <div key={epc} className="flex items-center gap-3 bg-red-50 rounded-lg border border-red-100 px-3 py-2">
+                  {info?.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={info.imageUrl} alt="" className="w-9 h-9 rounded object-cover bg-white shrink-0" />
+                  ) : (
+                    <div className="w-9 h-9 rounded bg-white shrink-0" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-red-800 truncate">
+                      {loading ? 'Looking up…' : (info?.productName || 'Unknown / foreign tag')}
+                    </p>
+                    <p className="text-[11px] text-red-600 font-mono truncate">{epc}</p>
+                  </div>
                 </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-gray-200 pt-3">
+        {row.resolution ? (
+          <p className="text-xs text-green-700">
+            <CheckCircle2 size={13} className="inline mr-1 -mt-0.5" />
+            Reviewed as <strong>{RESOLUTION_LABEL[row.resolution] ?? row.resolution}</strong>
+            {row.resolvedAt && ` on ${new Date(row.resolvedAt).toLocaleString()}`}
+          </p>
+        ) : (
+          <div className="flex items-center gap-2">
+            <select
+              value={pendingResolution}
+              onChange={e => setPendingResolution(e.target.value as GateCheckResolution)}
+              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              {RESOLUTION_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <button
+              onClick={() => onResolve(row.id, pendingResolution)}
+              disabled={isResolving}
+              className="btn-primary py-1.5 px-3 text-xs disabled:opacity-50"
+            >
+              {isResolving ? 'Clearing…' : 'Clear'}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -85,6 +132,7 @@ function ExpandedAlarmDetails({ row, storeId }: { row: GateCheck; storeId: strin
 
 export default function GateAlarmsPage() {
   const router             = useRouter()
+  const qc                 = useQueryClient()
   const { user, isAdmin, isManager } = useAuth()
 
   // ── Access control — same tier as Guard Dashboard ─────────────────────────
@@ -142,6 +190,16 @@ export default function GateAlarmsPage() {
 
   const handleRefresh = () => { refetchSummary(); refetchAlarms() }
 
+  // ── Resolve (clear) mutation ──────────────────────────────────────────────
+  const resolveMut = useMutation({
+    mutationFn: ({ id, resolution }: { id: string; resolution: GateCheckResolution }) =>
+      gateApi.resolve(id, resolution),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['gate-alarms', storeId] })
+      qc.invalidateQueries({ queryKey: ['gate-alarm-summary', storeId] })
+    },
+  })
+
   // ── Render ────────────────────────────────────────────────────────────────
   if (user && !isManager) return null
 
@@ -170,7 +228,7 @@ export default function GateAlarmsPage() {
         )}
 
         {/* KPI tiles */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             title="Total Alarms Today"
             value={summaryLoading ? '…' : (summary?.totalChecks ?? 0).toLocaleString()}
@@ -178,11 +236,17 @@ export default function GateAlarmsPage() {
             color="blue"
           />
           <StatCard
-            title="Flagged"
-            value={summaryLoading ? '…' : (summary?.flagged ?? 0).toLocaleString()}
-            sub={summary?.flagRate != null ? `${summary.flagRate.toFixed(1)}% flag rate` : undefined}
+            title="Unresolved"
+            value={summaryLoading ? '…' : (summary?.unresolved ?? 0).toLocaleString()}
+            sub="stays here until cleared"
             icon={AlertTriangle}
             color="red"
+          />
+          <StatCard
+            title="Reviewed"
+            value={summaryLoading ? '…' : (summary?.resolved ?? 0).toLocaleString()}
+            icon={CheckCircle2}
+            color="green"
           />
           <StatCard
             title="Tags Detected"
@@ -228,18 +292,19 @@ export default function GateAlarmsPage() {
                     <th className="table-th">Time</th>
                     <th className="table-th text-right">Tags Detected</th>
                     <th className="table-th">Outcome</th>
+                    <th className="table-th">Status</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-50">
                   {alarmsLoading ? (
                     <tr>
-                      <td colSpan={4} className="table-td text-center text-gray-400 py-12">
+                      <td colSpan={5} className="table-td text-center text-gray-400 py-12">
                         Loading…
                       </td>
                     </tr>
                   ) : alarms.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="table-td text-center text-gray-400 py-12">
+                      <td colSpan={5} className="table-td text-center text-gray-400 py-12">
                         <Radio size={24} className="mx-auto mb-2 opacity-30" />
                         No FX9600 alarms for this date.
                       </td>
@@ -279,12 +344,28 @@ export default function GateAlarmsPage() {
                                 {row.outcome}
                               </span>
                             </td>
+                            <td className="table-td">
+                              {row.resolution ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 ring-1 ring-inset ring-green-200">
+                                  <CheckCircle2 size={12} /> Reviewed
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700 ring-1 ring-inset ring-red-200">
+                                  Unresolved
+                                </span>
+                              )}
+                            </td>
                           </tr>
                           {isExpanded && (
                             <tr className="bg-gray-50">
                               <td />
-                              <td colSpan={3} className="table-td py-4">
-                                <ExpandedAlarmDetails row={row} storeId={storeId} />
+                              <td colSpan={4} className="table-td py-4">
+                                <ExpandedAlarmDetails
+                                  row={row}
+                                  storeId={storeId}
+                                  onResolve={(id, resolution) => resolveMut.mutate({ id, resolution })}
+                                  isResolving={resolveMut.isPending && resolveMut.variables?.id === row.id}
+                                />
                               </td>
                             </tr>
                           )}

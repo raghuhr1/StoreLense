@@ -79,7 +79,8 @@ public class GateCheckService {
                 req.expectedCount(), req.matchedCount(), req.extraCount(),
                 req.outcome().toUpperCase(),
                 req.epcsMatched() != null ? req.epcsMatched() : List.of(),
-                req.epcsExtra()   != null ? req.epcsExtra()   : List.of());
+                req.epcsExtra()   != null ? req.epcsExtra()   : List.of(),
+                null, null, null);
     }
 
     /**
@@ -117,7 +118,8 @@ public class GateCheckService {
 
         String listSql = """
                 SELECT id, store_id, bill_ref, checked_at, expected_count,
-                       matched_count, extra_count, outcome, epcs_matched, epcs_extra
+                       matched_count, extra_count, outcome, epcs_matched, epcs_extra,
+                       resolution, resolved_by, resolved_at
                 FROM inventory.gate_checks
                 WHERE store_id = CAST(:storeId AS uuid)
                   AND checked_at BETWEEN :from AND :to
@@ -145,7 +147,10 @@ public class GateCheckService {
                         rs.getInt("extra_count"),
                         rs.getString("outcome"),
                         arrayToList((String[]) rs.getArray("epcs_matched").getArray()),
-                        arrayToList((String[]) rs.getArray("epcs_extra").getArray())
+                        arrayToList((String[]) rs.getArray("epcs_extra").getArray()),
+                        rs.getString("resolution"),
+                        rs.getObject("resolved_by", UUID.class),
+                        rs.getObject("resolved_at", OffsetDateTime.class)
                 ))
                 .list();
 
@@ -206,7 +211,27 @@ public class GateCheckService {
         int extraItems = rows.stream().mapToInt(r -> (int) r.extraSum()).sum();
         double flagRate = total > 0 ? Math.round((flagged * 100.0 / total) * 10.0) / 10.0 : 0.0;
 
-        return new GateCheckSummaryDto(total, released, flagged, abandoned, extraItems, flagRate);
+        // Only FLAGGED rows ever need a resolution — this is the count that should
+        // keep nagging a guard/manager until every one of today's FLAGGED rows has
+        // been explicitly cleared, not just aged off the list.
+        Long unresolved = jdbcClient.sql("""
+                SELECT COUNT(*) FROM inventory.gate_checks
+                WHERE store_id  = CAST(:storeId AS uuid)
+                  AND checked_at BETWEEN :start AND :end
+                  AND (CAST(:guardId AS uuid) IS NULL OR guard_user_id = CAST(:guardId AS uuid))
+                  AND outcome = 'FLAGGED'
+                  AND resolution IS NULL
+                  AND """ + billRefClause + """
+
+                """)
+                .param("storeId", storeId.toString())
+                .param("start", start)
+                .param("end",   end)
+                .param("guardId", guardUserId != null ? guardUserId.toString() : null)
+                .query(Long.class).single();
+
+        return new GateCheckSummaryDto(total, released, flagged, abandoned, extraItems, flagRate,
+                unresolved.intValue(), flagged - unresolved.intValue());
     }
 
     /** Guard's own last N gate checks, most recent first — for a mobile "recent activity" list. */
@@ -214,7 +239,8 @@ public class GateCheckService {
     public List<GateCheckDto> myRecent(UUID storeId, UUID guardUserId, int limit) {
         return jdbcClient.sql("""
                 SELECT id, store_id, bill_ref, checked_at, expected_count,
-                       matched_count, extra_count, outcome, epcs_matched, epcs_extra
+                       matched_count, extra_count, outcome, epcs_matched, epcs_extra,
+                       resolution, resolved_by, resolved_at
                 FROM inventory.gate_checks
                 WHERE store_id = CAST(:storeId AS uuid)
                   AND guard_user_id = CAST(:guardId AS uuid)
@@ -234,13 +260,20 @@ public class GateCheckService {
                         rs.getInt("extra_count"),
                         rs.getString("outcome"),
                         arrayToList((String[]) rs.getArray("epcs_matched").getArray()),
-                        arrayToList((String[]) rs.getArray("epcs_extra").getArray())
+                        arrayToList((String[]) rs.getArray("epcs_extra").getArray()),
+                        rs.getString("resolution"),
+                        rs.getObject("resolved_by", UUID.class),
+                        rs.getObject("resolved_at", OffsetDateTime.class)
                 ))
                 .list();
     }
 
-    private static final List<String> VALID_RESOLUTIONS =
-            List.of("CUSTOMER_VERIFIED", "THEFT_PREVENTED", "ESCALATED");
+    // Guard-app bill checks have an actual customer in front of the guard;
+    // FX9600 alarms are an unattended sensor event with no one to verify against —
+    // hence the separate REVIEWED_FALSE_ALARM/CONFIRMED_THEFT vocabulary for those.
+    private static final List<String> VALID_RESOLUTIONS = List.of(
+            "CUSTOMER_VERIFIED", "THEFT_PREVENTED", "ESCALATED",
+            "REVIEWED_FALSE_ALARM", "CONFIRMED_THEFT");
 
     /** Records how a guard/manager closed out a FLAGGED release — customer verified
      *  fine, an item was physically recovered, or it was escalated to a supervisor. */

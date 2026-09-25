@@ -14,5 +14,8 @@ public record GateCheckDto(
         int             extraCount,
         String          outcome,
         List<String>    epcsMatched,
-        List<String>    epcsExtra
+        List<String>    epcsExtra,
+        String          resolution,
+        UUID            resolvedBy,
+        OffsetDateTime  resolvedAt
 ) {}

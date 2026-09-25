@@ -1,5 +1,5 @@
 import client from './client'
-import type { ApiResponse, PageResponse, GateCheckSummary, GateCheck, BillLookupResponse } from '@/types'
+import type { ApiResponse, PageResponse, GateCheckSummary, GateCheck, GateCheckResolution, BillLookupResponse } from '@/types'
 
 export const gateApi = {
   summary: (storeId: string, date: string) =>
@@ -40,5 +40,9 @@ export const gateApi = {
   }) =>
     client
       .get<ApiResponse<PageResponse<GateCheck>>>('/gate/checks/alarms', { params })
+      .then(r => r.data.data),
+
+  resolve: (id: string, resolution: GateCheckResolution) =>
+    client.patch<ApiResponse<void>>(`/gate/checks/${id}/resolution`, { resolution })
       .then(r => r.data.data),
 }
