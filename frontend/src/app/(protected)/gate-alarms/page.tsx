@@ -63,7 +63,12 @@ function ExpandedAlarmDetails({
       queryFn:  () => inventoryApi.identifyEpc(epc, storeId),
     })),
   })
-  const epcGroups = groupEpcs(row.epcsExtra, extraEpcQueries)
+  // Foreign/unregistered tags aren't in our inventory — nothing to show, so
+  // they're dropped from display (the alarm's extraCount still reflects all
+  // of them). Still-loading groups are kept so a real item doesn't flash and
+  // disappear while resolving.
+  const knownGroups = groupEpcs(row.epcsExtra, extraEpcQueries)
+    .filter(g => g.loading || g.info)
   const [pendingResolution, setPendingResolution] = useState<GateCheckResolution>('REVIEWED_FALSE_ALARM')
 
   return (
@@ -72,11 +77,11 @@ function ExpandedAlarmDetails({
         <p className="text-xs font-semibold text-gray-500 mb-2">
           Tags that triggered this alarm ({row.epcsExtra.length})
         </p>
-        {epcGroups.length === 0 ? (
-          <p className="text-xs text-gray-400">None</p>
+        {knownGroups.length === 0 ? (
+          <p className="text-xs text-gray-400">No recognized inventory item — tag not in our system.</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {epcGroups.map(group => (
+            {knownGroups.map(group => (
               <div key={group.key} className="flex items-center gap-3 bg-red-50 rounded-lg border border-red-100 px-3 py-2">
                 {group.info?.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -86,7 +91,7 @@ function ExpandedAlarmDetails({
                 )}
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-red-800 truncate">
-                    {group.loading ? 'Looking up…' : (group.info?.productName || 'Unknown / foreign tag')}
+                    {group.loading ? 'Looking up…' : group.info?.productName}
                     {group.epcs.length > 1 && <span className="ml-1 text-red-500">×{group.epcs.length}</span>}
                   </p>
                   <p className="text-[11px] text-red-600 font-mono truncate">

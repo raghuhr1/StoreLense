@@ -59,7 +59,12 @@ export default function LiveGateAlarmsPage() {
     })),
   })
 
+  // Foreign/unregistered tags aren't in our inventory at all — nothing to show
+  // a guard, so they're dropped from display (but still counted/logged; the
+  // alarm itself and its extraCount are unaffected). Still-loading groups are
+  // kept so a real item doesn't flash and disappear while resolving.
   const epcGroups = groupEpcs(current?.epcsExtra ?? [], extraEpcQueries)
+    .filter(g => g.loading || g.info)
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
@@ -103,32 +108,39 @@ export default function LiveGateAlarmsPage() {
               <span className="ml-auto font-mono text-slate-400 text-lg">{fmtTime(current.checkedAt)}</span>
             </div>
 
-            <div className={`grid gap-4 mb-8 ${epcGroups.length > 1 ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-1'}`}>
-              {epcGroups.map(group => (
-                <div key={group.key} className="relative bg-slate-900 border-2 border-red-500/50 rounded-2xl p-4 flex flex-col items-center">
-                  {group.epcs.length > 1 && (
-                    <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold w-7 h-7 rounded-full flex items-center justify-center shadow-lg">
-                      ×{group.epcs.length}
-                    </span>
-                  )}
-                  <div className="w-full aspect-square bg-slate-800 rounded-xl overflow-hidden flex items-center justify-center mb-3">
-                    {group.info?.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={group.info.imageUrl} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <ShieldAlert size={40} className="text-slate-600" />
+            {epcGroups.length === 0 ? (
+              <div className="text-center text-slate-500 mb-8 py-10 border-2 border-dashed border-slate-700 rounded-2xl">
+                <ShieldAlert size={32} className="mx-auto mb-2 opacity-40" />
+                <p className="text-sm">No recognized inventory item — tag not in our system.</p>
+              </div>
+            ) : (
+              <div className={`grid gap-4 mb-8 ${epcGroups.length > 1 ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-1'}`}>
+                {epcGroups.map(group => (
+                  <div key={group.key} className="relative bg-slate-900 border-2 border-red-500/50 rounded-2xl p-4 flex flex-col items-center">
+                    {group.epcs.length > 1 && (
+                      <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold w-7 h-7 rounded-full flex items-center justify-center shadow-lg">
+                        ×{group.epcs.length}
+                      </span>
                     )}
+                    <div className="w-full aspect-square bg-slate-800 rounded-xl overflow-hidden flex items-center justify-center mb-3">
+                      {group.info?.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={group.info.imageUrl} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <ShieldAlert size={40} className="text-slate-600" />
+                      )}
+                    </div>
+                    <p className="text-lg font-semibold text-center">
+                      {group.loading ? 'Looking up…' : group.info?.productName}
+                    </p>
+                    {group.info?.sku && <p className="text-xs text-slate-400 font-mono">{group.info.sku}</p>}
+                    <p className="text-[11px] text-slate-500 font-mono mt-1 text-center break-all">
+                      {group.epcs.length > 1 ? `${group.epcs.length} tags` : group.epcs[0]}
+                    </p>
                   </div>
-                  <p className="text-lg font-semibold text-center">
-                    {group.loading ? 'Looking up…' : (group.info?.productName || 'Unknown / foreign tag')}
-                  </p>
-                  {group.info?.sku && <p className="text-xs text-slate-400 font-mono">{group.info.sku}</p>}
-                  <p className="text-[11px] text-slate-500 font-mono mt-1 text-center break-all">
-                    {group.epcs.length > 1 ? `${group.epcs.length} tags` : group.epcs[0]}
-                  </p>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
             <div className="flex items-center justify-center gap-3">
               {RESOLUTION_OPTS.map(o => (
