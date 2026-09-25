@@ -7,6 +7,7 @@ import { gateApi }      from '@/lib/api/gate'
 import { inventoryApi } from '@/lib/api/inventory'
 import { storesApi }    from '@/lib/api/stores'
 import { useAuth }      from '@/lib/auth/AuthContext'
+import { groupEpcs }    from '@/lib/epcGrouping'
 import type { GateCheck, GateCheckResolution } from '@/types'
 
 const RESOLUTION_OPTS: { value: GateCheckResolution; label: string }[] = [
@@ -58,6 +59,8 @@ export default function LiveGateAlarmsPage() {
     })),
   })
 
+  const epcGroups = groupEpcs(current?.epcsExtra ?? [], extraEpcQueries)
+
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
       {/* Header */}
@@ -100,28 +103,31 @@ export default function LiveGateAlarmsPage() {
               <span className="ml-auto font-mono text-slate-400 text-lg">{fmtTime(current.checkedAt)}</span>
             </div>
 
-            <div className={`grid gap-4 mb-8 ${current.epcsExtra.length > 1 ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-1'}`}>
-              {current.epcsExtra.map((epc, i) => {
-                const info = extraEpcQueries[i]?.data
-                const loading = extraEpcQueries[i]?.isLoading
-                return (
-                  <div key={epc} className="bg-slate-900 border-2 border-red-500/50 rounded-2xl p-4 flex flex-col items-center">
-                    <div className="w-full aspect-square bg-slate-800 rounded-xl overflow-hidden flex items-center justify-center mb-3">
-                      {info?.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={info.imageUrl} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <ShieldAlert size={40} className="text-slate-600" />
-                      )}
-                    </div>
-                    <p className="text-lg font-semibold text-center">
-                      {loading ? 'Looking up…' : (info?.productName || 'Unknown / foreign tag')}
-                    </p>
-                    {info?.sku && <p className="text-xs text-slate-400 font-mono">{info.sku}</p>}
-                    <p className="text-[11px] text-slate-500 font-mono mt-1">{epc}</p>
+            <div className={`grid gap-4 mb-8 ${epcGroups.length > 1 ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-1'}`}>
+              {epcGroups.map(group => (
+                <div key={group.key} className="relative bg-slate-900 border-2 border-red-500/50 rounded-2xl p-4 flex flex-col items-center">
+                  {group.epcs.length > 1 && (
+                    <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold w-7 h-7 rounded-full flex items-center justify-center shadow-lg">
+                      ×{group.epcs.length}
+                    </span>
+                  )}
+                  <div className="w-full aspect-square bg-slate-800 rounded-xl overflow-hidden flex items-center justify-center mb-3">
+                    {group.info?.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={group.info.imageUrl} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <ShieldAlert size={40} className="text-slate-600" />
+                    )}
                   </div>
-                )
-              })}
+                  <p className="text-lg font-semibold text-center">
+                    {group.loading ? 'Looking up…' : (group.info?.productName || 'Unknown / foreign tag')}
+                  </p>
+                  {group.info?.sku && <p className="text-xs text-slate-400 font-mono">{group.info.sku}</p>}
+                  <p className="text-[11px] text-slate-500 font-mono mt-1 text-center break-all">
+                    {group.epcs.length > 1 ? `${group.epcs.length} tags` : group.epcs[0]}
+                  </p>
+                </div>
+              ))}
             </div>
 
             <div className="flex items-center justify-center gap-3">

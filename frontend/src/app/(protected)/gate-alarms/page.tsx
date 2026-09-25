@@ -13,6 +13,7 @@ import { gateApi }           from '@/lib/api/gate'
 import { inventoryApi }      from '@/lib/api/inventory'
 import { storesApi }         from '@/lib/api/stores'
 import { useAuth }           from '@/lib/auth/AuthContext'
+import { groupEpcs }         from '@/lib/epcGrouping'
 import type { GateCheck, GateCheckResolution } from '@/types'
 
 const RESOLUTION_OPTS: { value: GateCheckResolution; label: string }[] = [
@@ -62,6 +63,7 @@ function ExpandedAlarmDetails({
       queryFn:  () => inventoryApi.identifyEpc(epc, storeId),
     })),
   })
+  const epcGroups = groupEpcs(row.epcsExtra, extraEpcQueries)
   const [pendingResolution, setPendingResolution] = useState<GateCheckResolution>('REVIEWED_FALSE_ALARM')
 
   return (
@@ -70,30 +72,29 @@ function ExpandedAlarmDetails({
         <p className="text-xs font-semibold text-gray-500 mb-2">
           Tags that triggered this alarm ({row.epcsExtra.length})
         </p>
-        {row.epcsExtra.length === 0 ? (
+        {epcGroups.length === 0 ? (
           <p className="text-xs text-gray-400">None</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {row.epcsExtra.map((epc, i) => {
-              const info = extraEpcQueries[i]?.data
-              const loading = extraEpcQueries[i]?.isLoading
-              return (
-                <div key={epc} className="flex items-center gap-3 bg-red-50 rounded-lg border border-red-100 px-3 py-2">
-                  {info?.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={info.imageUrl} alt="" className="w-9 h-9 rounded object-cover bg-white shrink-0" />
-                  ) : (
-                    <div className="w-9 h-9 rounded bg-white shrink-0" />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-medium text-red-800 truncate">
-                      {loading ? 'Looking up…' : (info?.productName || 'Unknown / foreign tag')}
-                    </p>
-                    <p className="text-[11px] text-red-600 font-mono truncate">{epc}</p>
-                  </div>
+            {epcGroups.map(group => (
+              <div key={group.key} className="flex items-center gap-3 bg-red-50 rounded-lg border border-red-100 px-3 py-2">
+                {group.info?.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={group.info.imageUrl} alt="" className="w-9 h-9 rounded object-cover bg-white shrink-0" />
+                ) : (
+                  <div className="w-9 h-9 rounded bg-white shrink-0" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-red-800 truncate">
+                    {group.loading ? 'Looking up…' : (group.info?.productName || 'Unknown / foreign tag')}
+                    {group.epcs.length > 1 && <span className="ml-1 text-red-500">×{group.epcs.length}</span>}
+                  </p>
+                  <p className="text-[11px] text-red-600 font-mono truncate">
+                    {group.epcs.length > 1 ? `${group.epcs.length} tags` : group.epcs[0]}
+                  </p>
                 </div>
-              )
-            })}
+              </div>
+            ))}
           </div>
         )}
       </div>
