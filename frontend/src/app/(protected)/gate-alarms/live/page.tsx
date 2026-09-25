@@ -7,7 +7,7 @@ import { gateApi }      from '@/lib/api/gate'
 import { inventoryApi } from '@/lib/api/inventory'
 import { storesApi }    from '@/lib/api/stores'
 import { useAuth }      from '@/lib/auth/AuthContext'
-import { groupEpcs }    from '@/lib/epcGrouping'
+import { groupEpcs, isKnownOrPending } from '@/lib/epcGrouping'
 import type { GateCheck, GateCheckResolution } from '@/types'
 
 const RESOLUTION_OPTS: { value: GateCheckResolution; label: string }[] = [
@@ -41,10 +41,11 @@ function AlertCard({
   })
 
   // Foreign/unregistered tags aren't in our inventory — nothing to show, so
-  // they're dropped from display; still-loading groups are kept so a real
-  // item doesn't flash and disappear while resolving.
+  // they're dropped from display. Still-loading AND failed-lookup groups are
+  // kept: a network/auth hiccup must never make a real item look "foreign"
+  // and vanish from the guard's screen — only a confirmed 404 counts.
   const epcGroups = groupEpcs(alarm.epcsExtra, extraEpcQueries)
-    .filter(g => g.loading || g.info)
+    .filter(isKnownOrPending)
 
   return (
     <div className="w-full bg-slate-900 border-2 border-red-500/40 rounded-2xl p-5">
@@ -77,7 +78,7 @@ function AlertCard({
                 )}
               </div>
               <p className="text-sm font-semibold text-center leading-tight">
-                {group.loading ? 'Looking up…' : group.info?.productName}
+                {group.loading ? 'Looking up…' : group.failed ? 'Lookup failed — retrying…' : group.info?.productName}
               </p>
               {group.info?.sku && <p className="text-[11px] text-slate-400 font-mono">{group.info.sku}</p>}
             </div>

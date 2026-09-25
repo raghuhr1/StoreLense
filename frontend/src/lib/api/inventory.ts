@@ -7,10 +7,21 @@ import type {
 } from '@/types'
 
 export const inventoryApi = {
+  // A 404 means the backend confirmed this EPC isn't registered at all —
+  // genuinely foreign. Any other failure (expired token, network blip, 500)
+  // must NOT be treated the same way: silently mapping every error to null
+  // would make a real, known, unbilled item look "foreign" and disappear
+  // from the guard's screen during a transient hiccup. Those get re-thrown
+  // so the caller (react-query) can distinguish "confirmed unknown" from
+  // "couldn't check yet" and retry instead of hiding it.
   identifyEpc: (epc: string, storeId: string) =>
     client.get<ApiResponse<IdentifyEpcResponse>>(`/inventory/identify-epc/${encodeURIComponent(epc)}`, { params: { storeId } })
       .then(r => r.data.data)
-      .catch(() => null),
+      .catch((err: unknown) => {
+        const status = (err as { response?: { status?: number } })?.response?.status
+        if (status === 404) return null
+        throw err
+      }),
 
   getState: (storeId: string) =>
     client.get<ApiResponse<InventoryState[]>>('/inventory/state', { params: { storeId } })

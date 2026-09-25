@@ -13,7 +13,7 @@ import { gateApi }           from '@/lib/api/gate'
 import { inventoryApi }      from '@/lib/api/inventory'
 import { storesApi }         from '@/lib/api/stores'
 import { useAuth }           from '@/lib/auth/AuthContext'
-import { groupEpcs }         from '@/lib/epcGrouping'
+import { groupEpcs, isKnownOrPending } from '@/lib/epcGrouping'
 import type { GateCheck, GateCheckResolution } from '@/types'
 
 const RESOLUTION_OPTS: { value: GateCheckResolution; label: string }[] = [
@@ -65,10 +65,11 @@ function ExpandedAlarmDetails({
   })
   // Foreign/unregistered tags aren't in our inventory — nothing to show, so
   // they're dropped from display (the alarm's extraCount still reflects all
-  // of them). Still-loading groups are kept so a real item doesn't flash and
-  // disappear while resolving.
+  // of them). Still-loading AND failed-lookup groups are kept: a network/
+  // auth hiccup must never make a real item look "foreign" and vanish —
+  // only a confirmed 404 counts.
   const knownGroups = groupEpcs(row.epcsExtra, extraEpcQueries)
-    .filter(g => g.loading || g.info)
+    .filter(isKnownOrPending)
   const [pendingResolution, setPendingResolution] = useState<GateCheckResolution>('REVIEWED_FALSE_ALARM')
 
   return (
@@ -91,7 +92,7 @@ function ExpandedAlarmDetails({
                 )}
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-red-800 truncate">
-                    {group.loading ? 'Looking up…' : group.info?.productName}
+                    {group.loading ? 'Looking up…' : group.failed ? 'Lookup failed — retrying…' : group.info?.productName}
                     {group.epcs.length > 1 && <span className="ml-1 text-red-500">×{group.epcs.length}</span>}
                   </p>
                   <p className="text-[11px] text-red-600 font-mono truncate">
