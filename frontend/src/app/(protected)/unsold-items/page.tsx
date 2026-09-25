@@ -17,15 +17,6 @@ import type { InventoryState, Product } from '@/types'
 // the page.
 const IMAGE_VISIBLE_MS = 10 * 60 * 1000
 
-function isToday(iso: string | null): boolean {
-  if (!iso) return false
-  const d = new Date(iso)
-  const now = new Date()
-  return d.getFullYear() === now.getFullYear()
-    && d.getMonth() === now.getMonth()
-    && d.getDate() === now.getDate()
-}
-
 interface UnsoldItem {
   productId:     string
   sku:           string
@@ -93,13 +84,13 @@ export default function UnsoldItemsPage() {
     return m
   }, [allProducts])
 
-  // "Unsold" = currently on hand per RFID, last sighted today (store-level
-  // rows only, not per-zone breakdowns) — stale/older inventory drops off
-  // automatically at midnight rather than lingering indefinitely.
+  // "Unsold" = currently on hand per RFID (store-level rows only, not
+  // per-zone breakdowns) — regardless of when it was last scanned, since
+  // this store doesn't run a full recount every day.
   const items = useMemo((): UnsoldItem[] => {
     if (!invState) return []
     return (invState as InventoryState[])
-      .filter(inv => inv.zoneId == null && inv.quantityOnHand > 0 && isToday(inv.lastCountedAt))
+      .filter(inv => inv.zoneId == null && inv.quantityOnHand > 0)
       .map(inv => {
         const p = productMap[inv.productId]
         return {
@@ -152,9 +143,9 @@ export default function UnsoldItemsPage() {
 
         {/* Explanation banner */}
         <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800">
-          Showing items last RFID-sighted <strong>today</strong> — yesterday's items drop off automatically at midnight.
-          Each product's photo is visible for <strong>10 minutes</strong> after its sighting, then reverts to a placeholder;
-          the item itself stays listed either way.
+          Showing every item currently on hand per RFID, regardless of when it was last scanned.
+          Each product's photo is visible for <strong>10 minutes</strong> after its most recent sighting, then reverts
+          to a placeholder; the item itself stays listed either way.
         </div>
 
         {/* Filters */}
@@ -218,7 +209,7 @@ export default function UnsoldItemsPage() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="card text-center py-16 text-gray-400 text-sm">
-            No items sighted today match the current filters.
+            No unsold items match the current filters.
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
