@@ -1,0 +1,26 @@
+[Unit]
+Description=StoreLense gate-guard (FX9600 exit portal EPC monitor)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gateguard
+Group=gateguard
+WorkingDirectory=/opt/gate-guard
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/gate-guard/env
+ExecStart=/opt/gate-guard/.venv/bin/python -m gate_guard --config /etc/gate-guard/config.yaml run
+Restart=always
+RestartSec=5
+# A crash loop must not silently stop restarting; the gate would go dead quietly.
+StartLimitIntervalSec=0
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/gate-guard/logs
+
+[Install]
+WantedBy=multi-user.target
