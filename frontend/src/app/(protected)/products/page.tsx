@@ -150,7 +150,7 @@ export default function ProductsPage() {
       header: '',
       cell: ({ row }) => row.original.imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={row.original.imageUrl} alt="" className="w-8 h-8 rounded object-cover border border-gray-200" />
+        <img src={row.original.imageUrl} alt="" width={32} height={32} loading="lazy" decoding="async" className="w-8 h-8 rounded object-cover border border-gray-200" />
       ) : (
         <div className="w-8 h-8 rounded bg-gray-100" />
       ),
@@ -431,7 +431,7 @@ export default function ProductsPage() {
               <div className="flex items-center gap-3 mb-4">
                 {editing.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={editing.imageUrl} alt="" className="w-16 h-16 rounded-lg object-cover border border-gray-200" />
+                  <img src={editing.imageUrl} alt="" width={64} height={64} loading="lazy" decoding="async" className="w-16 h-16 rounded-lg object-cover border border-gray-200" />
                 ) : (
                   <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center text-[10px] text-gray-400">No image</div>
                 )}

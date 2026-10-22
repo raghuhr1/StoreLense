@@ -10,9 +10,9 @@ import { useAuth }      from '@/lib/auth/AuthContext'
 import type { GateCheck, GateCheckResolution, IdentifyEpcResponse } from '@/types'
 
 const RESOLUTION_OPTS: { value: GateCheckResolution; label: string }[] = [
-  { value: 'REVIEWED_FALSE_ALARM', label: 'False alarm' },
-  { value: 'CONFIRMED_THEFT',      label: 'Confirmed theft' },
-  { value: 'ESCALATED',            label: 'Escalate' },
+  { value: 'CUSTOMER_VERIFIED', label: 'All ok' },
+  { value: 'THEFT_PREVENTED',   label: 'Theft recovered' },
+  { value: 'ESCALATED',         label: 'Escalate' },
 ]
 
 // The device re-reports a standing item roughly every report_interval_s while

@@ -17,9 +17,9 @@ import { groupEpcs, isKnownOrPending } from '@/lib/epcGrouping'
 import type { GateCheck, GateCheckResolution } from '@/types'
 
 const RESOLUTION_OPTS: { value: GateCheckResolution; label: string }[] = [
-  { value: 'REVIEWED_FALSE_ALARM', label: 'Reviewed — false alarm' },
-  { value: 'CONFIRMED_THEFT',      label: 'Confirmed theft — reported' },
-  { value: 'ESCALATED',            label: 'Escalated to management' },
+  { value: 'CUSTOMER_VERIFIED', label: 'All ok' },
+  { value: 'THEFT_PREVENTED',   label: 'Theft recovered' },
+  { value: 'ESCALATED',         label: 'Escalated to management' },
 ]
 
 const RESOLUTION_LABEL: Record<string, string> = Object.fromEntries(
@@ -70,7 +70,7 @@ function ExpandedAlarmDetails({
   // only a confirmed 404 counts.
   const knownGroups = groupEpcs(row.epcsExtra, extraEpcQueries)
     .filter(isKnownOrPending)
-  const [pendingResolution, setPendingResolution] = useState<GateCheckResolution>('REVIEWED_FALSE_ALARM')
+  const [pendingResolution, setPendingResolution] = useState<GateCheckResolution>('CUSTOMER_VERIFIED')
 
   return (
     <div className="space-y-4">

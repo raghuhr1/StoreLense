@@ -40,6 +40,18 @@ const OUTCOME_OPTS = [
   { value: 'ABANDONED', label: 'Abandoned'    },
 ]
 
+const RESOLUTION_LABEL: Record<string, string> = {
+  CUSTOMER_VERIFIED: 'All ok',
+  THEFT_PREVENTED:   'Theft recovered',
+  ESCALATED:         'Escalated',
+}
+
+const RESOLUTION_BADGE: Record<string, string> = {
+  CUSTOMER_VERIFIED: 'bg-green-50  text-green-700  ring-green-200',
+  THEFT_PREVENTED:   'bg-blue-50   text-blue-700   ring-blue-200',
+  ESCALATED:         'bg-red-50    text-red-700    ring-red-200',
+}
+
 const PAGE_SIZE = 50
 const selectCls = 'text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500'
 
@@ -310,18 +322,19 @@ export default function GuardDashboardPage() {
                     <th className="table-th text-right">Matched</th>
                     <th className="table-th text-right">Extra</th>
                     <th className="table-th">Outcome</th>
+                    <th className="table-th">Resolution</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-50">
                   {checksLoading ? (
                     <tr>
-                      <td colSpan={8} className="table-td text-center text-gray-400 py-12">
+                      <td colSpan={9} className="table-td text-center text-gray-400 py-12">
                         Loading…
                       </td>
                     </tr>
                   ) : checks.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="table-td text-center text-gray-400 py-12">
+                      <td colSpan={9} className="table-td text-center text-gray-400 py-12">
                         <ShieldCheck size={24} className="mx-auto mb-2 opacity-30" />
                         No gate checks found for this date
                         {outcomeFilter ? ` with outcome "${outcomeFilter.toLowerCase()}"` : ''}.
@@ -377,11 +390,25 @@ export default function GuardDashboardPage() {
                                 {row.outcome}
                               </span>
                             </td>
+                            <td className="table-td">
+                              {row.resolution
+                                ? (
+                                  <span
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${
+                                      RESOLUTION_BADGE[row.resolution] ?? 'bg-gray-100 text-gray-600 ring-gray-200'
+                                    }`}
+                                  >
+                                    {RESOLUTION_LABEL[row.resolution] ?? row.resolution}
+                                  </span>
+                                )
+                                : <span className="text-xs text-gray-400">—</span>
+                              }
+                            </td>
                           </tr>
                           {isExpanded && (
                             <tr className="bg-gray-50">
                               <td />
-                              <td colSpan={7} className="table-td py-4">
+                              <td colSpan={8} className="table-td py-4">
                                 <ExpandedCheckDetails row={row} storeId={storeId} />
                               </td>
                             </tr>

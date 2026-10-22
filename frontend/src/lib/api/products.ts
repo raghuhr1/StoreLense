@@ -24,17 +24,15 @@ export const productsApi = {
   uploadImage: (id: string, file: File) => {
     const form = new FormData()
     form.append('file', file)
-    return client.post<ApiResponse<Product>>(`/products/${id}/image`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }).then(r => r.data.data)
+    return client.post<ApiResponse<Product>>(`/products/${id}/image`, form)
+      .then(r => r.data.data)
   },
 
   startBulkImageImport: (file: File) => {
     const form = new FormData()
     form.append('file', file)
-    return client.post<ApiResponse<string>>('/products/images/bulk-import', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }).then(r => r.data.data)
+    return client.post<ApiResponse<string>>('/products/images/bulk-import', form)
+      .then(r => r.data.data)
   },
 
   bulkImportStatus: (jobId: string) =>

@@ -350,7 +350,6 @@ export interface GateCheckSummary {
 
 export type GateCheckResolution =
   | 'CUSTOMER_VERIFIED' | 'THEFT_PREVENTED' | 'ESCALATED'
-  | 'REVIEWED_FALSE_ALARM' | 'CONFIRMED_THEFT'
 
 export interface GateCheck {
   id:            string
